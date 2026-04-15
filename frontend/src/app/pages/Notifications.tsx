@@ -158,7 +158,9 @@ export default function Notifications() {
         <div className="max-w-[1400px] mx-auto px-6">
           <div className="flex items-center justify-between">
             <div>
-              <div className="font-bold text-xl mb-2">pickxel</div>
+              <div className="font-bold text-xl mb-2">
+                <span className="text-[#FF5C3A]">p</span>ick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A]">.</span>
+              </div>
               <p className="text-sm text-gray-600">
                 © 2024 pickxel. Crafted for the creative elite.
               </p>

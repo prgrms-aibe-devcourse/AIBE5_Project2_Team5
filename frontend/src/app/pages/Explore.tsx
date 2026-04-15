@@ -217,7 +217,7 @@ export default function Explore() {
           <div className="flex items-center justify-between">
             <div>
               <div className="font-bold text-xl mb-2">
-                pick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A]">.</span>
+                <span className="text-[#FF5C3A]">p</span>ick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A]">.</span>
               </div>
               <p className="text-sm text-gray-600">
                 창작은 진 세계 창작들의 영감을 연결하고

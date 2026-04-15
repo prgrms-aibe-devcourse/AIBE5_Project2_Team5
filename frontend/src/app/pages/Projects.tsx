@@ -211,7 +211,7 @@ export default function Projects() {
           <div className="flex items-center justify-between">
             <div>
               <div className="font-bold text-xl mb-2">
-                pick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A]">.</span>
+                <span className="text-[#FF5C3A]">p</span>ick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A]">.</span>
               </div>
               <p className="text-sm text-gray-600">
                 크리에이티브의 가치를 포폰되고 연결하는 공간. 픽셀입니다. 우리는 당신의
