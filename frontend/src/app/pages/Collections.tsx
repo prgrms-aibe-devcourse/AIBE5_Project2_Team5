@@ -130,14 +130,33 @@ export default function Collections() {
             </div>
           </div>
 
-          {/* Inspiration Section */}
-          <section className="bg-gradient-to-r from-[#F1EFE8] to-[#E6FAF7] rounded-2xl p-12 mt-16 flex items-center justify-between">
-            <div className="max-w-xl">
-              <h2 className="text-3xl font-bold mb-4">영감을 현실로 만드는 방법</h2>
-              <p className="text-[#444441] mb-6 leading-relaxed">
-                수천 개의 레퍼런스를 바탕으로 새로운 프로젝트를 시작해보세요.
-                pickxel의 AI 어시스턴트가 아이디어를 분석해 포트폴리오 컬렉션
-                구성을 도와드립니다. 지금 시작해보실래요?
+        {/* Inspiration Section */}
+        <section className="bg-gradient-to-r from-gray-100 to-[#D4F4F4] rounded-2xl p-12 mt-16 flex items-center justify-between">
+          <div className="max-w-xl">
+            <h2 className="text-3xl font-bold mb-4">영감을 현실로 만드는 방법</h2>
+            <p className="text-gray-700 mb-6 leading-relaxed">
+              수천 감각선을 바탕으로 새로운 프로젝트를 시작하고. pickxel의
+              AI 어시스턴트가 당신의 아이디어를 컬렉션으로 포트폴리오 구성할 수
+              있습니다. 지금 시작 해보실래요?
+            </p>
+            <button className="bg-[#4DD4AC] text-black px-6 py-3 rounded-lg font-medium hover:bg-[#3BC99A] flex items-center gap-2">
+              AI 분석 시작하기
+            </button>
+          </div>
+          <div className="w-80 h-64 bg-gray-200 rounded-xl"></div>
+        </section>
+      </div>
+
+      {/* Footer */}
+      <footer className="bg-white border-t border-gray-200 py-8 mt-20">
+        <div className="max-w-[1400px] mx-auto px-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="font-bold text-xl mb-2">
+                <span className="text-[#FF5C3A]">p</span>ick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A]">.</span>
+              </div>
+              <p className="text-sm text-gray-600">
+                © 2024 pickxel. Crafted for the creative elite.
               </p>
               <button className="bg-[#00C9A7] text-black px-6 py-3 rounded-lg font-medium hover:bg-[#3BC99A] flex items-center gap-2">
                 AI 분석 시작하기

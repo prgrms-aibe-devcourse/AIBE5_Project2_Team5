@@ -1,15 +1,76 @@
-import { Link, useNavigate } from "react-router";
-import { useState } from "react";
+import { ArrowRight, Building2, CheckCircle, Lock, Mail, Palette, User } from "lucide-react";
+import { Link, Navigate, useNavigate } from "react-router";
+import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useState } from "react";
+import { ImageWithFallback } from "../components/figma/ImageWithFallback";
+import { isAuthenticated, setAuthenticated } from "../utils/auth";
+
+const showcaseItems = [
+  {
+    image: "https://images.unsplash.com/photo-1623932078839-44eb01fbee63?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcmVhdGl2ZSUyMGRlc2lnbiUyMHdvcmt8ZW58MXx8fHwxNzc1NjAzODU5fDA&ixlib=rb-4.1.0&q=80&w=1080",
+    label: "브랜드 아이덴티티",
+  },
+  {
+    image: "https://images.unsplash.com/photo-1770581939371-326fc1537f10?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0eXBvZ3JhcGh5JTIwcG9zdGVyJTIwZGVzaWdufGVufDF8fHx8MTc3NTU5Nzc3Mnww&ixlib=rb-4.1.0&q=80&w=1080",
+    label: "타이포그래피",
+  },
+  {
+    image: "https://images.unsplash.com/photo-1748765968965-7e18d4f7192b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwYWNrYWdpbmclMjBkZXNpZ24lMjBjcmVhdGl2ZXxlbnwxfHx8fDE3NzU2MDE3MTV8MA&ixlib=rb-4.1.0&q=80&w=1080",
+    label: "패키지 디자인",
+  },
+];
+
+const floatingPixels = [
+  { className: "left-[6%] top-[14%] h-16 w-16 bg-[#00C9A7]/20", delay: 0 },
+  { className: "left-[18%] bottom-[12%] h-10 w-10 bg-[#FF5C3A]/20", delay: 0.6 },
+  { className: "right-[8%] top-[18%] h-12 w-12 bg-white/70", delay: 1.1 },
+  { className: "right-[18%] bottom-[20%] h-20 w-20 bg-[#00C9A7]/15", delay: 1.5 },
+];
+
+const stepVariants = {
+  hidden: { opacity: 0, y: 18, height: 0 },
+  visible: { opacity: 1, y: 0, height: "auto" },
+  exit: { opacity: 0, y: -10, height: 0 },
+};
+
+function Logo({ className = "" }: { className?: string }) {
+  return (
+    <Link to="/" className={`flex items-center gap-2 ${className}`}>
+      <div className="grid h-8 w-8 grid-cols-2 gap-[3px]">
+        <div className="rounded-[2px] bg-[#00C9A7]"></div>
+        <div className="rounded-[2px] bg-[#00C9A7] opacity-50"></div>
+        <div className="rounded-[2px] bg-[#FF5C3A] opacity-60"></div>
+        <div className="rounded-[2px] bg-[#FF5C3A]"></div>
+      </div>
+      <span className="text-3xl font-bold tracking-tight">
+        <span className="text-[#FF5C3A]">p</span>ick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A] text-[32px]">.</span>
+      </span>
+    </Link>
+  );
+}
 
 export default function Signup() {
   const navigate = useNavigate();
+  const [activeShowcaseIndex, setActiveShowcaseIndex] = useState(0);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
     confirmPassword: "",
-    role: "designer",
+    role: "",
   });
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setActiveShowcaseIndex((current) => (current + 1) % showcaseItems.length);
+    }, 3400);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  if (isAuthenticated()) {
+    return <Navigate to="/feed" replace />;
+  }
 
   const handleSignup = (e: React.FormEvent) => {
     e.preventDefault();
@@ -17,180 +78,407 @@ export default function Signup() {
       alert("비밀번호가 일치하지 않습니다.");
       return;
     }
-    // 회원가입 로직 (현재는 간단히 피드로 이동)
-    navigate("/feed");
+    if (!formData.role) {
+      alert("역할을 선택해주세요.");
+      return;
+    }
+
+    setAuthenticated(true);
+    navigate("/feed", { replace: true });
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
     });
   };
 
+  const completeSocialSignup = () => {
+    setAuthenticated(true);
+    navigate("/feed", { replace: true });
+  };
+
+  const hasName = formData.name.trim().length > 0;
+  const hasEmail = formData.email.trim().length > 0;
+  const hasRole = formData.role !== "";
+  const hasPassword = formData.password.length > 0;
+  const hasConfirmPassword = formData.confirmPassword.length > 0;
+  const activeStep =
+    1 +
+    Number(hasName) +
+    Number(hasEmail) +
+    Number(hasRole) +
+    Number(hasPassword);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F7F7F5] via-white to-[#A8F0E4]/10 flex items-center justify-center p-6">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <Link to="/" className="flex items-center justify-center gap-2 mb-8">
-          <div className="grid grid-cols-2 gap-[3px] w-[32px] h-[32px]">
-            <div className="rounded-[2px] bg-[#00C9A7]"></div>
-            <div className="rounded-[2px] bg-[#00C9A7] opacity-50"></div>
-            <div className="rounded-[2px] bg-[#FF5C3A] opacity-60"></div>
-            <div className="rounded-[2px] bg-[#FF5C3A]"></div>
-          </div>
-          <span className="text-3xl font-bold tracking-tight">
-            <span className="text-[#FF5C3A]">p</span>ick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A] text-[32px]">.</span>
-          </span>
-        </Link>
+    <div className="relative min-h-screen overflow-hidden bg-[#F7F7F5] text-[#0F0F0F]">
+      <div className="absolute inset-0 opacity-70 [background-image:linear-gradient(90deg,rgba(15,15,15,0.04)_1px,transparent_1px),linear-gradient(rgba(15,15,15,0.04)_1px,transparent_1px)] [background-size:44px_44px]" />
+      <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#FF5C3A,#00C9A7,#FF5C3A)]" />
 
-        {/* Signup Card */}
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
-          <h1 className="text-2xl font-bold mb-2 text-center">회원가입</h1>
-          <p className="text-gray-600 text-center mb-8">픽셀 크리에이티브 커뮤니티에 가입하세요</p>
+      {floatingPixels.map((pixel, index) => (
+        <motion.div
+          key={index}
+          aria-hidden="true"
+          className={`pointer-events-none absolute hidden rounded-lg border border-white/80 shadow-lg backdrop-blur-sm lg:block ${pixel.className}`}
+          animate={{ y: [0, -14, 0], rotate: [0, -4, 0] }}
+          transition={{
+            duration: 5.2,
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: pixel.delay,
+          }}
+        />
+      ))}
 
-          <form onSubmit={handleSignup} className="space-y-6">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
-                이름
-              </label>
-              <input
-                type="text"
-                id="name"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-[#00C9A7] transition-colors"
-                placeholder="홍길동"
-                required
-              />
-            </div>
+      <main className="relative mx-auto grid min-h-screen max-w-[1180px] grid-cols-1 items-center gap-10 px-6 py-10 lg:grid-cols-[0.95fr_1.05fr]">
+        <section className="hidden lg:block">
+          <Logo className="mb-8" />
 
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                이메일
-              </label>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-[#00C9A7] transition-colors"
-                placeholder="your@email.com"
-                required
-              />
-            </div>
-
-            <div>
-              <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-2">
-                역할
-              </label>
-              <select
-                id="role"
-                name="role"
-                value={formData.role}
-                onChange={handleChange}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-[#00C9A7] transition-colors"
+          <motion.div
+            initial={{ opacity: 0, x: -36 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.7, ease: "easeOut" }}
+            className="relative h-[650px] overflow-hidden rounded-lg bg-[#0F0F0F]"
+          >
+            {showcaseItems.map((item, index) => (
+              <motion.div
+                key={item.label}
+                className="absolute inset-0"
+                initial={false}
+                animate={{
+                  opacity: index === activeShowcaseIndex ? 1 : 0,
+                  scale: index === activeShowcaseIndex ? 1.05 : 1,
+                }}
+                transition={{ opacity: { duration: 0.9 }, scale: { duration: 3.4 } }}
               >
-                <option value="designer">디자이너</option>
-                <option value="client">클라이언트</option>
-              </select>
+                <ImageWithFallback
+                  src={item.image}
+                  alt={item.label}
+                  className="h-full w-full object-cover"
+                />
+              </motion.div>
+            ))}
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0F0F0F]/75 via-[#0F0F0F]/16 to-transparent" />
+            <div className="absolute bottom-8 left-8 right-8 text-white">
+              <motion.div
+                key={showcaseItems[activeShowcaseIndex].label}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.45 }}
+                className="mb-6"
+              >
+                <h2 className="text-5xl font-bold leading-tight">당신의 감각이 필요한 곳으로</h2>
+                <p className="mt-4 max-w-[440px] text-sm leading-relaxed text-gray-200">
+                  포트폴리오를 발견하고, 프로젝트를 제안하고, 좋은 협업을 시작하세요.
+                </p>
+              </motion.div>
+
+              <div className="flex gap-2">
+                {showcaseItems.map((item, index) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    aria-label={`${item.label} 보기`}
+                    onClick={() => setActiveShowcaseIndex(index)}
+                    className={`h-2 rounded-full transition-all ${
+                      index === activeShowcaseIndex ? "w-8 bg-[#00C9A7]" : "w-2 bg-white/70"
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
+          </motion.div>
+        </section>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                비밀번호
-              </label>
-              <input
-                type="password"
-                id="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-[#00C9A7] transition-colors"
-                placeholder="••••••••"
-                required
-              />
-            </div>
+        <motion.section
+          initial={{ opacity: 0, x: 36 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.7, ease: "easeOut" }}
+          className="w-full max-w-xl justify-self-center lg:justify-self-end"
+        >
+          <Logo className="mb-8 justify-center lg:hidden" />
 
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
-                비밀번호 확인
-              </label>
-              <input
-                type="password"
-                id="confirmPassword"
-                name="confirmPassword"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-[#00C9A7] transition-colors"
-                placeholder="••••••••"
-                required
-              />
-            </div>
-
-            <label className="flex items-start gap-2">
-              <input type="checkbox" className="w-4 h-4 mt-1 text-[#00C9A7] border-gray-300 rounded focus:ring-[#00C9A7]" required />
-              <span className="text-sm text-gray-600">
-                <a href="#" className="text-[#00C9A7] hover:underline">이용약관</a> 및{" "}
-                <a href="#" className="text-[#00C9A7] hover:underline">개인정보처리방침</a>에 동의합니다.
-              </span>
-            </label>
-
-            <button
-              type="submit"
-              className="w-full bg-gradient-to-r from-[#00C9A7]/90 to-[#00A88C]/90 backdrop-blur-md text-white py-3 rounded-lg font-semibold hover:shadow-lg hover:scale-[1.02] transition-all border border-white/30"
+          <div className="mb-6">
+            <motion.p
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, delay: 0.1 }}
+              className="mb-3 text-sm font-semibold text-[#00A88C]"
             >
-              회원가입
-            </button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <p className="text-gray-600 text-sm">
-              이미 계정이 있으신가요?{" "}
-              <Link to="/login" className="text-[#00C9A7] hover:text-[#00A88C] font-semibold transition-colors">
-                로그인
-              </Link>
-            </p>
+              Join pickxel
+            </motion.p>
+            <motion.h1
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.18 }}
+              className="mb-2 text-3xl font-bold"
+            >
+              픽셀 크리에이티브 커뮤니티에 가입하세요
+            </motion.h1>
+            <motion.p
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.26 }}
+              className="text-gray-600"
+            >
+              디자이너와 의뢰인이 서로의 감각을 찾는 곳입니다.
+            </motion.p>
           </div>
 
-          {/* Divider */}
-          <div className="my-6 flex items-center gap-4">
-            <div className="flex-1 h-px bg-gray-200"></div>
-            <span className="text-sm text-gray-500">또는</span>
-            <div className="flex-1 h-px bg-gray-200"></div>
-          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 26 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.32 }}
+            className="rounded-lg border border-gray-200 bg-white/95 p-8 shadow-2xl backdrop-blur-md"
+          >
+            <form onSubmit={handleSignup} className="space-y-5">
+              <div>
+                <label htmlFor="name" className="mb-2 block text-sm font-medium text-gray-700">
+                  먼저 이름을 알려주세요
+                </label>
+                <div className="relative">
+                  <User className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    id="name"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    className="h-12 w-full rounded-lg border border-gray-200 bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10"
+                    placeholder="홍길동"
+                    required
+                  />
+                </div>
+              </div>
 
-          {/* Social Signup */}
-          <div className="space-y-3">
-            <button 
-              type="button"
-              onClick={() => navigate("/feed")}
-              className="w-full flex items-center justify-center gap-3 px-4 py-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-              </svg>
-              <span className="font-medium text-gray-700">Google로 계속하기</span>
-            </button>
+              <AnimatePresence initial={false}>
+                {hasName && (
+                  <motion.div
+                    key="email-step"
+                    variants={stepVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    transition={{ duration: 0.35, ease: "easeOut" }}
+                    className="overflow-hidden"
+                  >
+                    <label htmlFor="email" className="mb-2 block text-sm font-medium text-gray-700">
+                      어디로 소식을 받을까요?
+                    </label>
+                    <div className="relative">
+                      <Mail className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        value={formData.email}
+                        onChange={handleChange}
+                        className="h-12 w-full rounded-lg border border-gray-200 bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10"
+                        placeholder="your@email.com"
+                        required
+                      />
+                    </div>
+                  </motion.div>
+                )}
 
-            <button 
-              type="button"
-              onClick={() => navigate("/feed")}
-              className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#FEE500] rounded-lg hover:bg-[#FDD835] transition-colors"
-            >
-              <svg className="w-5 h-5" viewBox="0 0 24 24">
-                <path fill="#000000" d="M3.0273 10.9441c0 3.9802 2.4648 7.3789 6.7383 7.3789 2.2148 0 3.6953-0.8789 4.8281-2.1367l-1.9688-1.5234c-0.5859 0.7031-1.4297 1.2891-2.8594 1.2891-1.8398 0-3.1406-1.1367-3.5156-2.7539h8.6133c0.0703-0.293 0.1172-0.6328 0.1172-1.0078 0-3.5508-2.332-7.3789-6.457-7.3789-3.8516 0-6.5508 3.4219-6.5508 7.1328zm3.2227-1.2891c0.2461-1.8164 1.4648-2.8711 3.3281-2.8711 1.7109 0 2.9063 1.0078 3.0938 2.8711z"/>
-              </svg>
-              <span className="font-medium text-gray-900">카카오로 계속하기</span>
-            </button>
-          </div>
-        </div>
-      </div>
+                {hasName && hasEmail && (
+                  <motion.div
+                    key="role-step"
+                    variants={stepVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    transition={{ duration: 0.35, ease: "easeOut" }}
+                    className="overflow-hidden"
+                  >
+                    <label className="mb-2 block text-sm font-medium text-gray-700">어떤 역할로 시작할까요?</label>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      {[
+                        {
+                          id: "designer",
+                          label: "디자이너",
+                          desc: "작업물을 공유하고 프로젝트를 만납니다.",
+                          icon: Palette,
+                        },
+                        {
+                          id: "client",
+                          label: "클라이언트",
+                          desc: "감각에 맞는 디자이너를 찾습니다.",
+                          icon: Building2,
+                        },
+                      ].map((role) => {
+                        const Icon = role.icon;
+                        const isSelected = formData.role === role.id;
+
+                        return (
+                          <motion.button
+                            key={role.id}
+                            type="button"
+                            whileHover={{ y: -2 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => setFormData({ ...formData, role: role.id })}
+                            className={`rounded-lg border p-4 text-left transition-all ${
+                              isSelected
+                                ? "border-[#00C9A7] bg-[#A8F0E4]/20 shadow-lg shadow-[#00C9A7]/10"
+                                : "border-gray-200 bg-white hover:border-[#00C9A7]/50"
+                            }`}
+                          >
+                            <div className="mb-3 flex items-center justify-between">
+                              <div className={`rounded-lg p-2 ${isSelected ? "bg-[#00C9A7] text-[#0F0F0F]" : "bg-gray-100 text-gray-600"}`}>
+                                <Icon className="size-5" />
+                              </div>
+                              {isSelected && <CheckCircle className="size-5 text-[#00A88C]" />}
+                            </div>
+                            <div className="font-semibold">{role.label}</div>
+                            <p className="mt-1 text-xs leading-relaxed text-gray-500">{role.desc}</p>
+                          </motion.button>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+
+                {hasName && hasEmail && hasRole && (
+                  <motion.div
+                    key="password-step"
+                    variants={stepVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    transition={{ duration: 0.35, ease: "easeOut" }}
+                    className="overflow-hidden"
+                  >
+                    <label htmlFor="password" className="mb-2 block text-sm font-medium text-gray-700">
+                      비밀번호를 만들어주세요
+                    </label>
+                    <div className="relative">
+                      <Lock className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        value={formData.password}
+                        onChange={handleChange}
+                        className="h-12 w-full rounded-lg border border-gray-200 bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10"
+                        placeholder="비밀번호"
+                        required
+                      />
+                    </div>
+                  </motion.div>
+                )}
+
+                {hasName && hasEmail && hasRole && hasPassword && (
+                  <motion.div
+                    key="confirm-password-step"
+                    variants={stepVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    transition={{ duration: 0.35, ease: "easeOut" }}
+                    className="overflow-hidden"
+                  >
+                    <label htmlFor="confirmPassword" className="mb-2 block text-sm font-medium text-gray-700">
+                      한 번 더 확인할게요
+                    </label>
+                    <div className="relative">
+                      <Lock className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="password"
+                        id="confirmPassword"
+                        name="confirmPassword"
+                        value={formData.confirmPassword}
+                        onChange={handleChange}
+                        className="h-12 w-full rounded-lg border border-gray-200 bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10"
+                        placeholder="한 번 더 입력"
+                        required
+                      />
+                    </div>
+                  </motion.div>
+                )}
+
+                {hasName && hasEmail && hasRole && hasPassword && hasConfirmPassword && (
+                  <motion.div
+                    key="submit-step"
+                    variants={stepVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    transition={{ duration: 0.35, ease: "easeOut" }}
+                    className="space-y-5 overflow-hidden"
+                  >
+                    <label className="flex items-start gap-2">
+                      <input type="checkbox" className="mt-1 h-4 w-4 rounded border-gray-300 text-[#00C9A7] focus:ring-[#00C9A7]" required />
+                      <span className="text-sm text-gray-600">
+                        <a href="#" className="text-[#00A88C] hover:underline">이용약관</a> 및{" "}
+                        <a href="#" className="text-[#00A88C] hover:underline">개인정보처리방침</a>에 동의합니다.
+                      </span>
+                    </label>
+
+                    <motion.button
+                      type="submit"
+                      whileHover={{ y: -1 }}
+                      whileTap={{ scale: 0.98 }}
+                      className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#00C9A7] font-semibold text-[#0F0F0F] shadow-lg shadow-[#00C9A7]/20 transition-colors hover:bg-[#00A88C]"
+                    >
+                      회원가입
+                      <ArrowRight className="size-5" />
+                    </motion.button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {!hasConfirmPassword && (
+                <div className="rounded-lg bg-[#F7F7F5] px-4 py-3 text-sm text-gray-500">
+                  입력을 마치면 다음 단계가 자동으로 열립니다.
+                </div>
+              )}
+            </form>
+
+            <div className="mt-6 text-center">
+              <p className="text-sm text-gray-600">
+                이미 계정이 있으신가요?{" "}
+                <Link to="/login" className="font-semibold text-[#00A88C] transition-colors hover:text-[#007C69]">
+                  로그인
+                </Link>
+              </p>
+            </div>
+
+            <div className="my-6 flex items-center gap-4">
+              <div className="h-px flex-1 bg-gray-200"></div>
+              <span className="text-sm text-gray-500">또는</span>
+              <div className="h-px flex-1 bg-gray-200"></div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <button
+                type="button"
+                onClick={completeSocialSignup}
+                className="flex h-12 items-center justify-center gap-3 rounded-lg border border-gray-200 bg-white px-4 transition-colors hover:bg-gray-50"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                <span className="font-medium text-gray-700">Google</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={completeSocialSignup}
+                className="flex h-12 items-center justify-center gap-3 rounded-lg bg-[#FEE500] px-4 transition-colors hover:bg-[#FDD835]"
+              >
+                <svg className="h-5 w-5" viewBox="0 0 24 24">
+                  <path fill="#000000" d="M3.0273 10.9441c0 3.9802 2.4648 7.3789 6.7383 7.3789 2.2148 0 3.6953-0.8789 4.8281-2.1367l-1.9688-1.5234c-0.5859 0.7031-1.4297 1.2891-2.8594 1.2891-1.8398 0-3.1406-1.1367-3.5156-2.7539h8.6133c0.0703-0.293 0.1172-0.6328 0.1172-1.0078 0-3.5508-2.332-7.3789-6.457-7.3789-3.8516 0-6.5508 3.4219-6.5508 7.1328zm3.2227-1.2891c0.2461-1.8164 1.4648-2.8711 3.3281-2.8711 1.7109 0 2.9063 1.0078 3.0938 2.8711z"/>
+                </svg>
+                <span className="font-medium text-gray-900">카카오</span>
+              </button>
+            </div>
+          </motion.div>
+        </motion.section>
+      </main>
     </div>
   );
 }
