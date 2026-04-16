@@ -94,7 +94,7 @@ function DynamicList({ items, onChange, placeholder }: { items: string[]; onChan
 }
 
 // ── 헬퍼: 이미지 드롭존 ──────────────────────────────────────
-function ImageDropzone({ value, onChange, label }: { value: string; onChange: (url: string) => void; label?: string }) {
+function ImageDropzone({ value, onChange, label, height = 140, compact = false }: { value: string; onChange: (url: string) => void; label?: string; height?: number; compact?: boolean }) {
   const [preview, setPreview] = useState(value);
   const onDrop = useCallback((files: File[]) => {
     const file = files[0];
@@ -106,31 +106,30 @@ function ImageDropzone({ value, onChange, label }: { value: string; onChange: (u
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { "image/*": [] }, maxFiles: 1 });
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       {label && <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">{label}</p>}
-      <div {...getRootProps()} className={`relative group cursor-pointer border-2 border-dashed rounded-2xl overflow-hidden transition-all ${isDragActive ? "border-[#00C9A7] bg-[#00C9A7]/5" : "border-gray-200 hover:border-[#00C9A7]/60"}`} style={{ height: 140 }}>
+      <div {...getRootProps()} className={`relative group cursor-pointer border-2 border-dashed rounded-xl overflow-hidden transition-all ${isDragActive ? "border-[#00C9A7] bg-[#00C9A7]/5" : "border-gray-200 hover:border-[#00C9A7]/60"}`} style={{ height }}>
         <input {...getInputProps()} />
         {preview ? (
           <>
             <img src={preview} alt="preview" className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-              <p className="text-white text-xs font-semibold">클릭 또는 드래그로 변경</p>
+              <p className="text-white text-xs font-semibold text-center px-2">{compact ? "변경" : "클릭 또는 드래그로 변경"}</p>
             </div>
           </>
         ) : (
-          <div className="flex flex-col items-center justify-center h-full gap-2">
-            <ImageIcon className="size-8 text-gray-300" />
-            <p className="text-xs text-gray-400">{isDragActive ? "놓아서 업로드" : "클릭 또는 드래그"}</p>
+          <div className="flex flex-col items-center justify-center h-full gap-1.5">
+            <ImageIcon className={compact ? "size-5 text-gray-300" : "size-8 text-gray-300"} />
+            <p className="text-xs text-gray-400 text-center px-1">{isDragActive ? "놓기" : compact ? "클릭/드래그" : "클릭 또는 드래그"}</p>
           </div>
         )}
       </div>
       <div className="flex gap-2 items-center">
-        <span className="text-xs text-gray-400">또는 URL 입력:</span>
         <input
           type="url"
           defaultValue={value.startsWith("http") ? value : ""}
           onBlur={(e) => { if (e.target.value) { setPreview(e.target.value); onChange(e.target.value); } }}
-          placeholder="https://..."
+          placeholder="URL 붙여넣기..."
           className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#00C9A7] transition-colors placeholder:text-gray-300"
         />
       </div>
@@ -555,17 +554,17 @@ export default function CreateProject() {
                       <div className="grid grid-cols-3 gap-3">
                         {referenceImages.map((url, i) => (
                           <div key={i} className="relative group">
-                            <div className="h-24 rounded-xl border border-gray-200 overflow-hidden bg-gray-50">
-                              {url ? <img src={url} alt={`ref-${i}`} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} /> : <div className="flex items-center justify-center h-full"><ImageIcon className="size-6 text-gray-300" /></div>}
-                            </div>
-                            <input
+                            <ImageDropzone
                               value={url}
-                              onChange={(e) => updateRefImage(i, e.target.value)}
-                              placeholder="이미지 URL"
-                              className="w-full mt-1.5 px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#00C9A7] transition-colors placeholder:text-gray-300"
+                              onChange={(val) => updateRefImage(i, val)}
+                              height={100}
+                              compact
                             />
                             {referenceImages.length > 1 && (
-                              <button onClick={() => removeRefImage(i)} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => removeRefImage(i)}
+                                className="absolute -top-1.5 -right-1.5 z-10 bg-red-400 hover:bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                              >
                                 <X className="size-3" />
                               </button>
                             )}
