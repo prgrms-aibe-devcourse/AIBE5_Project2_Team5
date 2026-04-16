@@ -35,3 +35,20 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Node.js & Frontend ###
+node_modules/
+.pnpm-store/
+dist/
+out/
+.env
+*.local
+.DS_Store
+Thumbs.db
+
+### Vite cache ###
+.vite/
+
+### Root-level accidental npm files ###
+/package.json
+/package-lock.json
