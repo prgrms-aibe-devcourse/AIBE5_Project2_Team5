@@ -1,5 +1,4 @@
 import { useRef, useEffect } from "react";
-import { gsap } from "gsap";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { Heart, Eye } from "lucide-react";
 
@@ -27,47 +26,37 @@ export default function ProjectsGrid({ projects }: ProjectsGridProps) {
   useEffect(() => {
     if (!gridRef.current) return;
 
-    const ctx = gsap.context(() => {
-      // Reset all cards
-      gsap.set(cardsRef.current.filter(Boolean), { 
-        opacity: 0, 
-        y: 16 
-      });
+    const cards = cardsRef.current
+      .slice(0, projects.length)
+      .filter(Boolean) as HTMLDivElement[];
 
-      // Staggered entrance - slower and more elegant
-      gsap.to(cardsRef.current.filter(Boolean), {
-        opacity: 1,
-        y: 0,
-        duration: 0.5,
-        stagger: 0.06,
-        ease: "power3.out"
-      });
-    }, gridRef);
+    const animations = cards.map((card, index) => {
+      card.style.opacity = "0";
+      card.style.transform = "translateY(16px)";
 
-    return () => ctx.revert();
+      const animation = card.animate(
+        [
+          { opacity: 0, transform: "translateY(16px)" },
+          { opacity: 1, transform: "translateY(0)" },
+        ],
+        {
+          duration: 500,
+          delay: index * 60,
+          easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+          fill: "forwards",
+        }
+      );
+
+      animation.onfinish = () => {
+        card.style.opacity = "1";
+        card.style.transform = "";
+      };
+
+      return animation;
+    });
+
+    return () => animations.forEach((animation) => animation.cancel());
   }, [projects]);
-
-  const handleMouseEnter = (index: number) => {
-    const card = cardsRef.current[index];
-    if (!card) return;
-
-    gsap.to(card, {
-      y: -8,
-      duration: 0.4,
-      ease: "power2.out"
-    });
-  };
-
-  const handleMouseLeave = (index: number) => {
-    const card = cardsRef.current[index];
-    if (!card) return;
-
-    gsap.to(card, {
-      y: 0,
-      duration: 0.4,
-      ease: "power2.out"
-    });
-  };
 
   return (
     <div ref={gridRef} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
@@ -75,9 +64,7 @@ export default function ProjectsGrid({ projects }: ProjectsGridProps) {
         <div
           key={project.id}
           ref={(el) => { cardsRef.current[index] = el; }}
-          onMouseEnter={() => handleMouseEnter(index)}
-          onMouseLeave={() => handleMouseLeave(index)}
-          className="group cursor-pointer will-change-transform"
+          className="group cursor-pointer will-change-transform transition-transform duration-300 ease-out hover:-translate-y-2"
         >
           <div className="bg-white rounded-2xl overflow-hidden mb-3 aspect-square relative shadow-sm hover:shadow-xl transition-shadow border border-gray-100 hover:border-[#00C9A7]">
             <ImageWithFallback
