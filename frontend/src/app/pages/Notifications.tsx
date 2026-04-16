@@ -1,6 +1,11 @@
 import Navigation from "../components/Navigation";
 import { Heart, MessageCircle, CheckCircle, Sparkles } from "lucide-react";
 import {motion} from "motion/react";
+import { useState } from "react";
+import {
+  hasUnreadNotifications,
+  markAllNotificationsRead,
+} from "../utils/notificationState";
 
 const notifications = [
   {
@@ -56,6 +61,13 @@ const notifications = [
 ];
 
 export default function Notifications() {
+  const [hasUnread, setHasUnread] = useState(hasUnreadNotifications);
+
+  const handleMarkAllRead = () => {
+    markAllNotificationsRead();
+    setHasUnread(false);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation />
@@ -63,9 +75,12 @@ export default function Notifications() {
       <div className="max-w-[900px] mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold">알림 센터</h1>
-          <button className="text-sm text-[#4DD4AC] hover:text-[#3BC99A] flex items-center gap-1">
+          <button
+            onClick={handleMarkAllRead}
+            className="text-sm text-[#4DD4AC] hover:text-[#3BC99A] flex items-center gap-1"
+          >
             <CheckCircle className="size-4" />
-            모두 읽음으로 표시
+            {hasUnread ? "모두 읽음으로 표시" : "모두 읽음"}
           </button>
         </div>
 
@@ -95,7 +110,7 @@ export default function Notifications() {
             <div
               key={notification.id}
               className={`bg-white rounded-xl p-6 border ${
-                notification.badge ? "border-[#4DD4AC]" : "border-gray-200"
+                notification.badge && hasUnread ? "border-[#4DD4AC]" : "border-gray-200"
               } hover:shadow-md transition-shadow`}
             >
               <div className="flex gap-4">
