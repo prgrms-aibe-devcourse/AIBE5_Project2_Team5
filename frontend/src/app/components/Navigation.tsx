@@ -38,7 +38,7 @@ export default function Navigation() {
                 {/* Pixel Grid Symbol */}
                 <div className="grid grid-cols-2 gap-[3px] w-[28px] h-[28px]">
                   <div className="rounded-[2px] bg-[#00C9A7]"></div>
-                  <div className="rounded-[2px] bg-[#00C9A7] opacity-50"></div>
+                  <div className="rounded-[2px] bg-[#00C9A7] opacity-50"></div>git remote -v
                   <div className="rounded-[2px] bg-[#FF5C3A] opacity-60"></div>
                   <div className="rounded-[2px] bg-[#FF5C3A]"></div>
                 </div>
