@@ -1,19 +1,20 @@
 import Navigation from "../components/Navigation";
 import { MoreHorizontal, Plus } from "lucide-react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
+import {motion} from "motion/react";
 
 const collections = [
   {
     id: 1,
     title: "2024 UI 트렌드",
     items: "아이템 24개",
-    likes: "2개 전 업데이트",
+    likes: "2일 전 업데이트",
     images: [
       "https://images.unsplash.com/photo-1718220216044-006f43e3a9b1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBvZmZpY2UlMjB3b3Jrc3BhY2V8ZW58MXx8fHwxNzc1NTU1MzcxfDA&ixlib=rb-4.1.0&q=80&w=1080",
       "https://images.unsplash.com/photo-1772272935464-2e90d8218987?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx1aSUyMHV4JTIwZGVzaWduJTIwaW50ZXJmYWNlfGVufDF8fHx8MTc3NTU0MTE1MXww&ixlib=rb-4.1.0&q=80&w=1080",
       "https://images.unsplash.com/photo-1623932078839-44eb01fbee63?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcmVhdGl2ZSUyMGRlc2lnbiUyMHdvcmt8ZW58MXx8fHwxNzc1NjAzODU5fDA&ixlib=rb-4.1.0&q=80&w=1080",
     ],
-    badge: "COLLECTION SAFE WORK",
+    badge: "추천 컬렉션",
   },
   {
     id: 2,
@@ -41,93 +42,93 @@ const collections = [
 
 export default function Collections() {
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navigation />
+      <div className="min-h-screen bg-[#F7F7F5]">
+        <Navigation />
 
-      <div className="max-w-[1400px] mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-4xl font-bold mb-2">나의 컬렉션</h1>
-            <p className="text-gray-600">
-              영감을 주는 작업물과 프로젝트 아이디어를 출력하며 정리해보세요.
-              <br />
-              오, 당신의 크리에이터의 여기입니다.
-            </p>
+        <div className="max-w-[1400px] mx-auto px-6 py-8">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h1 className="text-4xl font-bold mb-2">나의 컬렉션</h1>
+              <p className="text-[#5F5E5A]">
+                영감을 주는 작업물과 프로젝트 아이디어를 저장하고 정리해보세요.
+                <br />
+                당신만의 레퍼런스 보드를 만들어보세요.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button className="px-4 py-2 border border-[#EAEAE8] rounded-lg text-sm hover:bg-[#F1EFE8] flex items-center gap-2">
+                <span>필터</span>
+              </button>
+              <button className="px-6 py-2 bg-black text-white rounded-lg text-sm hover:bg-gray-800 flex items-center gap-2">
+                + 새 컬렉션
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-100 flex items-center gap-2">
-              <span>필터</span>
-            </button>
-            <button className="px-6 py-2 bg-black text-white rounded-lg text-sm hover:bg-gray-800 flex items-center gap-2">
-              + 새 컬렉션
-            </button>
-          </div>
-        </div>
 
-        {/* Collections Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          {collections.map((collection) => (
-            <div
-              key={collection.id}
-              className="bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-shadow cursor-pointer"
-            >
-              {/* Collection Preview */}
-              <div className="h-64 relative bg-gray-900">
-                {collection.badge && (
-                  <div className="absolute top-3 left-3 bg-black/80 text-white px-3 py-1 rounded text-xs">
-                    {collection.badge}
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-1 h-full p-1">
-                  {collection.images.slice(0, 3).map((image, idx) => (
-                    <div
-                      key={idx}
-                      className={`relative ${
-                        idx === 0 ? "col-span-1 row-span-2" : "col-span-1"
-                      }`}
-                    >
-                      <ImageWithFallback
-                        src={image}
-                        alt=""
-                        className="w-full h-full object-cover rounded"
-                      />
-                    </div>
-                  ))}
-                  {collection.additionalCount && (
-                    <div className="bg-gray-800/90 rounded flex items-center justify-center text-white">
+          {/* Collections Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            {collections.map((collection) => (
+                <div
+                    key={collection.id}
+                    className="bg-[#F7F7F5] rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-shadow cursor-pointer"
+                >
+                  {/* Collection Preview */}
+                  <div className="h-64 relative bg-gray-900">
+                    {collection.badge && (
+                        <div className="absolute top-3 left-3 bg-black/80 text-white px-3 py-1 rounded text-xs">
+                          {collection.badge}
+                        </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-1 h-full p-1">
+                      {collection.images.slice(0, 3).map((image, idx) => (
+                          <div
+                              key={idx}
+                              className={`relative ${
+                                  idx === 0 ? "col-span-1 row-span-2" : "col-span-1"
+                              }`}
+                          >
+                            <ImageWithFallback
+                                src={image}
+                                alt=""
+                                className="w-full h-full object-cover rounded"
+                            />
+                          </div>
+                      ))}
+                      {collection.additionalCount && (
+                          <div className="bg-gray-800/90 rounded flex items-center justify-center text-white">
                       <span className="text-xl font-semibold">
                         +{collection.additionalCount}
                       </span>
+                          </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              </div>
+                  </div>
 
-              {/* Collection Info */}
-              <div className="p-4 flex items-start justify-between">
-                <div>
-                  <h3 className="font-semibold text-lg mb-1">
-                    {collection.title}
-                  </h3>
-                  <p className="text-sm text-gray-600">
-                    {collection.items} • {collection.likes}
-                  </p>
+                  {/* Collection Info */}
+                  <div className="p-4 flex items-start justify-between">
+                    <div>
+                      <h3 className="font-semibold text-lg mb-1">
+                        {collection.title}
+                      </h3>
+                      <p className="text-sm text-[#5F5E5A]">
+                        {collection.items} • {collection.likes}
+                      </p>
+                    </div>
+                    <button className="p-2 hover:bg-[#F1EFE8] rounded-lg">
+                      <MoreHorizontal className="size-5 text-[#5F5E5A]" />
+                    </button>
+                  </div>
                 </div>
-                <button className="p-2 hover:bg-gray-100 rounded-lg">
-                  <MoreHorizontal className="size-5 text-gray-600" />
-                </button>
-              </div>
-            </div>
-          ))}
+            ))}
 
-          {/* Add New Collection Card */}
-          <div className="bg-gray-100 rounded-2xl overflow-hidden border-2 border-dashed border-gray-300 flex flex-col items-center justify-center h-[352px] cursor-pointer hover:border-gray-400 hover:bg-gray-50 transition-colors">
-            <div className="bg-white rounded-full p-4 mb-4">
-              <Plus className="size-8 text-gray-600" />
+            {/* Add New Collection Card */}
+            <div className="bg-[#F1EFE8] rounded-2xl overflow-hidden border-2 border-dashed border-[#EAEAE8] flex flex-col items-center justify-center h-[352px] cursor-pointer hover:border-gray-400 hover:bg-[#F7F7F5] transition-colors">
+              <div className="bg-[#F7F7F5] rounded-full p-4 mb-4">
+                <Plus className="size-8 text-[#5F5E5A]" />
+              </div>
+              <p className="text-[#5F5E5A] font-medium">새 컬렉션 추가</p>
             </div>
-            <p className="text-gray-600 font-medium">새 컬렉션 추가</p>
           </div>
-        </div>
 
         {/* Inspiration Section */}
         <section className="bg-gradient-to-r from-gray-100 to-[#D4F4F4] rounded-2xl p-12 mt-16 flex items-center justify-between">
@@ -157,27 +158,40 @@ export default function Collections() {
               <p className="text-sm text-gray-600">
                 © 2024 pickxel. Crafted for the creative elite.
               </p>
+              <button className="bg-[#00C9A7] text-black px-6 py-3 rounded-lg font-medium hover:bg-[#3BC99A] flex items-center gap-2">
+                AI 분석 시작하기
+              </button>
             </div>
-            <div className="flex gap-8 text-sm text-gray-600">
-              <a href="#" className="hover:text-black">
-                이용약관
-              </a>
-              <a href="#" className="hover:text-black">
-                개인정보처리방침
-              </a>
-              <a href="#" className="hover:text-black">
-                고객센터
-              </a>
-              <a href="#" className="hover:text-black">
-                인재채용
-              </a>
-              <a href="#" className="hover:text-black">
-                비즈니스 문의
-              </a>
-            </div>
-          </div>
+            <div className="w-80 h-64 bg-gray-200 rounded-xl"></div>
+          </section>
         </div>
-      </footer>
-    </div>
+
+        {/* Footer */}
+        <footer className="bg-white border-t border-gray-200 py-8">
+          <motion.div
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="max-w-[1400px] mx-auto px-6"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-bold text-xl mb-2">
+                  pick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A]">.</span>
+                </div>
+                <p className="text-sm text-gray-600">© 2024 pickxel. Crafted for the creative elite.</p>
+              </div>
+              <div className="flex gap-8 text-sm text-gray-600">
+                <a href="#" className="hover:text-black transition-colors">이용약관</a>
+                <a href="#" className="hover:text-black transition-colors">개인정보처리방침</a>
+                <a href="#" className="hover:text-black transition-colors">고객센터</a>
+                <a href="#" className="hover:text-black transition-colors">인재채용</a>
+                <a href="#" className="hover:text-black transition-colors">비즈니스 문의</a>
+              </div>
+            </div>
+          </motion.div>
+        </footer>
+      </div>
   );
 }
