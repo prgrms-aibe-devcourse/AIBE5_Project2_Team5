@@ -9,7 +9,6 @@ import {
   UserSearch,
 } from "lucide-react";
 import { useMemo, useState, useEffect, useRef } from "react";
-import { gsap } from "gsap";
 import { Link } from "react-router";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -17,6 +16,7 @@ import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import CategoryButtons from "../components/CategoryButtons";
 import ProjectsGrid from "../components/ProjectsGrid";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
+import { matchingCategories } from "../utils/matchingCategories";
 
 const creatorProfiles = [
   {
@@ -258,21 +258,7 @@ const projects = [
 ];
 
 export default function Explore() {
-  const categories = [
-    "그래픽 디자인",
-    "포토그래피",
-    "일러스트레이션",
-    "3D Art",
-    "UI/UX",
-    "건축",
-    "패션",
-    "광고",
-    "공예",
-    "미술",
-    "제품 디자인",
-    "게임 디자인",
-    "사운드",
-  ];
+  const categories = matchingCategories;
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("feed");
@@ -342,21 +328,36 @@ export default function Explore() {
 
   // 프로필 카드 - ProjectsGrid와 완전히 동일한 패턴
   useEffect(() => {
-    if (!profileGridRef.current) return;
+    if (!profileGridRef.current || activeTab !== "profile") return;
 
-    const ctx = gsap.context(() => {
-      gsap.set(profileCardsRef.current.filter(Boolean), { opacity: 0, y: 16 });
-      gsap.to(profileCardsRef.current.filter(Boolean), {
-        opacity: 1,
-        y: 0,
-        duration: 0.5,
-        stagger: 0.06,
-        ease: "power3.out",
-      });
-    }, profileGridRef);
+    const cards = profileCardsRef.current.filter(Boolean) as HTMLDivElement[];
+    const animations = cards.map((card, index) => {
+      card.style.opacity = "0";
+      card.style.transform = "translateY(16px)";
 
-    return () => ctx.revert();
-  }, [filteredProfiles]);
+      const animation = card.animate(
+        [
+          { opacity: 0, transform: "translateY(16px)" },
+          { opacity: 1, transform: "translateY(0)" },
+        ],
+        {
+          duration: 500,
+          delay: index * 60,
+          easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+          fill: "forwards",
+        }
+      );
+
+      animation.onfinish = () => {
+        card.style.opacity = "1";
+        card.style.transform = "translateY(0)";
+      };
+
+      return animation;
+    });
+
+    return () => animations.forEach((animation) => animation.cancel());
+  }, [activeTab, filteredProfiles]);
 
 
   return (

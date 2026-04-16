@@ -1,9 +1,9 @@
-import { ArrowRight, Building2, CheckCircle, Lock, Mail, Palette, User } from "lucide-react";
+import { ArrowRight, Building2, CheckCircle, Lock, Mail, Palette, User, X } from "lucide-react";
 import { Link, Navigate, useNavigate } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
-import { isAuthenticated, setAuthenticated } from "../utils/auth";
+import { isAuthenticated, setAuthenticated, setCurrentUser, type UserRole } from "../utils/auth";
 
 const showcaseItems = [
   {
@@ -52,6 +52,7 @@ function Logo({ className = "" }: { className?: string }) {
 export default function Signup() {
   const navigate = useNavigate();
   const [activeShowcaseIndex, setActiveShowcaseIndex] = useState(0);
+  const [pendingSocialProvider, setPendingSocialProvider] = useState<"Google" | "카카오" | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -83,6 +84,12 @@ export default function Signup() {
       return;
     }
 
+    const selectedRole = formData.role as UserRole;
+    setCurrentUser({
+      name: formData.name.trim(),
+      email: formData.email.trim(),
+      role: selectedRole,
+    });
     setAuthenticated(true);
     navigate("/feed", { replace: true });
   };
@@ -94,7 +101,16 @@ export default function Signup() {
     });
   };
 
-  const completeSocialSignup = () => {
+  const startSocialSignup = (provider: "Google" | "카카오") => {
+    setPendingSocialProvider(provider);
+  };
+
+  const completeSocialSignup = (role: UserRole) => {
+    setCurrentUser({
+      name: role === "designer" ? "소셜 디자이너" : "소셜 클라이언트",
+      email: `${pendingSocialProvider === "Google" ? "google" : "kakao"}@pickxel.local`,
+      role,
+    });
     setAuthenticated(true);
     navigate("/feed", { replace: true });
   };
@@ -453,7 +469,7 @@ export default function Signup() {
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <button
                 type="button"
-                onClick={completeSocialSignup}
+                onClick={() => startSocialSignup("Google")}
                 className="flex h-12 items-center justify-center gap-3 rounded-lg border border-gray-200 bg-white px-4 transition-colors hover:bg-gray-50"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24">
@@ -467,7 +483,7 @@ export default function Signup() {
 
               <button
                 type="button"
-                onClick={completeSocialSignup}
+                onClick={() => startSocialSignup("카카오")}
                 className="flex h-12 items-center justify-center gap-3 rounded-lg bg-[#FEE500] px-4 transition-colors hover:bg-[#FDD835]"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24">
@@ -479,6 +495,60 @@ export default function Signup() {
           </motion.div>
         </motion.section>
       </main>
+      {pendingSocialProvider && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="mb-1 text-sm font-semibold text-[#00A88C]">
+                  {pendingSocialProvider} 인증 완료
+                </p>
+                <h2 className="text-2xl font-bold">역할을 선택해주세요</h2>
+                <p className="mt-2 text-sm text-gray-600">
+                  이 선택에 따라 프로필에 디자이너 또는 클라이언트 배지가 표시됩니다.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPendingSocialProvider(null)}
+                className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
+                aria-label="역할 선택 닫기"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <div className="grid gap-3">
+              <button
+                type="button"
+                onClick={() => completeSocialSignup("designer")}
+                className="rounded-lg border border-[#BDEFD8] bg-[#F5FFFB] p-4 text-left transition-all hover:border-[#00C9A7] hover:shadow-md"
+              >
+                <div className="mb-3 inline-flex rounded-lg bg-[#00C9A7] p-2 text-[#0F0F0F]">
+                  <Palette className="size-5" />
+                </div>
+                <div className="font-semibold">디자이너</div>
+                <p className="mt-1 text-sm text-gray-600">
+                  작업물을 공유하고 프로젝트를 만납니다.
+                </p>
+              </button>
+              <button
+                type="button"
+                onClick={() => completeSocialSignup("client")}
+                className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] p-4 text-left transition-all hover:border-[#FF5C3A] hover:shadow-md"
+              >
+                <div className="mb-3 inline-flex rounded-lg bg-[#FF5C3A] p-2 text-white">
+                  <Building2 className="size-5" />
+                </div>
+                <div className="font-semibold">클라이언트</div>
+                <p className="mt-1 text-sm text-gray-600">
+                  감각에 맞는 디자이너를 찾고 의뢰합니다.
+                </p>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
