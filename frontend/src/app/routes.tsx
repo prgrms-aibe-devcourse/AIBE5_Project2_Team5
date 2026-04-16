@@ -9,6 +9,7 @@ import Messages from "./pages/Messages";
 import Projects from "./pages/Projects";
 import CreateProject from "./pages/CreateProject";
 import ProjectDetail from "./pages/ProjectDetail";
+import ProposalDetail from "./pages/ProposalDetail";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import ReviewWrite from "./pages/ReviewWrite";
@@ -39,6 +40,10 @@ export const router = createBrowserRouter([
     Component: Collections,
   },
   {
+    path: "/collections/:collectionId",
+    Component: Collections,
+  },
+  {
     path: "/profile/:username",
     Component: Profile,
   },
@@ -61,6 +66,10 @@ export const router = createBrowserRouter([
   {
     path: "/projects/:id",
     Component: ProjectDetail,
+  },
+  {
+    path: "/proposals/:id",
+    Component: ProposalDetail,
   },
   {
     path: "/review/write",

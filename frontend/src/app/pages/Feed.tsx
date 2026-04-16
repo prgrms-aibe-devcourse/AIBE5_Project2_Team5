@@ -1,8 +1,9 @@
 import Navigation from "../components/Navigation";
 import { Heart, MessageCircle, Bookmark, Share2, X, Send, MoreVertical } from "lucide-react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
+import { getSavedFeedIds, setSavedFeedIds } from "../utils/collections";
 
 const feedItems = [
   {
@@ -234,7 +235,11 @@ export default function Feed() {
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [likedItems, setLikedItems] = useState<Set<number>>(new Set());
-  const [bookmarkedItems, setBookmarkedItems] = useState<Set<number>>(new Set());
+  const [bookmarkedItems, setBookmarkedItems] = useState<Set<number>>(() => new Set(getSavedFeedIds()));
+
+  useEffect(() => {
+    setSavedFeedIds(Array.from(bookmarkedItems));
+  }, [bookmarkedItems]);
 
   const toggleLike = (id: number, e?: React.MouseEvent) => {
     e?.stopPropagation();

@@ -1,179 +1,586 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router";
+import {
+  ArrowLeft,
+  ChevronDown,
+  FolderPlus,
+  Layers3,
+  MoreHorizontal,
+  Plus,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
+import { motion } from "motion/react";
 import Navigation from "../components/Navigation";
-import { MoreHorizontal, Plus } from "lucide-react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
-import {motion} from "motion/react";
+import {
+  type CollectionFilter,
+  type CollectionRecord,
+  getFeedById,
+  getSavedFeedIds,
+  getStoredCollections,
+  setStoredCollections,
+} from "../utils/collections";
 
-const collections = [
-  {
-    id: 1,
-    title: "2024 UI 트렌드",
-    items: "아이템 24개",
-    likes: "2일 전 업데이트",
-    images: [
-      "https://images.unsplash.com/photo-1718220216044-006f43e3a9b1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBvZmZpY2UlMjB3b3Jrc3BhY2V8ZW58MXx8fHwxNzc1NTU1MzcxfDA&ixlib=rb-4.1.0&q=80&w=1080",
-      "https://images.unsplash.com/photo-1772272935464-2e90d8218987?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx1aSUyMHV4JTIwZGVzaWduJTIwaW50ZXJmYWNlfGVufDF8fHx8MTc3NTU0MTE1MXww&ixlib=rb-4.1.0&q=80&w=1080",
-      "https://images.unsplash.com/photo-1623932078839-44eb01fbee63?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcmVhdGl2ZSUyMGRlc2lnbiUyMHdvcmt8ZW58MXx8fHwxNzc1NjAzODU5fDA&ixlib=rb-4.1.0&q=80&w=1080",
-    ],
-    badge: "추천 컬렉션",
-  },
-  {
-    id: 2,
-    title: "브랜딩 레퍼런스",
-    items: "아이템 15개",
-    likes: "1일 전 업데이트",
-    images: [
-      "https://images.unsplash.com/photo-1633533451997-8b6079082e3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxicmFuZCUyMGlkZW50aXR5JTIwZGVzaWdufGVufDF8fHx8MTc3NTU2NDQ1MXww&ixlib=rb-4.1.0&q=80&w=1080",
-      "https://images.unsplash.com/photo-1718220216044-006f43e3a9b1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBvZmZpY2UlMjB3b3Jrc3BhY2V8ZW58MXx8fHwxNzc1NTU1MzcxfDA&ixlib=rb-4.1.0&q=80&w=1080",
-    ],
-    additionalCount: 12,
-  },
-  {
-    id: 3,
-    title: "협업 프로젝트 A",
-    items: "아이템 8개",
-    likes: "방금 전 업데이트",
-    images: [
-      "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkaWdpdGFsJTIwYXJ0JTIwaWxsdXN0cmF0aW9ufGVufDF8fHx8MTc3NTU1ODM1OHww&ixlib=rb-4.1.0&q=80&w=1080",
-      "https://images.unsplash.com/photo-1772272935464-2e90d8218987?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx1aSUyMHV4JTIwZGVzaWduJTIwaW50ZXJmYWNlfGVufDF8fHx8MTc3NTU0MTE1MXww&ixlib=rb-4.1.0&q=80&w=1080",
-      "https://images.unsplash.com/photo-1595411425732-e69c1abe2763?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGdlb21ldHJpYyUyMHNoYXBlc3xlbnwxfHx8fDE3NzU2MzMzODZ8MA&ixlib=rb-4.1.0&q=80&w=1080",
-    ],
-  },
+const filterOptions: { id: CollectionFilter; label: string; description: string }[] = [
+  { id: "all", label: "전체 보기", description: "모든 컬렉션을 표시합니다." },
+  { id: "recent", label: "최근 업데이트", description: "최근 수정된 컬렉션부터 봅니다." },
+  { id: "most-items", label: "피드 많은 순", description: "저장된 피드가 많은 컬렉션을 먼저 봅니다." },
+  { id: "empty", label: "비어있는 컬렉션", description: "피드가 없는 컬렉션만 표시합니다." },
 ];
 
+function formatUpdatedAt(dateString: string) {
+  const diff = Date.now() - new Date(dateString).getTime();
+  const day = 1000 * 60 * 60 * 24;
+  const hour = 1000 * 60 * 60;
+
+  if (diff < hour) {
+    return "방금 업데이트";
+  }
+
+  if (diff < day) {
+    return `${Math.max(1, Math.floor(diff / hour))}시간 전 업데이트`;
+  }
+
+  return `${Math.max(1, Math.floor(diff / day))}일 전 업데이트`;
+}
+
+function getFilteredCollections(collections: CollectionRecord[], filter: CollectionFilter) {
+  if (filter === "recent") {
+    return [...collections].sort(
+      (left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
+    );
+  }
+
+  if (filter === "most-items") {
+    return [...collections].sort((left, right) => right.feedIds.length - left.feedIds.length);
+  }
+
+  if (filter === "empty") {
+    return collections.filter((collection) => collection.feedIds.length === 0);
+  }
+
+  return collections;
+}
+
+function getCollectionPreviewFeeds(collection: CollectionRecord) {
+  const feeds = collection.feedIds.map((feedId) => getFeedById(feedId)).filter(Boolean);
+
+  if (feeds.length === 0) {
+    return [];
+  }
+
+  if (feeds.length >= 3) {
+    return feeds.slice(0, 3);
+  }
+
+  const previewFeeds = [...feeds];
+
+  while (previewFeeds.length < 3) {
+    previewFeeds.push(feeds[previewFeeds.length % feeds.length]);
+  }
+
+  return previewFeeds;
+}
+
 export default function Collections() {
-  return (
+  const navigate = useNavigate();
+  const { collectionId } = useParams();
+
+  const [collections, setCollections] = useState<CollectionRecord[]>(() => getStoredCollections());
+  const [activeFilter, setActiveFilter] = useState<CollectionFilter>("all");
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [newCollectionTitle, setNewCollectionTitle] = useState("");
+  const [newCollectionDescription, setNewCollectionDescription] = useState("");
+
+  useEffect(() => {
+    setStoredCollections(collections);
+  }, [collections]);
+
+  const selectedCollection = useMemo(
+    () => collections.find((collection) => collection.id === collectionId) ?? null,
+    [collectionId, collections],
+  );
+  const savedFeedIds = useMemo(() => getSavedFeedIds(), [collections]);
+  const filteredCollections = useMemo(
+    () => getFilteredCollections(collections, activeFilter),
+    [activeFilter, collections],
+  );
+  const selectedFilter = filterOptions.find((option) => option.id === activeFilter) ?? filterOptions[0];
+  const selectedFeeds = useMemo(
+    () => (selectedCollection ? selectedCollection.feedIds.map((feedId) => getFeedById(feedId)).filter(Boolean) : []),
+    [selectedCollection],
+  );
+
+  const handleCreateCollection = () => {
+    const title = newCollectionTitle.trim();
+
+    if (!title) {
+      return;
+    }
+
+    const timestamp = new Date().toISOString();
+    const nextCollection: CollectionRecord = {
+      id: `collection-${Date.now()}`,
+      title,
+      description: newCollectionDescription.trim() || "저장한 피드를 모아두는 개인 컬렉션",
+      feedIds: savedFeedIds,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    setCollections((current) => [nextCollection, ...current]);
+    setIsCreateOpen(false);
+    setNewCollectionTitle("");
+    setNewCollectionDescription("");
+  };
+
+  const handleDeleteCollection = (collection: CollectionRecord) => {
+    const shouldDelete = window.confirm(`'${collection.title}' 컬렉션을 삭제하시겠습니까?`);
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    setCollections((current) => current.filter((item) => item.id !== collection.id));
+    setOpenMenuId(null);
+
+    if (collectionId === collection.id) {
+      navigate("/collections");
+    }
+  };
+
+  const handleRemoveFeedFromCollection = (feedId: number) => {
+    if (!selectedCollection) {
+      return;
+    }
+
+    const shouldRemove = window.confirm("이 피드를 현재 컬렉션에서 삭제하시겠습니까?");
+
+    if (!shouldRemove) {
+      return;
+    }
+
+    setCollections((current) =>
+      current.map((collection) =>
+        collection.id === selectedCollection.id
+          ? {
+              ...collection,
+              feedIds: collection.feedIds.filter((id) => id !== feedId),
+              updatedAt: new Date().toISOString(),
+            }
+          : collection,
+      ),
+    );
+  };
+
+  if (collectionId && !selectedCollection) {
+    return (
       <div className="min-h-screen bg-[#F7F7F5]">
         <Navigation />
-
-        <div className="max-w-[1400px] mx-auto px-6 py-8">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-4xl font-bold mb-2">나의 컬렉션</h1>
-              <p className="text-[#5F5E5A]">
-                영감을 주는 작업물과 프로젝트 아이디어를 저장하고 정리해보세요.
-                <br />
-                당신만의 레퍼런스 보드를 만들어보세요.
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <button className="px-4 py-2 border border-[#EAEAE8] rounded-lg text-sm hover:bg-[#F1EFE8] flex items-center gap-2">
-                <span>필터</span>
-              </button>
-              <button className="px-6 py-2 bg-black text-white rounded-lg text-sm hover:bg-gray-800 flex items-center gap-2">
-                + 새 컬렉션
-              </button>
-            </div>
-          </div>
-
-          {/* Collections Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-            {collections.map((collection) => (
-                <div
-                    key={collection.id}
-                    className="bg-[#F7F7F5] rounded-2xl overflow-hidden shadow-sm hover:shadow-lg transition-shadow cursor-pointer"
-                >
-                  {/* Collection Preview */}
-                  <div className="h-64 relative bg-gray-900">
-                    {collection.badge && (
-                        <div className="absolute top-3 left-3 bg-black/80 text-white px-3 py-1 rounded text-xs">
-                          {collection.badge}
-                        </div>
-                    )}
-                    <div className="grid grid-cols-2 gap-1 h-full p-1">
-                      {collection.images.slice(0, 3).map((image, idx) => (
-                          <div
-                              key={idx}
-                              className={`relative ${
-                                  idx === 0 ? "col-span-1 row-span-2" : "col-span-1"
-                              }`}
-                          >
-                            <ImageWithFallback
-                                src={image}
-                                alt=""
-                                className="w-full h-full object-cover rounded"
-                            />
-                          </div>
-                      ))}
-                      {collection.additionalCount && (
-                          <div className="bg-gray-800/90 rounded flex items-center justify-center text-white">
-                      <span className="text-xl font-semibold">
-                        +{collection.additionalCount}
-                      </span>
-                          </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Collection Info */}
-                  <div className="p-4 flex items-start justify-between">
-                    <div>
-                      <h3 className="font-semibold text-lg mb-1">
-                        {collection.title}
-                      </h3>
-                      <p className="text-sm text-[#5F5E5A]">
-                        {collection.items} • {collection.likes}
-                      </p>
-                    </div>
-                    <button className="p-2 hover:bg-[#F1EFE8] rounded-lg">
-                      <MoreHorizontal className="size-5 text-[#5F5E5A]" />
-                    </button>
-                  </div>
-                </div>
-            ))}
-
-            {/* Add New Collection Card */}
-            <div className="bg-[#F1EFE8] rounded-2xl overflow-hidden border-2 border-dashed border-[#EAEAE8] flex flex-col items-center justify-center h-[352px] cursor-pointer hover:border-gray-400 hover:bg-[#F7F7F5] transition-colors">
-              <div className="bg-[#F7F7F5] rounded-full p-4 mb-4">
-                <Plus className="size-8 text-[#5F5E5A]" />
-              </div>
-              <p className="text-[#5F5E5A] font-medium">새 컬렉션 추가</p>
-            </div>
-          </div>
-
-        {/* Inspiration Section */}
-        <section className="bg-gradient-to-r from-gray-100 to-[#D4F4F4] rounded-2xl p-12 mt-16 flex items-center justify-between">
-          <div className="max-w-xl">
-            <h2 className="text-3xl font-bold mb-4">영감을 현실로 만드는 방법</h2>
-            <p className="text-gray-700 mb-6 leading-relaxed">
-              수천 감각선을 바탕으로 새로운 프로젝트를 시작하고. pickxel의
-              AI 어시스턴트가 당신의 아이디어를 컬렉션으로 포트폴리오 구성할 수
-              있습니다. 지금 시작 해보실래요?
-            </p>
-            <button className="bg-[#4DD4AC] text-black px-6 py-3 rounded-lg font-medium hover:bg-[#3BC99A] flex items-center gap-2">
-              AI 분석 시작하기
+        <div className="mx-auto max-w-[1400px] px-6 py-16">
+          <div className="rounded-3xl border border-dashed border-[#D8D7D0] bg-white px-10 py-16 text-center">
+            <h1 className="text-3xl font-bold text-[#171717]">컬렉션을 찾을 수 없습니다.</h1>
+            <p className="mt-3 text-[#5F5E5A]">삭제되었거나 잘못된 경로입니다.</p>
+            <button
+              type="button"
+              onClick={() => navigate("/collections")}
+              className="mt-6 rounded-full bg-black px-6 py-3 text-sm font-medium text-white"
+            >
+              컬렉션 목록으로 돌아가기
             </button>
           </div>
-          <div className="w-80 h-64 bg-gray-200 rounded-xl"></div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F7F7F5]">
+      <Navigation />
+
+      <div className="mx-auto max-w-[1400px] px-6 py-8">
+        {selectedCollection ? (
+          <>
+            <div className="mb-8 flex items-start justify-between gap-6">
+              <div>
+                <button
+                  type="button"
+                  onClick={() => navigate("/collections")}
+                  className="mb-4 inline-flex items-center gap-2 text-sm text-[#5F5E5A] transition-colors hover:text-black"
+                >
+                  <ArrowLeft className="size-4" />
+                  컬렉션 목록으로
+                </button>
+                <h1 className="text-4xl font-bold text-[#171717]">{selectedCollection.title}</h1>
+                <p className="mt-3 max-w-2xl text-[#5F5E5A]">{selectedCollection.description}</p>
+                <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm text-[#5F5E5A]">
+                  <Layers3 className="size-4 text-[#00A88C]" />
+                  저장된 피드 {selectedFeeds.length}개
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-full bg-black px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-[#222]"
+                >
+                  <FolderPlus className="size-4" />
+                  새 컬렉션
+                </button>
+
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenMenuId((current) => (current === selectedCollection.id ? null : selectedCollection.id))
+                    }
+                    className="rounded-full border border-[#DDDAD2] bg-white p-3 text-[#5F5E5A] transition-colors hover:bg-[#F1EFE8]"
+                  >
+                    <MoreHorizontal className="size-5" />
+                  </button>
+                  {openMenuId === selectedCollection.id && (
+                    <div className="absolute right-0 top-14 z-20 min-w-44 rounded-2xl border border-[#E6E2D9] bg-white p-2 shadow-xl">
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCollection(selectedCollection)}
+                        className="flex w-full items-center gap-2 rounded-xl px-4 py-3 text-left text-sm font-medium text-[#C43D2F] transition-colors hover:bg-[#FFF1EE]"
+                      >
+                        <Trash2 className="size-4" />
+                        컬렉션 삭제
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {selectedFeeds.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-[#D8D7D0] bg-white px-10 py-16 text-center">
+                <Sparkles className="mx-auto size-10 text-[#00A88C]" />
+                <h2 className="mt-4 text-2xl font-bold">저장된 피드가 없습니다.</h2>
+                <p className="mt-2 text-[#5F5E5A]">피드 탭에서 북마크한 작업을 이 컬렉션에서 grid로 볼 수 있습니다.</p>
+                <Link
+                  to="/feed"
+                  className="mt-6 inline-flex items-center rounded-full bg-[#4DD4AC] px-6 py-3 text-sm font-medium text-black"
+                >
+                  피드 보러가기
+                </Link>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {selectedFeeds.map((feed) => (
+                  <article
+                    key={feed.id}
+                    className="overflow-hidden rounded-3xl border border-[#E8E6DE] bg-white shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg"
+                  >
+                    <div className="relative aspect-[4/3] overflow-hidden">
+                      <ImageWithFallback
+                        src={feed.image}
+                        alt={feed.title}
+                        className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveFeedFromCollection(feed.id)}
+                        className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-full bg-white/92 px-3 py-2 text-xs font-medium text-[#C43D2F] shadow-sm transition-colors hover:bg-[#FFF1EE]"
+                      >
+                        <Trash2 className="size-3.5" />
+                        피드 삭제
+                      </button>
+                    </div>
+
+                    <div className="p-5">
+                      <div className="mb-3 flex flex-wrap gap-2">
+                        {feed.tags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="rounded-full bg-[#A8F0E4]/20 px-3 py-1 text-xs font-medium text-[#008A72]"
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                      <h2 className="text-xl font-bold text-[#171717]">{feed.title}</h2>
+                      <p className="mt-2 line-clamp-2 text-sm text-[#5F5E5A]">{feed.description}</p>
+                      <div className="mt-4 flex items-center gap-3">
+                        <ImageWithFallback
+                          src={feed.author.avatar}
+                          alt={feed.author.name}
+                          className="size-10 rounded-full object-cover"
+                        />
+                        <div>
+                          <p className="text-sm font-semibold text-[#171717]">{feed.author.name}</p>
+                          <p className="text-xs text-[#5F5E5A]">{feed.author.role}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="mb-8 flex items-center justify-between gap-6">
+              <div>
+                <h1 className="text-4xl font-bold text-[#171717]">나의 컬렉션</h1>
+                <p className="mt-2 text-[#5F5E5A]">
+                  저장한 피드를 컬렉션으로 묶고, 필요할 때 grid로 다시 꺼내 볼 수 있습니다.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsFilterOpen((current) => !current)}
+                    className="inline-flex items-center gap-2 rounded-full border border-[#DDDAD2] bg-white px-4 py-2 text-sm font-medium text-[#2A2A2A] transition-colors hover:bg-[#F1EFE8]"
+                  >
+                    {selectedFilter.label}
+                    <ChevronDown className="size-4" />
+                  </button>
+                  {isFilterOpen && (
+                    <div className="absolute right-0 top-12 z-20 w-64 rounded-2xl border border-[#E6E2D9] bg-white p-2 shadow-xl">
+                      {filterOptions.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveFilter(option.id);
+                            setIsFilterOpen(false);
+                          }}
+                          className={`w-full rounded-xl px-4 py-3 text-left transition-colors ${
+                            activeFilter === option.id ? "bg-[#F1EFE8]" : "hover:bg-[#F7F7F5]"
+                          }`}
+                        >
+                          <div className="text-sm font-medium text-[#171717]">{option.label}</div>
+                          <div className="mt-1 text-xs text-[#5F5E5A]">{option.description}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsCreateOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-full bg-black px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-[#222]"
+                >
+                  <Plus className="size-4" />
+                  새 컬렉션
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-10 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+              {filteredCollections.map((collection) => {
+                const previewFeeds = getCollectionPreviewFeeds(collection);
+                const additionalCount = Math.max(0, collection.feedIds.length - 3);
+
+                return (
+                  <div
+                    key={collection.id}
+                    className="flex flex-col overflow-hidden rounded-3xl bg-white text-left shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/collections/${collection.id}`)}
+                      className="block w-full shrink-0 text-left"
+                    >
+                      <div className="relative h-72 bg-[#F1EFE8] p-2">
+                        {collection.featured && (
+                          <div className="absolute left-4 top-4 z-10 rounded-full bg-black/80 px-3 py-1 text-xs font-medium text-white">
+                            추천 컬렉션
+                          </div>
+                        )}
+
+                        <div className="grid h-full grid-cols-2 gap-2">
+                          {previewFeeds.map((feed, index) => (
+                            <div
+                              key={`${collection.id}-${feed.id}-${index}`}
+                              className={index === 0 ? "row-span-2" : ""}
+                            >
+                              <ImageWithFallback
+                                src={feed.image}
+                                alt={feed.title}
+                                className="h-full w-full rounded-2xl object-cover"
+                              />
+                            </div>
+                          ))}
+
+                          {previewFeeds.length === 0 && (
+                            <div className="col-span-2 flex h-full items-center justify-center rounded-2xl border border-dashed border-[#D7D2C7] bg-[#F8F6F0] text-sm text-[#7A766C]">
+                              아직 저장된 피드가 없습니다
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+
+                    <div className="flex min-h-[128px] items-start justify-between border-t border-[#F1EFE8] bg-white p-5">
+                      <div className="min-w-0 pr-4">
+                        <h2 className="text-xl font-bold text-[#171717]">{collection.title}</h2>
+                        <p className="mt-2 text-sm text-[#5F5E5A]">{collection.description}</p>
+                        <p className="mt-3 text-sm text-[#7B776D]">
+                          피드 {collection.feedIds.length}개 · {formatUpdatedAt(collection.updatedAt)}
+                        </p>
+                        {additionalCount > 0 && (
+                          <p className="mt-1 text-xs font-medium text-[#00A88C]">
+                            미리보기 외 +{additionalCount}개
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="relative shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setOpenMenuId((current) => (current === collection.id ? null : collection.id))}
+                          className="rounded-full p-2 transition-colors hover:bg-[#F1EFE8]"
+                        >
+                          <MoreHorizontal className="size-5 text-[#5F5E5A]" />
+                        </button>
+                        {openMenuId === collection.id && (
+                          <div className="absolute right-0 top-11 z-20 min-w-44 rounded-2xl border border-[#E6E2D9] bg-white p-2 shadow-xl">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCollection(collection)}
+                              className="flex w-full items-center gap-2 rounded-xl px-4 py-3 text-left text-sm font-medium text-[#C43D2F] transition-colors hover:bg-[#FFF1EE]"
+                            >
+                              <Trash2 className="size-4" />
+                              컬렉션 삭제
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={() => setIsCreateOpen(true)}
+                className="flex h-[388px] flex-col items-center justify-center rounded-3xl border-2 border-dashed border-[#D9D5CA] bg-[#F1EFE8] transition-colors hover:bg-white"
+              >
+                <div className="rounded-full bg-white p-4 shadow-sm">
+                  <Plus className="size-8 text-[#5F5E5A]" />
+                </div>
+                <p className="mt-4 text-base font-medium text-[#5F5E5A]">새 컬렉션 만들기</p>
+                <p className="mt-1 text-sm text-[#7B776D]">현재 저장된 피드를 담아 새 컬렉션을 생성합니다.</p>
+              </button>
+            </div>
+          </>
+        )}
+
+        <section className="mt-16 flex items-center justify-between rounded-3xl bg-gradient-to-r from-[#EEF0EA] to-[#D4F4F4] p-12">
+          <div className="max-w-xl">
+            <h2 className="text-3xl font-bold text-[#171717]">컬렉션을 더 잘 쓰는 방법</h2>
+            <p className="mt-4 leading-relaxed text-[#4E4B45]">
+              피드에서 저장한 작업을 주제별로 분류해 두면 레퍼런스를 빠르게 다시 찾을 수 있습니다.
+              새 컬렉션은 현재 저장한 피드를 기반으로 생성되며, 클릭하면 grid 형태로 정리된 뷰를 바로 확인할 수 있습니다.
+            </p>
+          </div>
+          <div className="hidden h-64 w-80 rounded-3xl bg-white/60 xl:block" />
         </section>
       </div>
 
-
-        {/* Footer */}
-        <footer className="bg-white border-t border-gray-200 py-8">
-          <motion.div
-              initial={{ opacity: 0 }}
-              whileInView={{ opacity: 1 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="max-w-[1400px] mx-auto px-6"
+      {isCreateOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-6"
+          onClick={() => setIsCreateOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-bold text-xl mb-2">
-                  pick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A]">.</span>
-                </div>
-                <p className="text-sm text-gray-600">© 2024 pickxel. Crafted for the creative elite.</p>
-              </div>
-              <div className="flex gap-8 text-sm text-gray-600">
-                <a href="#" className="hover:text-black transition-colors">이용약관</a>
-                <a href="#" className="hover:text-black transition-colors">개인정보처리방침</a>
-                <a href="#" className="hover:text-black transition-colors">고객센터</a>
-                <a href="#" className="hover:text-black transition-colors">인재채용</a>
-                <a href="#" className="hover:text-black transition-colors">비즈니스 문의</a>
-              </div>
+            <h2 className="text-2xl font-bold text-[#171717]">새 컬렉션 만들기</h2>
+            <p className="mt-2 text-sm text-[#5F5E5A]">
+              현재 저장된 피드 {savedFeedIds.length}개가 새 컬렉션에 담깁니다.
+            </p>
+
+            <div className="mt-6 space-y-4">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-[#171717]">컬렉션 이름</span>
+                <input
+                  value={newCollectionTitle}
+                  onChange={(event) => setNewCollectionTitle(event.target.value)}
+                  placeholder="예: 브랜딩 레퍼런스"
+                  className="w-full rounded-2xl border border-[#DDDAD2] px-4 py-3 outline-none transition-colors focus:border-[#00A88C]"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-[#171717]">설명</span>
+                <textarea
+                  value={newCollectionDescription}
+                  onChange={(event) => setNewCollectionDescription(event.target.value)}
+                  placeholder="이 컬렉션을 어떤 기준으로 모으는지 적어보세요."
+                  rows={4}
+                  className="w-full rounded-2xl border border-[#DDDAD2] px-4 py-3 outline-none transition-colors focus:border-[#00A88C]"
+                />
+              </label>
             </div>
-          </motion.div>
-        </footer>
-      </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsCreateOpen(false)}
+                className="rounded-full border border-[#DDDAD2] px-5 py-3 text-sm font-medium text-[#2A2A2A]"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateCollection}
+                disabled={newCollectionTitle.trim().length === 0}
+                className="rounded-full bg-black px-5 py-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-[#BDBAB2]"
+              >
+                컬렉션 생성
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <footer className="border-t border-gray-200 bg-white py-8">
+        <motion.div
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+          className="mx-auto max-w-[1400px] px-6"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="mb-2 text-xl font-bold">
+                pick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A]">.</span>
+              </div>
+              <p className="text-sm text-gray-600">© 2024 pickxel. Crafted for the creative elite.</p>
+            </div>
+            <div className="flex gap-8 text-sm text-gray-600">
+              <a href="#" className="transition-colors hover:text-black">
+                이용약관
+              </a>
+              <a href="#" className="transition-colors hover:text-black">
+                개인정보처리방침
+              </a>
+              <a href="#" className="transition-colors hover:text-black">
+                고객센터
+              </a>
+              <a href="#" className="transition-colors hover:text-black">
+                인재채용
+              </a>
+              <a href="#" className="transition-colors hover:text-black">
+                비즈니스 문의
+              </a>
+            </div>
+          </div>
+        </motion.div>
+      </footer>
+    </div>
   );
 }
