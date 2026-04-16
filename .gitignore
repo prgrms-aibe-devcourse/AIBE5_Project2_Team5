@@ -1,56 +1,36 @@
-HELP.md
-.gradle
-build/
-!gradle/wrapper/gradle-wrapper.jar
-!**/src/main/**/build/
-!**/src/test/**/build/
-!**/frontend/node_modules/
-node_modules/
-
-### STS ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-bin/
-!**/src/main/**/bin/
-!**/src/test/**/bin/
-
-### IntelliJ IDEA ###
-.idea
-*.iws
-*.iml
-*.ipr
-out/
-!**/src/main/**/out/
-!**/src/test/**/out/
-
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-
-### VS Code ###
-.vscode/
-
-### Node.js & Frontend ###
-node_modules/
-.pnpm-store/
-dist/
-out/
-.env
-*.local
+# --- Common (OS & IDE) ---
 .DS_Store
 Thumbs.db
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+out/
+bin/
 
-### Vite cache ###
-.vite/
+# --- Backend (Spring Boot / Gradle) ---
+backend/.gradle/
+backend/build/
+backend/bin/
+backend/out/
+backend/caches/
+backend/daemon/
+backend/native/
+backend/wrapper/
+backend/uploads/
+!backend/gradle/wrapper/gradle-wrapper.jar
 
-### Root-level accidental npm files ###
-/package.json
-/package-lock.json
+# --- Frontend (Node.js / React) ---
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.vite/
+frontend/.pnpm-store/
+.env*.local
+
+# --- Root node_modules (if any) ---
+node_modules/
+
+# --- Project Specific ---
+HELP.md
