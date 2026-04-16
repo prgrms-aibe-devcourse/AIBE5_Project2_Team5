@@ -1,12 +1,17 @@
 import { Link, useLocation } from "react-router";
 import { Search, Bell, User, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import {
+  hasUnreadNotifications,
+  subscribeNotificationState,
+} from "../utils/notificationState";
 
 export default function Navigation() {
   const location = useLocation();
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [hasUnread, setHasUnread] = useState(hasUnreadNotifications);
 
   const navItems = [
     { path: "/feed", label: "피드" },
@@ -28,6 +33,12 @@ export default function Navigation() {
     if (path === "/") return location.pathname === "/";
     return location.pathname.startsWith(path);
   };
+
+  useEffect(() => {
+    const refreshUnreadState = () => setHasUnread(hasUnreadNotifications());
+    refreshUnreadState();
+    return subscribeNotificationState(refreshUnreadState);
+  }, []);
 
   return (
       <>
@@ -72,7 +83,9 @@ export default function Navigation() {
               </button>
               <Link to="/notifications" className="p-2 hover:bg-[#A8F0E4]/20 rounded-full transition-colors text-[#444441] hover:text-[#00A88C] relative">
                 <Bell className="size-5" />
-                <span className="absolute top-1 right-1 w-2 h-2 bg-[#FF5C3A] rounded-full"></span>
+                {hasUnread && (
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-[#FF5C3A] rounded-full"></span>
+                )}
               </Link>
               <Link to="/profile/jieun" className="flex items-center gap-2 bg-gradient-to-r from-[#00C9A7]/90 to-[#00A88C]/90 backdrop-blur-md text-white px-4 py-2 rounded-full text-sm font-medium hover:shadow-lg hover:scale-105 transition-all border border-white/30">
                 <User className="size-4" />
