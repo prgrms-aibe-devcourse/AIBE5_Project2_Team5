@@ -20,8 +20,7 @@
 
 ## 📌 프로젝트 기획서
 
-- [**Figma
-  **](https://www.figma.com/make/IC81zu8VKW7IRdIqzY8RnE/2%EC%B0%A8-%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8-2?p=f&t=Auqo3BTwjEZceTea-0&preview-route=%2Fexplore)
+- [**Figma**](https://www.figma.com/make/IC81zu8VKW7IRdIqzY8RnE/2%EC%B0%A8-%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8-2?p=f&t=Auqo3BTwjEZceTea-0&preview-route=%2Fexplore)
 - [**Notion**](https://www.notion.so/Team5-4-WTL-3-33e3550b7b5580af99a1f87a2a0e696e?source=copy_link)
 - [**기능명세서**](https://docs.google.com/document/d/1NF72_1mwEQ3hJ8Z-Mnz5tXwjF_DNuQDbSoFgbxPNnLY/edit?tab=t.0)
 - [**ERD**](https://www.erdcloud.com/d/DwiHC3dKiuFQnvyha)
@@ -53,7 +52,6 @@
 - Gradle
 
 #### ♦️️ Frontend
-
 - TypeScript
 - React
 - CSS
@@ -61,7 +59,6 @@
 - Figma
 
 #### 🧩 기타
-
 - Lombok (코드 간결화)
 - DevTools (개발 편의성 향상)
 - Validation (데이터 검증)
@@ -184,9 +181,9 @@ Pull Request 기반 협업 방식을 사용합니다.
 
 ##### **feature 브랜치**
     - 작업 브랜치에서 작업한 내용을 통합하는 브랜치이다.
-    - 작업 브랜치에서 **직접 main으로의 push**는 불가하다.
-    - 반드시 **Pull Request(PR)** 를 통해서만 병합할 수 있다.
-    - PR은 **팀장의 승인(Approve) 후에만 merge 가능**하다.
+    - 작업 브랜치에서 직접 main으로의 push는 불가하다.
+    - 반드시 Pull Request(PR)를 통해서만 병합할 수 있다.
+    - PR은 팀장의 승인으로만 merge 가능하다.
 
 ##### **기능별 브랜치**
     - 각 팀원은 본인에게 할당된 브랜치에서만 작업한다.
@@ -220,3 +217,8 @@ Pull Request 기반 협업 방식을 사용합니다.
 |      |    |      |
 |      |    |      |
 
+
+---
+
+## 협업 가이드
+1. 백엔드팀
