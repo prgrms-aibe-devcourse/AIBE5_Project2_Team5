@@ -2090,8 +2090,8 @@ export default function Messages() {
         .process-check-pop::after {
           content: "";
           position: absolute;
-          inset: -5px;
-          border-radius: 9999px;
+          inset: -4px;
+          border-radius: 12px;
           border: 2px solid rgba(0, 201, 167, 0.45);
           animation: pickxelProcessCheckRing 900ms ease-out;
           pointer-events: none;
@@ -2977,8 +2977,9 @@ export default function Messages() {
                         >
                           <div className="flex items-start gap-3 flex-1 min-w-0">
                             {isProcessApproved ? (
-                              <div className="process-check-pop relative mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-[#00C9A7] text-white shadow-sm">
-                                <CheckCircle className="size-5" />
+                              <div className="process-check-pop relative mt-0.5 flex h-8 min-w-[58px] shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#12382D] px-2.5 text-white shadow-[0_8px_18px_rgba(18,56,45,0.18)]">
+                                <CheckCheck className="size-4 text-[#A8F0E4]" />
+                                <span className="text-[11px] font-black">완료</span>
                               </div>
                             ) : (
                               <div className={`mt-2 size-2.5 shrink-0 rounded-full ${getStatusColor(process.status)}`}></div>
@@ -3071,15 +3072,35 @@ export default function Messages() {
                                   onClick={() =>
                                     toggleProcessConfirmation(process.id, "designer")
                                   }
-                                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-all ${
+                                  aria-pressed={process.confirmations.designer}
+                                  className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-all ${
                                     process.confirmations.designer
-                                      ? "border-[#00C9A7] bg-[#DDF8EC] text-[#007E68]"
-                                      : "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:border-[#00C9A7]"
+                                      ? "border-[#9EE7D0] bg-white text-[#12382D] shadow-[0_8px_20px_rgba(0,201,167,0.12)] ring-1 ring-[#DDF8EC]"
+                                      : "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
                                   }`}
                                 >
-                                  <span className="inline-flex items-center justify-center gap-1.5">
-                                    {process.confirmations.designer && <CheckCircle className="size-4" />}
-                                    {process.confirmations.designer ? "디자이너 확인됨" : "디자이너 확인"}
+                                  <span className="flex items-center justify-center gap-2">
+                                    <span
+                                      className={`flex size-6 shrink-0 items-center justify-center rounded-full border transition-all ${
+                                        process.confirmations.designer
+                                          ? "border-[#00C9A7] bg-[#00C9A7] text-white"
+                                          : "border-gray-300 bg-white text-transparent"
+                                      }`}
+                                    >
+                                      <CheckCircle className="size-4" />
+                                    </span>
+                                    <span className="text-left leading-tight">
+                                      <span className="block">디자이너</span>
+                                      <span
+                                        className={`block text-[11px] font-bold ${
+                                          process.confirmations.designer
+                                            ? "text-[#007E68]"
+                                            : "text-gray-400"
+                                        }`}
+                                      >
+                                        {process.confirmations.designer ? "확인 완료" : "확인 대기"}
+                                      </span>
+                                    </span>
                                   </span>
                                 </button>
                                 <button
@@ -3087,15 +3108,35 @@ export default function Messages() {
                                   onClick={() =>
                                     toggleProcessConfirmation(process.id, "client")
                                   }
-                                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-all ${
+                                  aria-pressed={process.confirmations.client}
+                                  className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-all ${
                                     process.confirmations.client
-                                      ? "border-[#00C9A7] bg-[#DDF8EC] text-[#007E68]"
-                                      : "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:border-[#00C9A7]"
+                                      ? "border-[#9EE7D0] bg-white text-[#12382D] shadow-[0_8px_20px_rgba(0,201,167,0.12)] ring-1 ring-[#DDF8EC]"
+                                      : "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
                                   }`}
                                 >
-                                  <span className="inline-flex items-center justify-center gap-1.5">
-                                    {process.confirmations.client && <CheckCircle className="size-4" />}
-                                    {process.confirmations.client ? "클라이언트 확인됨" : "클라이언트 확인"}
+                                  <span className="flex items-center justify-center gap-2">
+                                    <span
+                                      className={`flex size-6 shrink-0 items-center justify-center rounded-full border transition-all ${
+                                        process.confirmations.client
+                                          ? "border-[#00C9A7] bg-[#00C9A7] text-white"
+                                          : "border-gray-300 bg-white text-transparent"
+                                      }`}
+                                    >
+                                      <CheckCircle className="size-4" />
+                                    </span>
+                                    <span className="text-left leading-tight">
+                                      <span className="block">클라이언트</span>
+                                      <span
+                                        className={`block text-[11px] font-bold ${
+                                          process.confirmations.client
+                                            ? "text-[#007E68]"
+                                            : "text-gray-400"
+                                        }`}
+                                      >
+                                        {process.confirmations.client ? "확인 완료" : "확인 대기"}
+                                      </span>
+                                    </span>
                                   </span>
                                 </button>
                               </div>
