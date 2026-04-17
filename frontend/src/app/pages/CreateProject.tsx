@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { useDropzone } from "react-dropzone";
 import { toast } from "sonner";
@@ -172,7 +172,11 @@ function PreviewCard({ data }: { data: { title: string; category: string; budget
 // ── 메인 컴포넌트 ─────────────────────────────────────────────
 export default function CreateProject() {
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
+  const [searchParams] = useSearchParams();
+  const [step, setStep] = useState(() => {
+    const requestedStep = Number(searchParams.get("step"));
+    return requestedStep >= 1 && requestedStep <= 5 ? requestedStep : 1;
+  });
   const autoSaveTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Step 1
