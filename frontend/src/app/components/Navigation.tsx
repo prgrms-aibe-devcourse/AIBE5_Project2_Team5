@@ -1,7 +1,7 @@
 import { Link, useLocation } from "react-router";
 import { Bell } from "lucide-react";
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence, LayoutGroup } from "motion/react";
+import { motion, LayoutGroup } from "motion/react";
 import {
   hasUnreadNotifications,
   subscribeNotificationState,
@@ -27,13 +27,11 @@ export default function Navigation() {
     refreshUnreadState();
     return subscribeNotificationState(refreshUnreadState);
   }, []);
-
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 48);
+    const onScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-
   /* ── 메뉴 링크 (공통) ── */
   const NavLinks = ({ compact = false }: { compact?: boolean }) => (
     <LayoutGroup>
@@ -73,13 +71,8 @@ export default function Navigation() {
 
   return (
     <>
-      {/* ━━ 기본 헤더 (상단 고정, 스크롤 시 숨김) ━━ */}
-      <motion.header
-        initial={false}
-        animate={{ y: scrolled ? -80 : 0, opacity: scrolled ? 0 : 1 }}
-        transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-        className="sticky top-0 z-50 h-[68px] bg-white border-b border-gray-100"
-      >
+      {/* ━━ 기본 헤더 (상단 고정, 스크롤 시 그림자) ━━ */}
+      <header className={`sticky top-0 z-50 h-[68px] bg-white/95 backdrop-blur-sm transition-all duration-300 ${scrolled ? "shadow-sm border-b-transparent" : "border-b border-gray-100"}`}>
         <div className="w-full h-full px-8 grid grid-cols-[auto_1fr_auto] items-center">
 
           {/* 좌: 로고 */}
@@ -119,61 +112,7 @@ export default function Navigation() {
             </Link>
           </div>
         </div>
-      </motion.header>
-
-      {/* ━━ 아일랜드 (스크롤 시 나타남) ━━ */}
-      <AnimatePresence>
-        {scrolled && (
-          <motion.div
-            initial={{ y: -20, opacity: 0, scale: 0.95 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: -20, opacity: 0, scale: 0.95 }}
-            transition={{ type: "spring", stiffness: 380, damping: 28 }}
-            className="fixed top-3 left-1/2 -translate-x-1/2 z-50"
-          >
-            <div className="flex items-center bg-white/85 backdrop-blur-2xl border border-gray-200/60 rounded-full pl-3 pr-1.5 py-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)]">
-
-              {/* 로고 (아일랜드) */}
-              <Link to="/" className="flex items-center hover:opacity-70 transition-opacity mr-1">
-                <div className="grid grid-cols-2 gap-[2px] w-[18px] h-[18px]">
-                  <div className="rounded-[2px] bg-[#00C9A7]" />
-                  <div className="rounded-[2px] bg-[#00C9A7] opacity-50" />
-                  <div className="rounded-[2px] bg-[#FF5C3A] opacity-60" />
-                  <div className="rounded-[2px] bg-[#FF5C3A]" />
-                </div>
-              </Link>
-
-              {/* 구분선 */}
-              <div className="w-px h-5 bg-gray-200/80 mx-1" />
-
-              {/* 메뉴 (아일랜드) */}
-              <NavLinks compact />
-
-              {/* 구분선 */}
-              <div className="w-px h-5 bg-gray-200/80 mx-1" />
-
-              {/* 알림 + 프로필 (아일랜드) */}
-              <div className="flex items-center gap-1.5">
-                <Link
-                  to="/notifications"
-                  className="relative size-8 rounded-full flex items-center justify-center hover:bg-gray-100/80 transition-colors text-gray-500 hover:text-[#0F0F0F]"
-                >
-                  <Bell className="size-[18px]" />
-                  {hasUnread && (
-                    <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-[#FF5C3A] rounded-full ring-2 ring-white" />
-                  )}
-                </Link>
-                <Link
-                  to="/profile/jieun"
-                  className="size-8 rounded-full bg-gradient-to-br from-[#00C9A7] to-[#009E88] flex items-center justify-center text-white text-[11px] font-bold shadow-sm shadow-[#00C9A7]/20 hover:shadow-md transition-shadow"
-                >
-                  J
-                </Link>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </header>
     </>
   );
 }
