@@ -59,6 +59,13 @@ export default function Collections() {
   }, [collections]);
 
   useEffect(() => {
+    document.body.style.backgroundColor = "#F7F7F5";
+    return () => {
+      document.body.style.backgroundColor = "";
+    };
+  }, []);
+
+  useEffect(() => {
     setFeedItems(loadCollectibleFeedItems());
   }, []);
 
@@ -192,10 +199,11 @@ export default function Collections() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F7F5]">
+    <div className="flex min-h-screen flex-col bg-[#F7F7F5]">
       <Navigation />
 
-      <div className="max-w-[1400px] mx-auto px-6 py-8">
+      <main className="flex-1 px-6 py-8">
+        <div className="mx-auto max-w-[1400px]">
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="mb-2 text-4xl font-bold">나의 컬렉션</h1>
@@ -403,8 +411,9 @@ export default function Collections() {
           <div className="h-64 w-80 rounded-xl bg-gray-200"></div>
         </section>
       </div>
+    </main>
 
-      <Footer />
+    <Footer />
 
       {showCreateModal && (
         <div
