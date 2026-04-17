@@ -16,6 +16,8 @@ export default function ReviewWrite() {
   const [selectedWorkCategories, setSelectedWorkCategories] = useState<string[]>([]);
   const [selectedCompliments, setSelectedCompliments] = useState<string[]>([]);
   const [selectedImprovements, setSelectedImprovements] = useState<string[]>([]);
+  const [isThankYouOpen, setIsThankYouOpen] = useState(false);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
 
   const ratingOptions = [
     {
@@ -123,7 +125,13 @@ export default function ReviewWrite() {
     );
   };
 
+  const handleGoToProfileReviews = () => {
+    navigate("/profile/jieun?tab=reviews");
+  };
+
   const handleSubmit = () => {
+    if (!isReviewReady || hasSubmitted) return;
+
     // 실제로는 여기서 API 호출하여 후기 저장
     const reviewData = {
       clientName,
@@ -141,8 +149,8 @@ export default function ReviewWrite() {
     existingReviews.push(reviewData);
     localStorage.setItem("reviews", JSON.stringify(existingReviews));
 
-    // 프로필 페이지로 이동
-    navigate("/profile/jieun?tab=reviews");
+    setHasSubmitted(true);
+    setIsThankYouOpen(true);
   };
 
   const RatingStars = ({
@@ -405,19 +413,51 @@ export default function ReviewWrite() {
             </button>
             <button
               onClick={handleSubmit}
-              disabled={!isReviewReady}
+              disabled={!isReviewReady || hasSubmitted}
               className={`flex-1 py-3 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
-                !isReviewReady
+                !isReviewReady || hasSubmitted
                   ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                   : "bg-gradient-to-r from-[#00C9A7] to-[#00A88C] text-[#0F0F0F] hover:shadow-lg hover:scale-105 border border-white/30"
               }`}
             >
               <Send className="size-4" />
-              {submitButtonLabel}
+              {hasSubmitted ? "후기 등록 중..." : submitButtonLabel}
             </button>
           </div>
         </div>
       </div>
+
+      {isThankYouOpen && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/35 px-5 backdrop-blur-sm animate-in fade-in duration-150"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="review-thanks-title"
+        >
+          <div className="w-full max-w-[420px] rounded-2xl border border-[#BDEFD8] bg-white p-7 text-center shadow-2xl animate-in zoom-in-95 fade-in duration-200">
+            <div className="mx-auto mb-5 flex size-16 items-center justify-center rounded-full bg-[#DDF8EC] text-[#00A88C] shadow-[0_12px_30px_rgba(0,201,167,0.18)]">
+              <CheckCircle className="size-9" />
+            </div>
+            <p className="mb-2 text-xs font-bold text-[#00A88C]">
+              후기 등록 완료
+            </p>
+            <h2 id="review-thanks-title" className="mb-3 text-2xl font-black text-[#12382D]">
+              소중한 후기 감사합니다!
+            </h2>
+            <p className="mx-auto mb-6 max-w-[300px] text-sm leading-relaxed text-gray-600">
+              선택한 작업 분야와 좋았던 포인트가 프로필 후기에도 바로 반영돼요.
+            </p>
+            <button
+              type="button"
+              onClick={handleGoToProfileReviews}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#16A673] px-5 py-2.5 text-sm font-bold text-white shadow-[0_8px_18px_rgba(22,166,115,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#0E8F61]"
+            >
+              <Sparkles className="size-4" />
+              리뷰로 이동하기
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
