@@ -1,5 +1,4 @@
 import { useRef, useEffect } from "react";
-import { gsap } from "gsap";
 
 interface CategoryButtonsProps {
   categories: string[];
@@ -18,25 +17,34 @@ export default function CategoryButtons({
   // Entrance animation
   useEffect(() => {
     if (!containerRef.current) return;
-    
-    const ctx = gsap.context(() => {
-      gsap.fromTo(
-        buttonsRef.current.filter(Boolean),
-        { 
-          opacity: 0, 
-          y: 12,
-        },
-        { 
-          opacity: 1, 
-          y: 0, 
-          duration: 0.6,
-          stagger: 0.08,
-          ease: "power3.out"
+
+    const buttons = buttonsRef.current.filter(Boolean) as HTMLButtonElement[];
+    const animations = buttons.map((button, index) => {
+      button.style.opacity = "0";
+      button.style.transform = "translateY(12px)";
+
+      const animation = button.animate(
+        [
+          { opacity: 0, transform: "translateY(12px)" },
+          { opacity: 1, transform: "translateY(0)" },
+        ],
+        {
+          duration: 600,
+          delay: index * 80,
+          easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+          fill: "forwards",
         }
       );
-    }, containerRef);
 
-    return () => ctx.revert();
+      animation.onfinish = () => {
+        button.style.opacity = "1";
+        button.style.transform = "";
+      };
+
+      return animation;
+    });
+
+    return () => animations.forEach((animation) => animation.cancel());
   }, []);
 
   const handleClick = (category: string, index: number) => {
@@ -44,13 +52,14 @@ export default function CategoryButtons({
     if (!button) return;
 
     // Click ripple effect - slower and smoother
-    gsap.fromTo(
-      button,
-      { scale: 0.97 },
-      { 
-        scale: 1, 
-        duration: 0.5, 
-        ease: "elastic.out(1, 0.6)" 
+    button.animate(
+      [
+        { transform: "scale(0.97)" },
+        { transform: "scale(1)" },
+      ],
+      {
+        duration: 500,
+        easing: "cubic-bezier(0.16, 1, 0.3, 1)",
       }
     );
 
@@ -72,28 +81,12 @@ export default function CategoryButtons({
                 ref={(el) => { buttonsRef.current[index] = el; }}
                 type="button"
                 onClick={() => handleClick(category, index)}
-                onMouseEnter={(e) => {
-                  if (!isActive) {
-                    gsap.to(e.currentTarget, { 
-                      y: -3, 
-                      duration: 0.4, 
-                      ease: "power2.out" 
-                    });
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  gsap.to(e.currentTarget, { 
-                    y: 0, 
-                    duration: 0.4, 
-                    ease: "power2.out" 
-                  });
-                }}
                 className={`
                   relative rounded-lg px-4 py-2 text-sm font-medium
-                  transition-colors duration-200
+                  transition-all duration-200 ease-out
                   ${isActive 
                     ? "text-white" 
-                    : "text-[#2E3440] hover:bg-gray-50"
+                    : "text-[#2E3440] hover:-translate-y-0.5 hover:bg-gray-50"
                   }
                 `}
               >

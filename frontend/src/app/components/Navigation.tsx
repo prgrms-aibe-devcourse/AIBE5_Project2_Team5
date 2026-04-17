@@ -1,12 +1,17 @@
 import { Link, useLocation } from "react-router";
 import { Search, Bell, User, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import {
+  hasUnreadNotifications,
+  subscribeNotificationState,
+} from "../utils/notificationState";
 
 export default function Navigation() {
   const location = useLocation();
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [hasUnread, setHasUnread] = useState(hasUnreadNotifications);
 
   const navItems = [
     { path: "/feed", label: "피드" },
@@ -29,6 +34,12 @@ export default function Navigation() {
     return location.pathname.startsWith(path);
   };
 
+  useEffect(() => {
+    const refreshUnreadState = () => setHasUnread(hasUnreadNotifications());
+    refreshUnreadState();
+    return subscribeNotificationState(refreshUnreadState);
+  }, []);
+
   return (
       <>
         <nav className="border-b border-[#EAEAE8] bg-white sticky top-0 z-50 shadow-sm">
@@ -38,7 +49,7 @@ export default function Navigation() {
                 {/* Pixel Grid Symbol */}
                 <div className="grid grid-cols-2 gap-[3px] w-[28px] h-[28px]">
                   <div className="rounded-[2px] bg-[#00C9A7]"></div>
-                  <div className="rounded-[2px] bg-[#00C9A7] opacity-50"></div>git remote -v
+                  <div className="rounded-[2px] bg-[#00C9A7] opacity-50"></div>
                   <div className="rounded-[2px] bg-[#FF5C3A] opacity-60"></div>
                   <div className="rounded-[2px] bg-[#FF5C3A]"></div>
                 </div>
@@ -72,7 +83,9 @@ export default function Navigation() {
               </button>
               <Link to="/notifications" className="p-2 hover:bg-[#A8F0E4]/20 rounded-full transition-colors text-[#444441] hover:text-[#00A88C] relative">
                 <Bell className="size-5" />
-                <span className="absolute top-1 right-1 w-2 h-2 bg-[#FF5C3A] rounded-full"></span>
+                {hasUnread && (
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-[#FF5C3A] rounded-full"></span>
+                )}
               </Link>
               <Link to="/profile/jieun" className="flex items-center gap-2 bg-gradient-to-r from-[#00C9A7]/90 to-[#00A88C]/90 backdrop-blur-md text-white px-4 py-2 rounded-full text-sm font-medium hover:shadow-lg hover:scale-105 transition-all border border-white/30">
                 <User className="size-4" />
