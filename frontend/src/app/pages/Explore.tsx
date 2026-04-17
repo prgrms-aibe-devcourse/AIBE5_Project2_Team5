@@ -12,6 +12,7 @@ import Lenis from "lenis";
 import "lenis/dist/lenis.css";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { matchingCategories } from "../utils/matchingCategories";
+import Footer from "../components/Footer";
 
 const creatorProfiles = [
   {
@@ -808,27 +809,7 @@ export default function Explore() {
         </Link>
       </motion.div>
 
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-100 py-8">
-        <div className="max-w-[1800px] mx-auto px-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="font-bold text-xl mb-1.5">
-                <span className="text-[#FF5C3A]">p</span>ick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A]">.</span>
-              </div>
-              <p className="text-sm text-gray-500">크리에이티브의 가치를 연결하는 공간.</p>
-            </div>
-            <div className="flex gap-6 text-sm text-gray-400">
-              <a href="#" className="hover:text-[#00A88C] transition-colors">이용약관</a>
-              <a href="#" className="hover:text-[#00A88C] transition-colors">개인정보처리방침</a>
-              <a href="#" className="hover:text-[#00A88C] transition-colors">고객센터</a>
-              <a href="#" className="hover:text-[#00A88C] transition-colors">인재채용</a>
-              <a href="#" className="hover:text-[#00A88C] transition-colors">비즈니스 문의</a>
-            </div>
-          </div>
-          <p className="text-xs text-gray-300 mt-3">© 2024 pickxel. Crafted for the creative elite.</p>
-        </div>
-      </footer>
+      <Footer />
 
       {/* ━━ 컬렉션 저장 모달 ━━ */}
       <AnimatePresence>
