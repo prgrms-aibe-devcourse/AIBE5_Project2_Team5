@@ -3,7 +3,7 @@ import {
   Search, Sparkles, Heart, Eye, Users, UserSearch, ImageOff,
   LayoutGrid, Palette, Camera, PenTool, Box, Monitor, Building2,
   Shirt, Megaphone, Scissors, Brush, Package, Gamepad2, Music,
-  ArrowRight, X, Plus, ChevronLeft, ChevronRight, Bookmark, Check, FolderPlus,
+  ArrowRight, X, Plus, ChevronLeft, ChevronRight, Bookmark, Check, FolderPlus, Share2, MessageCircle,
 } from "lucide-react";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router";
@@ -347,14 +347,19 @@ export default function Explore() {
   const catScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+  
+  // 선택된 피드 모달 상태
+  const [selectedProjectForModal, setSelectedProjectForModal] = useState<any>(null);
 
   // ── lenis smooth scroll ──
   useEffect(() => {
     const lenis = new Lenis({ lerp: 0.08, smoothWheel: true });
+    
     const raf = (time: number) => { lenis.raf(time); requestAnimationFrame(raf); };
     requestAnimationFrame(raf);
     return () => lenis.destroy();
   }, []);
+
 
   const checkCatScroll = useCallback(() => {
     const el = catScrollRef.current;
@@ -427,15 +432,16 @@ export default function Explore() {
     <div className="min-h-screen flex flex-col bg-[#F7F7F5]">
       <Navigation />
 
-      {/* ━━ 검색바 + AI 토글 + 탭 (sticky) ━━ */}
-      <section className="sticky top-[73px] z-40 bg-white/90 backdrop-blur-xl border-b border-gray-200/50 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-        <div className="max-w-[1800px] mx-auto px-5 py-3">
-          <div className="flex items-center gap-2.5">
+      {/* ━━ 검색바 + AI 토글 + 탭 ━━ */}
+      <section className="relative z-30 flex justify-center">
+        <div className="bg-transparent w-full max-w-none px-0 pt-6 pb-2 mx-auto">
+          <div className="mx-auto w-full max-w-[1800px] px-5">
+            <div className="flex items-center gap-2.5">
             {/* 검색 인풋 */}
             <div className={`relative flex-1 rounded-xl transition-all duration-300 ${
               aiMode
                 ? "bg-gradient-to-r from-[#00C9A7]/8 to-[#FF5C3A]/4 border-2 border-[#00C9A7]/30 shadow-[0_0_24px_rgba(0,201,167,0.1)]"
-                : "bg-[#F3F4F6] border border-transparent hover:border-gray-300 focus-within:border-[#00C9A7]/40 focus-within:bg-white focus-within:shadow-[0_0_0_3px_rgba(0,201,167,0.1)]"
+                : "bg-white border border-gray-200/80 shadow-sm hover:border-gray-300 focus-within:border-[#00C9A7]/40 focus-within:shadow-[0_0_0_3px_rgba(0,201,167,0.1)]"
             }`}>
               {aiMode ? (
                 <Sparkles className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-[#00C9A7]" />
@@ -464,7 +470,7 @@ export default function Explore() {
               className={`flex items-center gap-1.5 h-10 px-4 rounded-xl text-sm font-semibold transition-all shrink-0 ${
                 aiMode
                   ? "bg-gradient-to-r from-[#00C9A7] to-[#00A88C] text-white shadow-lg shadow-[#00C9A7]/20"
-                  : "bg-[#F3F4F6] text-gray-600 hover:bg-gray-200/80 hover:text-[#00A88C]"
+                  : "bg-white border border-gray-200/80 shadow-sm text-gray-600 hover:bg-gray-50 hover:text-[#00A88C]"
               }`}
             >
               <Sparkles className="size-3.5" />
@@ -474,11 +480,11 @@ export default function Explore() {
             <div className="w-px h-6 bg-gray-200 shrink-0" />
 
             {/* 탭 토글 */}
-            <div className="flex rounded-lg bg-[#F3F4F6] p-0.5 shrink-0">
+            <div className="flex rounded-lg bg-white border border-gray-200/80 shadow-sm p-0.5 shrink-0">
               <button
                 onClick={() => setActiveTab("feed")}
                 className={`flex items-center gap-1.5 px-3.5 h-9 rounded-md text-sm font-medium transition-all ${
-                  activeTab === "feed" ? "bg-white text-[#0F0F0F] shadow-sm" : "text-gray-500 hover:text-gray-700"
+                  activeTab === "feed" ? "bg-[#00C9A7] text-white shadow-md shadow-[#00C9A7]/20" : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
                 }`}
               >
                 <LayoutGrid className="size-3.5" /> 피드
@@ -486,7 +492,7 @@ export default function Explore() {
               <button
                 onClick={() => setActiveTab("profile")}
                 className={`flex items-center gap-1.5 px-3.5 h-9 rounded-md text-sm font-medium transition-all ${
-                  activeTab === "profile" ? "bg-white text-[#0F0F0F] shadow-sm" : "text-gray-500 hover:text-gray-700"
+                  activeTab === "profile" ? "bg-[#00C9A7] text-white shadow-md shadow-[#00C9A7]/20" : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
                 }`}
               >
                 <Users className="size-3.5" /> 프로필
@@ -549,17 +555,18 @@ export default function Explore() {
               </motion.div>
             )}
           </AnimatePresence>
+          </div>
         </div>
       </section>
 
-      {/* ━━ 카테고리 필터 (밝은 톤 + 전환 애니메이션) ━━ */}
+      {/* ━━ 카테고리 필터 ━━ */}
       {activeTab === "feed" && (
-        <section className="bg-[#EEECEA] border-b border-gray-200/60">
+        <section className="bg-transparent pb-3">
           <div className="max-w-[1800px] mx-auto px-5 relative">
             {/* 좌측 페이드 + 화살표 */}
             {canScrollLeft && (
               <div className="absolute left-0 top-0 bottom-0 z-10 flex items-center">
-                <div className="w-20 h-full bg-gradient-to-r from-[#EEECEA] via-[#EEECEA]/80 to-transparent pointer-events-none absolute left-0" />
+                <div className="w-20 h-full bg-gradient-to-r from-[#F7F7F5] via-[#F7F7F5]/80 to-transparent pointer-events-none absolute left-0" />
                 <button onClick={() => scrollCat("left")} className="relative z-10 ml-2 size-8 rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 shadow-sm flex items-center justify-center text-gray-500 hover:bg-white hover:text-gray-700 transition-all">
                   <ChevronLeft className="size-4" />
                 </button>
@@ -568,7 +575,7 @@ export default function Explore() {
             {/* 우측 페이드 + 화살표 */}
             {canScrollRight && (
               <div className="absolute right-0 top-0 bottom-0 z-10 flex items-center">
-                <div className="w-20 h-full bg-gradient-to-l from-[#EEECEA] via-[#EEECEA]/80 to-transparent pointer-events-none absolute right-0" />
+                <div className="w-20 h-full bg-gradient-to-l from-[#F7F7F5] via-[#F7F7F5]/80 to-transparent pointer-events-none absolute right-0" />
                 <button onClick={() => scrollCat("right")} className="relative z-10 mr-2 ml-auto size-8 rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 shadow-sm flex items-center justify-center text-gray-500 hover:bg-white hover:text-gray-700 transition-all">
                   <ChevronRight className="size-4" />
                 </button>
@@ -630,7 +637,7 @@ export default function Explore() {
       <div className="flex-1">
         {/* ━━ 피드 탭: 균일 그리드 ━━ */}
         {activeTab === "feed" && (
-          <section className="max-w-[1800px] mx-auto px-5 py-6">
+          <section className="max-w-[1800px] mx-auto px-5 pt-1 pb-16">
             {filteredProjects.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {filteredProjects.map((project, index) => (
@@ -641,6 +648,7 @@ export default function Explore() {
                     viewport={{ once: true, margin: "-60px" }}
                     transition={{ delay: (index % 4) * 0.08, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
                     className="group cursor-pointer pb-2"
+                    onClick={() => setSelectedProjectForModal(project)}
                   >
                     <div className="relative rounded-2xl overflow-hidden bg-white shadow-[0_2px_8px_rgba(0,0,0,0.06)] group-hover:shadow-[0_20px_50px_rgba(0,0,0,0.12)] group-hover:-translate-y-2 transition-all duration-500 ease-out">
                       {/* 이미지 (고정 비율) */}
@@ -657,7 +665,7 @@ export default function Explore() {
                         {/* 우상단: 저장 버튼 (pill) */}
                         <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 -translate-y-1 group-hover:translate-y-0 transition-all duration-300 z-10">
                           <button
-                            onClick={(e) => openCollectionModal(project, e)}
+                            onClick={(e) => { e.stopPropagation(); openCollectionModal(project, e); }}
                             className={`flex items-center gap-1.5 h-8 px-3.5 rounded-full text-xs font-semibold shadow-lg cursor-pointer hover:scale-105 active:scale-95 transition-all duration-200 ${
                               savedProjectIds.has(project.id)
                                 ? "bg-[#00C9A7] text-white shadow-[#00C9A7]/30 hover:bg-[#00b89a]"
@@ -801,6 +809,138 @@ export default function Explore() {
           </section>
         )}
       </div>
+
+      {/* ── 피드 상세 모달 ── */}
+      <AnimatePresence>
+        {selectedProjectForModal && (
+          <div 
+            className="fixed inset-0 bg-black/75 backdrop-blur-md z-[100] flex items-center justify-center p-4 md:p-8"
+            onClick={() => setSelectedProjectForModal(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.96 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="bg-white rounded-2xl w-full max-w-[1200px] h-[85vh] max-h-[900px] overflow-hidden flex flex-col md:flex-row shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* 좌측: 이미지 영역 */}
+              <div className="flex-1 bg-[#0F0F0F] relative flex items-center justify-center p-4 group">
+                <ImageWithFallback
+                  src={selectedProjectForModal.imageUrl}
+                  alt={selectedProjectForModal.title}
+                  className="w-full h-full object-contain"
+                />
+                {/* 닫기 버튼 */}
+                <button
+                  onClick={() => setSelectedProjectForModal(null)}
+                  className="absolute top-4 left-4 size-10 rounded-full bg-black/40 hover:bg-black/60 shadow-md backdrop-blur-md border border-white/10 flex items-center justify-center transition-all text-white/90 hover:text-white z-10"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
+
+              {/* 우측: 상세 정보 패널 */}
+              <div className="w-full md:w-[380px] bg-white flex flex-col h-full overflow-hidden shrink-0">
+                {/* 헤더: 작성자 정보 */}
+                <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white shrink-0">
+                  <Link to={`/profile/${selectedProjectForModal.author}`} className="flex items-center gap-3">
+                    <div className="size-11 rounded-full p-0.5 bg-gradient-to-tr from-[#FF5C3A] to-[#00C9A7]">
+                      <div className="w-full h-full rounded-full bg-white p-0.5">
+                        <img 
+                          src={`https://i.pravatar.cc/150?u=${selectedProjectForModal.author}`} 
+                          alt="avatar" 
+                          className="w-full h-full rounded-full object-cover"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="font-bold text-[#0F0F0F] text-sm hover:text-[#00C9A7] transition-colors">
+                        {selectedProjectForModal.author}
+                      </p>
+                      <p className="text-[11px] text-[#00A88C] font-semibold flex items-center gap-1 mt-0.5">
+                        <Sparkles className="size-3" /> 인증 크리에이터
+                      </p>
+                    </div>
+                  </Link>
+                  <button className="px-4 py-1.5 bg-[#00C9A7] text-white text-xs font-bold rounded-lg shadow-sm shadow-[#00C9A7]/20 hover:scale-105 active:scale-95 transition-all">
+                    팔로우
+                  </button>
+                </div>
+
+                {/* 콘텐츠 영역 (스크롤 가능) */}
+                <div className="flex-1 overflow-y-auto px-6 py-5 bg-white space-y-5">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-[#0F0F0F] leading-snug mb-3">
+                      {selectedProjectForModal.title}
+                    </h2>
+                    <p className="text-[13px] text-gray-500 leading-relaxed mb-4">
+                      {selectedProjectForModal.author}님의 유니크한 {selectedProjectForModal.category} 포트폴리오 프로젝트입니다. 독창적인 영감과 디테일한 작업 과정을 엿볼 수 있습니다.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                       <span className="px-3 py-1.5 rounded-md bg-[#FFF7F4] text-[#FF5C3A] text-[11px] font-bold border border-[#FF5C3A]/20">
+                         {selectedProjectForModal.category}
+                       </span>
+                      {selectedProjectForModal.tags?.map((tag: string) => (
+                        <span key={tag} className="px-3 py-1.5 rounded-md bg-[#A8F0E4]/20 text-[#00A88C] text-[11px] font-bold border border-[#00C9A7]/20">
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="w-full h-px bg-gray-100" />
+                  
+                  {/* 댓글 섹션 Mockup */}
+                  <div className="pb-4">
+                    <h3 className="text-sm font-bold text-[#0F0F0F] mb-4">댓글 <span className="text-gray-400 font-normal ml-1">24</span></h3>
+                    <div className="space-y-4">
+                       <div className="flex gap-3">
+                          <img src="https://i.pravatar.cc/150?img=33" className="size-8 rounded-full" />
+                          <div className="flex-1">
+                             <div className="bg-gray-50 p-3 rounded-2xl rounded-tl-sm text-[13px] text-gray-700 leading-snug">
+                               정말 놀라운 작업물이네요! 컬러 조합이 환상적입니다.
+                             </div>
+                             <p className="text-[11px] text-gray-400 mt-1.5 ml-1">2시간 전 · <button className="font-semibold hover:text-gray-600">답글 달기</button></p>
+                          </div>
+                          <Heart className="size-3.5 text-gray-300 mt-2 cursor-pointer hover:text-[#FF5C3A]" />
+                       </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 하단 액션바 */}
+                <div className="p-4 border-t border-gray-100 bg-[#FAFBFC] flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-4 pl-2">
+                    <div className="flex items-center gap-1.5 group cursor-pointer">
+                      <Heart className="size-5 fill-gray-300 text-gray-300 group-hover:fill-[#FF5C3A] group-hover:text-[#FF5C3A] transition-colors" />
+                      <span className="text-sm font-bold text-gray-500 group-hover:text-[#CD4124]">{selectedProjectForModal.likes}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-gray-400">
+                      <MessageCircle className="size-5" />
+                      <span className="text-sm font-bold">24</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-gray-400">
+                      <Eye className="size-5" />
+                      <span className="text-sm font-bold">{selectedProjectForModal.views}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <button className="size-10 rounded-xl bg-white border border-gray-200 text-gray-500 flex items-center justify-center hover:border-[#00C9A7] hover:text-[#00C9A7] transition-all shadow-sm">
+                      <Bookmark className="size-5" />
+                    </button>
+                    <button className="size-10 rounded-xl bg-[#0F0F0F] text-white flex items-center justify-center hover:bg-[#00C9A7] hover:shadow-lg hover:shadow-[#00C9A7]/20 transition-all">
+                      <Share2 className="size-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Floating Add */}
       <motion.div whileHover={{ scale: 1.1, rotate: 45 }} whileTap={{ scale: 0.9 }} className="fixed bottom-8 right-8 z-50">
