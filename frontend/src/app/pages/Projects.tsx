@@ -1,4 +1,5 @@
 import Navigation from "../components/Navigation";
+import Footer from "../components/Footer";
 import {
   Clock, Users, Bookmark, ArrowRight, Search,
   LayoutList, LayoutGrid, AlertTriangle, CheckCircle,
@@ -835,27 +836,7 @@ export default function Projects() {
         </aside>
       </div>
 
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 py-8 mt-12">
-        <div className="max-w-[1400px] mx-auto px-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="font-bold text-xl mb-2">
-                <span className="text-[#FF5C3A]">p</span>ick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A]">.</span>
-              </div>
-              <p className="text-sm text-gray-600">크리에이티브의 가치를 연결하는 공간. pickxel.</p>
-            </div>
-            <div className="flex gap-8 text-sm text-gray-600">
-              <a href="#" className="hover:text-[#00A88C] transition-colors">이용약관</a>
-              <a href="#" className="hover:text-[#00A88C] transition-colors">개인정보처리방침</a>
-              <a href="#" className="hover:text-[#00A88C] transition-colors">고객센터</a>
-              <a href="#" className="hover:text-[#00A88C] transition-colors">인재채용</a>
-              <a href="#" className="hover:text-[#00A88C] transition-colors">비즈니스 문의</a>
-            </div>
-          </div>
-          <p className="text-xs text-gray-500 mt-4">© 2024 pickxel. Crafted for the creative elite.</p>
-        </div>
-      </footer>
+      <Footer />
 
       {/* ── 공고 상세 모달 ── */}
       <ProjectDetailModal
