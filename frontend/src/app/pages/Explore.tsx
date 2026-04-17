@@ -3,7 +3,7 @@ import {
   Search, Sparkles, Heart, Eye, Users, UserSearch, ImageOff,
   LayoutGrid, Palette, Camera, PenTool, Box, Monitor, Building2,
   Shirt, Megaphone, Scissors, Brush, Package, Gamepad2, Music,
-  ArrowRight, X, Plus, ChevronLeft, ChevronRight, Bookmark, Check, FolderPlus, Share2, MessageCircle,
+  ArrowRight, X, Plus, ChevronLeft, ChevronRight, Bookmark, Check, FolderPlus, Share2, MessageCircle, Send, MoreVertical, ExternalLink, Figma
 } from "lucide-react";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router";
@@ -812,134 +812,195 @@ export default function Explore() {
 
       {/* ── 피드 상세 모달 ── */}
       <AnimatePresence>
-        {selectedProjectForModal && (
-          <div 
-            className="fixed inset-0 bg-black/75 backdrop-blur-md z-[100] flex items-center justify-center p-4 md:p-8"
-            onClick={() => setSelectedProjectForModal(null)}
-          >
-            <motion.div
-              initial={{ opacity: 0, y: 20, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 10, scale: 0.96 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-              className="bg-white rounded-2xl w-full max-w-[1200px] h-[85vh] max-h-[900px] overflow-hidden flex flex-col md:flex-row shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* 좌측: 이미지 영역 */}
-              <div className="flex-1 bg-[#0F0F0F] relative flex items-center justify-center p-4 group">
-                <ImageWithFallback
-                  src={selectedProjectForModal.imageUrl}
-                  alt={selectedProjectForModal.title}
-                  className="w-full h-full object-contain"
-                />
-                {/* 닫기 버튼 */}
-                <button
-                  onClick={() => setSelectedProjectForModal(null)}
-                  className="absolute top-4 left-4 size-10 rounded-full bg-black/40 hover:bg-black/60 shadow-md backdrop-blur-md border border-white/10 flex items-center justify-center transition-all text-white/90 hover:text-white z-10"
-                >
-                  <X className="size-5" />
-                </button>
-              </div>
+        {selectedProjectForModal && (() => {
+          const authorProfile = creatorProfiles.find(p => p.name === selectedProjectForModal.author) || {
+            name: selectedProjectForModal.author,
+            role: '크리에이터',
+            avatar: `https://i.pravatar.cc/150?u=${selectedProjectForModal.author}`
+          };
 
-              {/* 우측: 상세 정보 패널 */}
-              <div className="w-full md:w-[380px] bg-white flex flex-col h-full overflow-hidden shrink-0">
-                {/* 헤더: 작성자 정보 */}
-                <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white shrink-0">
-                  <Link to={`/profile/${selectedProjectForModal.author}`} className="flex items-center gap-3">
-                    <div className="size-11 rounded-full p-0.5 bg-gradient-to-tr from-[#FF5C3A] to-[#00C9A7]">
-                      <div className="w-full h-full rounded-full bg-white p-0.5">
-                        <img 
-                          src={`https://i.pravatar.cc/150?u=${selectedProjectForModal.author}`} 
-                          alt="avatar" 
-                          className="w-full h-full rounded-full object-cover"
-                        />
+          return (
+            <div 
+              className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+              onClick={() => setSelectedProjectForModal(null)}
+            >
+              <div 
+                className="bg-white rounded-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex h-[90vh]">
+                  {/* Left Side - Image */}
+                  <div className="flex-1 bg-[#0F0F0F] flex items-center justify-center relative">
+                    <ImageWithFallback
+                      src={selectedProjectForModal.imageUrl}
+                      alt={selectedProjectForModal.title}
+                      className="max-w-full max-h-full object-contain"
+                    />
+
+                    {/* Close Button */}
+                    <button
+                      onClick={() => setSelectedProjectForModal(null)}
+                      className="absolute top-4 left-4 p-2 bg-black/50 hover:bg-black/70 backdrop-blur-md text-white rounded-full transition-all border border-white/20"
+                    >
+                      <X className="size-6" />
+                    </button>
+                  </div>
+
+                  {/* Right Side - Details & Comments */}
+                  <div className="w-[400px] flex flex-col bg-white">
+                    {/* Author Header */}
+                    <div className="p-5 border-b border-gray-200">
+                      <div className="flex items-center justify-between mb-4">
+                        <Link 
+                          to={`/profile/${authorProfile.name}`}
+                          className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ImageWithFallback
+                            src={authorProfile.avatar}
+                            alt={authorProfile.name}
+                            className="size-12 rounded-full ring-2 ring-[#00C9A7]"
+                          />
+                          <div>
+                            <h4 className="font-bold text-sm">{authorProfile.name}</h4>
+                            <p className="text-xs text-gray-500">{authorProfile.role}</p>
+                          </div>
+                        </Link>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#FFB6A6] bg-[#FF5C3A] px-3.5 text-[0px] font-bold text-white shadow-[0_8px_18px_rgba(255,92,58,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#E94F2F] hover:shadow-[0_10px_22px_rgba(255,92,58,0.28)] focus:outline-none focus:ring-2 focus:ring-[#FFB6A6] focus:ring-offset-2 [&>span]:text-xs"
+                          >
+                            <Send className="size-3.5" />
+                            <span>프로젝트 제안</span>
+                            제안하기
+                          </button>
+                          <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                            <MoreVertical className="size-5 text-gray-600" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Title & Description */}
+                      <h2 className="font-bold text-xl mb-2">{selectedProjectForModal.title}</h2>
+                      <p className="text-sm text-gray-600 mb-3">{authorProfile.name}님의 유니크한 {selectedProjectForModal.category} 포트폴리오 프로젝트입니다.</p>
+
+                      {/* Tags */}
+                      {selectedProjectForModal.category && (
+                        <div className="mb-3">
+                          <span className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-1.5 text-xs font-bold text-[#B13A21]">
+                            {selectedProjectForModal.category}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        {selectedProjectForModal.tags?.map((tag: string, index: number) => (
+                          <span
+                            key={index}
+                            className="px-3 py-1 bg-[#A8F0E4]/30 backdrop-blur-sm text-[#00A88C] rounded-full text-xs font-medium hover:bg-[#00C9A7]/90 hover:backdrop-blur-md hover:text-white cursor-pointer transition-all border border-[#00C9A7]/20"
+                          >
+                            {tag.startsWith("#") ? tag : `#${tag}`}
+                          </span>
+                        ))}
                       </div>
                     </div>
-                    <div>
-                      <p className="font-bold text-[#0F0F0F] text-sm hover:text-[#00C9A7] transition-colors">
-                        {selectedProjectForModal.author}
-                      </p>
-                      <p className="text-[11px] text-[#00A88C] font-semibold flex items-center gap-1 mt-0.5">
-                        <Sparkles className="size-3" /> 인증 크리에이터
-                      </p>
-                    </div>
-                  </Link>
-                  <button className="px-4 py-1.5 bg-[#00C9A7] text-white text-xs font-bold rounded-lg shadow-sm shadow-[#00C9A7]/20 hover:scale-105 active:scale-95 transition-all">
-                    팔로우
-                  </button>
-                </div>
 
-                {/* 콘텐츠 영역 (스크롤 가능) */}
-                <div className="flex-1 overflow-y-auto px-6 py-5 bg-white space-y-5">
-                  <div>
-                    <h2 className="text-xl font-extrabold text-[#0F0F0F] leading-snug mb-3">
-                      {selectedProjectForModal.title}
-                    </h2>
-                    <p className="text-[13px] text-gray-500 leading-relaxed mb-4">
-                      {selectedProjectForModal.author}님의 유니크한 {selectedProjectForModal.category} 포트폴리오 프로젝트입니다. 독창적인 영감과 디테일한 작업 과정을 엿볼 수 있습니다.
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                       <span className="px-3 py-1.5 rounded-md bg-[#FFF7F4] text-[#FF5C3A] text-[11px] font-bold border border-[#FF5C3A]/20">
-                         {selectedProjectForModal.category}
-                       </span>
-                      {selectedProjectForModal.tags?.map((tag: string) => (
-                        <span key={tag} className="px-3 py-1.5 rounded-md bg-[#A8F0E4]/20 text-[#00A88C] text-[11px] font-bold border border-[#00C9A7]/20">
-                          #{tag}
-                        </span>
-                      ))}
+                    {/* Actions Bar */}
+                    <div className="p-4 border-b border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <button
+                            type="button"
+                            className={`flex items-center gap-2 transition-colors text-gray-600 hover:text-[#FF5C3A]`}
+                          >
+                            <Heart className="size-6" />
+                            <span className="font-semibold">{selectedProjectForModal.likes}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="flex items-center gap-2 text-gray-600 hover:text-[#00C9A7] transition-colors"
+                          >
+                            <MessageCircle className="size-6" />
+                            <span className="font-semibold">24</span>
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="p-2 hover:bg-[#A8F0E4]/20 rounded-lg text-gray-600 hover:text-[#00A88C] transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCollectionModalProject(selectedProjectForModal);
+                              setSelectedProjectForModal(null);
+                            }}
+                          >
+                            <Bookmark className="size-5" />
+                          </button>
+                          <button
+                            className="p-2 hover:bg-[#A8F0E4]/20 rounded-lg text-gray-600 hover:text-[#00A88C] transition-colors"
+                          >
+                            <Share2 className="size-5" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="w-full h-px bg-gray-100" />
-                  
-                  {/* 댓글 섹션 Mockup */}
-                  <div className="pb-4">
-                    <h3 className="text-sm font-bold text-[#0F0F0F] mb-4">댓글 <span className="text-gray-400 font-normal ml-1">24</span></h3>
-                    <div className="space-y-4">
-                       <div className="flex gap-3">
-                          <img src="https://i.pravatar.cc/150?img=33" className="size-8 rounded-full" />
-                          <div className="flex-1">
-                             <div className="bg-gray-50 p-3 rounded-2xl rounded-tl-sm text-[13px] text-gray-700 leading-snug">
-                               정말 놀라운 작업물이네요! 컬러 조합이 환상적입니다.
-                             </div>
-                             <p className="text-[11px] text-gray-400 mt-1.5 ml-1">2시간 전 · <button className="font-semibold hover:text-gray-600">답글 달기</button></p>
+                    {/* Comments Section */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                      <div className="flex gap-3">
+                        <ImageWithFallback
+                          src="https://i.pravatar.cc/150?img=33"
+                          alt="Commenter"
+                          className="size-10 rounded-full ring-2 ring-[#A8F0E4]/30 flex-shrink-0"
+                        />
+                        <div className="flex-1">
+                          <div className="bg-[#F7F7F5] rounded-lg p-3">
+                            <div className="flex items-center justify-between mb-1">
+                              <h5 className="font-semibold text-sm">김지호</h5>
+                              <span className="text-[10px] text-gray-500">2시간 전</span>
+                            </div>
+                            <p className="text-xs text-gray-500 mb-2">프론트엔드 개발자</p>
+                            <p className="text-sm text-gray-800">정말 놀라운 작업물이네요! 컬러 조합이 환상적입니다.</p>
                           </div>
-                          <Heart className="size-3.5 text-gray-300 mt-2 cursor-pointer hover:text-[#FF5C3A]" />
-                       </div>
+                          <button
+                            type="button"
+                            className="text-xs mt-1 ml-3 transition-colors text-gray-500 hover:text-[#00C9A7]"
+                          >
+                            좋아요 5개
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
 
-                {/* 하단 액션바 */}
-                <div className="p-4 border-t border-gray-100 bg-[#FAFBFC] flex items-center justify-between shrink-0">
-                  <div className="flex items-center gap-4 pl-2">
-                    <div className="flex items-center gap-1.5 group cursor-pointer">
-                      <Heart className="size-5 fill-gray-300 text-gray-300 group-hover:fill-[#FF5C3A] group-hover:text-[#FF5C3A] transition-colors" />
-                      <span className="text-sm font-bold text-gray-500 group-hover:text-[#CD4124]">{selectedProjectForModal.likes}</span>
+                    {/* Comment Input */}
+                    <div className="p-4 border-t border-gray-200">
+                      <div className="flex items-center gap-3">
+                        <ImageWithFallback
+                          src="https://i.pravatar.cc/150?img=20"
+                          alt="My Avatar"
+                          className="size-10 rounded-full ring-2 ring-[#00C9A7]"
+                        />
+                        <div className="flex-1 relative">
+                          <input
+                            type="text"
+                            placeholder="댓글을 입력하세요..."
+                            className="w-full px-4 py-3 pr-12 bg-[#F7F7F5] rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7] transition-all"
+                          />
+                          <button 
+                            type="button"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-gradient-to-r from-[#00C9A7]/90 to-[#00A88C]/90 backdrop-blur-md text-white rounded-full hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-white/30"
+                          >
+                            <Send className="size-4" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5 text-gray-400">
-                      <MessageCircle className="size-5" />
-                      <span className="text-sm font-bold">24</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-gray-400">
-                      <Eye className="size-5" />
-                      <span className="text-sm font-bold">{selectedProjectForModal.views}</span>
-                    </div>
-                  </div>
-                  
-                  <div className="flex gap-2">
-                    <button className="size-10 rounded-xl bg-white border border-gray-200 text-gray-500 flex items-center justify-center hover:border-[#00C9A7] hover:text-[#00C9A7] transition-all shadow-sm">
-                      <Bookmark className="size-5" />
-                    </button>
-                    <button className="size-10 rounded-xl bg-[#0F0F0F] text-white flex items-center justify-center hover:bg-[#00C9A7] hover:shadow-lg hover:shadow-[#00C9A7]/20 transition-all">
-                      <Share2 className="size-4" />
-                    </button>
                   </div>
                 </div>
               </div>
-            </motion.div>
-          </div>
-        )}
+            </div>
+          );
+        })()}
       </AnimatePresence>
 
       {/* Floating Add */}
