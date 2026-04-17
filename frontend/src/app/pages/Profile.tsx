@@ -1,4 +1,5 @@
 import Navigation from "../components/Navigation";
+import Footer from "../components/Footer";
 import { Heart, MessageCircle, Bookmark, Calendar, MapPin, Star, ImagePlus, Upload, X, Figma, Sparkles, ExternalLink, CheckCircle } from "lucide-react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useParams, useNavigate, useSearchParams } from "react-router";
@@ -1292,28 +1293,7 @@ export default function Profile() {
         </div>
       )}
 
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 py-8 mt-20">
-        <div className="max-w-[1400px] mx-auto px-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="font-bold text-xl mb-2">
-                <span className="text-[#FF5C3A]">p</span>ick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A]">.</span>
-              </div>
-              <p className="text-sm text-gray-600">
-                © 2024 pickxel. Crafted for the creative elite.
-              </p>
-            </div>
-            <div className="flex gap-8 text-sm text-gray-600">
-              <a href="#" className="hover:text-black">이용약관</a>
-              <a href="#" className="hover:text-black">개인정보처리방침</a>
-              <a href="#" className="hover:text-black">고객센터</a>
-              <a href="#" className="hover:text-black">인재채용</a>
-              <a href="#" className="hover:text-black">비즈니스 문의</a>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }
