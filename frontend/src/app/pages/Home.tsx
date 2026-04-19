@@ -4,6 +4,7 @@ import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { isAuthenticated } from "../utils/auth";
+import Footer from "../components/Footer";
 
 const feedShowcase = [
   {
@@ -501,32 +502,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-[#0F0F0F] border-t border-[#242424] text-white py-8">
-        <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="max-w-[1400px] mx-auto px-6"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="font-bold text-xl mb-2">
-                <span className="text-[#FF5C3A]">p</span>ick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A]">.</span>
-              </div>
-              <p className="text-sm text-gray-400">© 2024 pickxel. 크리에이터와 의뢰인을 위한 연결 플랫폼.</p>
-            </div>
-            <div className="flex gap-8 text-sm text-gray-400">
-              <a href="#" className="hover:text-white transition-colors">이용약관</a>
-              <a href="#" className="hover:text-white transition-colors">개인정보처리방침</a>
-              <a href="#" className="hover:text-white transition-colors">고객센터</a>
-              <a href="#" className="hover:text-white transition-colors">인재채용</a>
-              <a href="#" className="hover:text-white transition-colors">비즈니스 문의</a>
-            </div>
-          </div>
-        </motion.div>
-      </footer>
+      <Footer />
     </div>
   );
 }
