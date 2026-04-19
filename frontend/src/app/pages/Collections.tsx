@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import Footer from "../components/Footer";
 import {
   Funnel,
   Grid3X3,
@@ -56,6 +57,13 @@ export default function Collections() {
   useEffect(() => {
     saveCollections(collections);
   }, [collections]);
+
+  useEffect(() => {
+    document.body.style.backgroundColor = "#F7F7F5";
+    return () => {
+      document.body.style.backgroundColor = "";
+    };
+  }, []);
 
   useEffect(() => {
     setFeedItems(loadCollectibleFeedItems());
@@ -191,10 +199,11 @@ export default function Collections() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F7F5]">
+    <div className="flex min-h-screen flex-col bg-[#F7F7F5]">
       <Navigation />
 
-      <div className="max-w-[1400px] mx-auto px-6 py-8">
+      <main className="flex-1 px-6 py-8">
+        <div className="mx-auto max-w-[1400px]">
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="mb-2 text-4xl font-bold">나의 컬렉션</h1>
@@ -402,32 +411,9 @@ export default function Collections() {
           <div className="h-64 w-80 rounded-xl bg-gray-200"></div>
         </section>
       </div>
+    </main>
 
-      <footer className="bg-white border-t border-gray-200 py-8">
-        <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.6 }}
-          className="max-w-[1400px] mx-auto px-6"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="mb-2 text-xl font-bold">
-                pick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A]">.</span>
-              </div>
-              <p className="text-sm text-gray-600">© 2024 pickxel. Crafted for the creative elite.</p>
-            </div>
-            <div className="flex gap-8 text-sm text-gray-600">
-              <a href="#" className="transition-colors hover:text-black">이용약관</a>
-              <a href="#" className="transition-colors hover:text-black">개인정보처리방침</a>
-              <a href="#" className="transition-colors hover:text-black">고객센터</a>
-              <a href="#" className="transition-colors hover:text-black">인재채용</a>
-              <a href="#" className="transition-colors hover:text-black">비즈니스 문의</a>
-            </div>
-          </div>
-        </motion.div>
-      </footer>
+    <Footer />
 
       {showCreateModal && (
         <div
