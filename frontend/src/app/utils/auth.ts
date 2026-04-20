@@ -1,10 +1,13 @@
 const AUTH_STORAGE_KEY = "pickxel:isLoggedIn";
 const CURRENT_USER_STORAGE_KEY = "pickxel:currentUser";
+const ACCESS_TOKEN_STORAGE_KEY = "pickxel:accessToken";
+const REFRESH_TOKEN_STORAGE_KEY = "pickxel:refreshToken";
 
 export type UserRole = "designer" | "client";
 
 export type CurrentUser = {
   name: string;
+  nickname: string;
   email: string;
   role: UserRole;
 };
@@ -14,10 +17,11 @@ export function isAuthenticated() {
     return false;
   }
 
-  return (
+  const hasAuthFlag =
     window.localStorage.getItem(AUTH_STORAGE_KEY) === "true" ||
-    window.sessionStorage.getItem(AUTH_STORAGE_KEY) === "true"
-  );
+    window.sessionStorage.getItem(AUTH_STORAGE_KEY) === "true";
+
+  return hasAuthFlag && Boolean(getAccessToken());
 }
 
 export function setAuthenticated(remember = true) {
@@ -35,6 +39,41 @@ export function setAuthenticated(remember = true) {
   window.sessionStorage.setItem(AUTH_STORAGE_KEY, "true");
 }
 
+export function setAuthTokens(accessToken: string, refreshToken = "", remember = true) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const targetStorage = remember ? window.localStorage : window.sessionStorage;
+  const otherStorage = remember ? window.sessionStorage : window.localStorage;
+
+  targetStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken);
+  if (refreshToken) {
+    targetStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, refreshToken);
+  } else {
+    targetStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+  }
+
+  otherStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+  otherStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+}
+
+export function getAccessToken() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return (
+    window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ||
+    window.sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
+  );
+}
+
+export function getAuthHeaders() {
+  const accessToken = getAccessToken();
+  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+}
+
 export function getCurrentUser(): CurrentUser | null {
   if (typeof window === "undefined") {
     return null;
@@ -50,7 +89,12 @@ export function getCurrentUser(): CurrentUser | null {
       typeof parsedUser?.email === "string" &&
       (parsedUser?.role === "designer" || parsedUser?.role === "client")
     ) {
-      return parsedUser;
+      return {
+        name: parsedUser.name,
+        nickname: typeof parsedUser?.nickname === "string" ? parsedUser.nickname : parsedUser.name,
+        email: parsedUser.email,
+        role: parsedUser.role,
+      };
     }
   } catch {
     return null;
@@ -78,5 +122,9 @@ export function clearAuthenticated() {
 
   window.localStorage.removeItem(AUTH_STORAGE_KEY);
   window.localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+  window.localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+  window.localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
   window.sessionStorage.removeItem(AUTH_STORAGE_KEY);
+  window.sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+  window.sessionStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
 }

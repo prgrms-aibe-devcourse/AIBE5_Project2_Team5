@@ -6,6 +6,11 @@ import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { isAuthenticated } from "../utils/auth";
 import Footer from "../components/Footer";
 
+const loginRequiredState = (redirectTo: string) => ({
+  redirectTo,
+  message: "로그인 후 둘러볼 수 있어요.",
+});
+
 const feedShowcase = [
   {
     id: 1,
@@ -143,6 +148,13 @@ export default function Home() {
           <div className="flex items-center gap-4">
             <Link
               to="/login"
+              state={loginRequiredState("/feed")}
+              className="text-sm font-medium text-gray-600 hover:text-[#00A88C] transition-colors"
+            >
+              둘러보기
+            </Link>
+            <Link
+              to="/login"
               className="text-sm text-gray-600 hover:text-[#00A88C] transition-colors"
             >
               로그인
@@ -249,13 +261,15 @@ export default function Home() {
             className="flex items-center justify-center gap-4 pt-4"
           >
             <Link
-              to="/explore"
+              to="/login"
+              state={loginRequiredState("/explore")}
               className="bg-[#00C9A7] text-black px-6 py-3 rounded-lg font-medium hover:bg-[#00A88C] flex items-center gap-2 hover:scale-105 transition-transform"
             >
               디자이너 찾기
             </Link>
             <Link
-              to="/projects/new"
+              to="/login"
+              state={loginRequiredState("/projects/new")}
               className="bg-white border border-gray-300 text-black px-6 py-3 rounded-lg font-medium hover:bg-gray-50 hover:scale-105 transition-transform"
             >
               프로젝트 등록
@@ -435,7 +449,8 @@ export default function Home() {
 
         <div className="text-center mt-12">
           <Link
-            to="/feed"
+            to="/login"
+            state={loginRequiredState("/feed")}
             className="inline-flex items-center gap-2 bg-[#00C9A7] text-black px-8 py-4 rounded-lg font-medium hover:bg-[#00A88C] hover:scale-105 transition-all"
           >
             더 많은 작품 보기
