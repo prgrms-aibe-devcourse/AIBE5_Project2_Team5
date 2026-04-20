@@ -2,6 +2,8 @@ package com.example.pixel_project2.common.repository;
 
 import com.example.pixel_project2.common.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
 
@@ -9,7 +11,9 @@ import java.util.Optional;
 public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByLoginId(String loginId);
 
-    boolean existsByLoginId(String loginId);
+    @Query("select count(u.id) from User u where u.loginId = :loginId")
+    long countByLoginId(@Param("loginId") String loginId);
 
-    boolean existsByNickname(String nickname);
+    @Query("select count(u.id) from User u where u.nickname = :nickname")
+    long countByNickname(@Param("nickname") String nickname);
 }
