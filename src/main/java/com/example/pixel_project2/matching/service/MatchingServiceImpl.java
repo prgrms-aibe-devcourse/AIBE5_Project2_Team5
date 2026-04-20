@@ -18,8 +18,84 @@ public class MatchingServiceImpl implements MatchingService {
     @Override
     public List<ProjectListItemResponse> getProjects() {
         return List.of(
-                new ProjectListItemResponse(101L, "UI_UX", "OPEN", "핀테크 서비스 UX 디자이너 모집"),
-                new ProjectListItemResponse(102L, "GRAPHIC_DESIGN", "CLOSED", "브랜드 리뉴얼 그래픽 디자이너 모집")
+                new ProjectListItemResponse(
+                        1L,
+                        "핀테크 모바일 앱 UI/UX 고도화 프로젝트",
+                        "기존 금융 서비스의 사용자 경험을 개선할 UI/UX 디자이너를 찾고 있습니다.",
+                        "대시보드 UI 개선, 다크 모드 지원, 접근성 기준 반영까지 포함된 모바일 앱 UX 고도화 프로젝트입니다.",
+                        "UI/UX",
+                        List.of("Figma", "Prototyping", "User Research"),
+                        "1,200만 ~ 1,800만 원",
+                        "2026-04-20",
+                        "https://images.unsplash.com/photo-1772272935464-2e90d8218987?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
+                        "단기",
+                        "3년 이상"
+                ),
+                new ProjectListItemResponse(
+                        2L,
+                        "글로벌 SaaS 브랜딩 리뉴얼",
+                        "B2B SaaS 브랜드 아이덴티티를 글로벌 시장에 맞게 리뉴얼합니다.",
+                        "로고, 컬러 시스템, 타이포그래피, 브랜드 가이드라인까지 포함하는 브랜딩 프로젝트입니다.",
+                        "브랜딩",
+                        List.of("Brand Identity", "Illustrator", "Typography"),
+                        "800만 ~ 1,200만 원",
+                        "2026-05-10",
+                        "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
+                        "단기",
+                        "5년 이상"
+                ),
+                new ProjectListItemResponse(
+                        3L,
+                        "제품 글로벌 런칭 3D 모션 영상 제작",
+                        "신제품 런칭 캠페인을 위한 3D 모션 그래픽 영상을 제작합니다.",
+                        "Cinema 4D와 After Effects 기반으로 4K 모션 그래픽 영상을 제작하는 프로젝트입니다.",
+                        "모션/영상",
+                        List.of("Cinema 4D", "After Effects", "3D Modeling"),
+                        "1,500만 ~ 2,500만 원",
+                        "2026-06-30",
+                        "https://images.unsplash.com/photo-1740174459691-5b93c2fa0592?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
+                        "중기",
+                        "5년 이상"
+                ),
+                new ProjectListItemResponse(
+                        4L,
+                        "이커머스 메인 배너 일러스트 시리즈",
+                        "시즌 캠페인용 감성 일러스트 배너 시리즈를 제작합니다.",
+                        "메인 배너 12종과 모바일 변형 시안을 포함한 일러스트 중심 캠페인 프로젝트입니다.",
+                        "일러스트",
+                        List.of("Illustration", "Procreate", "Adobe Fresco"),
+                        "500만 ~ 700만 원",
+                        "2026-04-22",
+                        "https://images.unsplash.com/photo-1618004912476-29818d81ae2e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
+                        "단기",
+                        "신입 가능"
+                ),
+                new ProjectListItemResponse(
+                        5L,
+                        "엔터프라이즈 대시보드 UI 컴포넌트 라이브러리",
+                        "복잡한 데이터 시각화를 지원하는 디자인 시스템을 구축합니다.",
+                        "Figma와 Storybook 기반으로 대시보드용 디자인 시스템과 컴포넌트 라이브러리를 정리합니다.",
+                        "UI/UX",
+                        List.of("Design System", "Figma", "Storybook"),
+                        "2,000만 ~ 3,000만 원",
+                        "2026-05-25",
+                        "https://images.unsplash.com/photo-1551288049-bebda4e38f71?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
+                        "장기",
+                        "5년 이상"
+                ),
+                new ProjectListItemResponse(
+                        6L,
+                        "패션 브랜드 룩북 포토그래피 리터칭",
+                        "시즌 룩북 촬영과 리터칭 작업을 진행할 포토그래퍼를 찾고 있습니다.",
+                        "스튜디오 촬영, 라이트룸 보정, 고급 리터칭까지 포함된 룩북 프로젝트입니다.",
+                        "포토그래피",
+                        List.of("Photography", "Lightroom", "Retouching"),
+                        "400만 ~ 600만 원",
+                        "2026-05-05",
+                        "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
+                        "단기",
+                        "3년 이상"
+                )
         );
     }
 

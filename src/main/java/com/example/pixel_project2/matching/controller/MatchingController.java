@@ -19,6 +19,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/projects")
 @RequiredArgsConstructor
+@CrossOrigin(origins = "http://localhost:5173")
 public class MatchingController {
     private final MatchingService matchingService;
 
@@ -76,4 +77,5 @@ public class MatchingController {
     public ApiResponse<List<ProjectApplicationItemResponse>> getProjectApplications(@PathVariable Long postId) {
         return ApiResponse.ok("지원서 목록을 조회했습니다.", matchingService.getProjectApplications(postId));
     }
+
 }
