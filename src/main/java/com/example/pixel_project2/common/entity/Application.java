@@ -5,6 +5,7 @@ import lombok.*;
 
 import java.time.LocalDateTime;
 
+// Project에 지원하는 양식
 @Entity
 @Table(name = "applications")
 @Getter
@@ -16,7 +17,7 @@ public class Application {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "application_id")
-    private Long id;
+    private Long application_id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
@@ -30,18 +31,18 @@ public class Application {
     @JoinColumn(name = "post_id", nullable = false)
     private Post post;
 
-    @Column(name = "cover_letter", columnDefinition = "TEXT")
-    private String coverLetter;
+    @Column(name = "cover_letter", columnDefinition = "CLOB")
+    private String coverLetter; // 지원 메시지
 
-    @Column(columnDefinition = "TEXT")
-    private String summary;
+    @Column(columnDefinition = "CLOB")
+    private String summary; // 관련 경험 요약
 
     @Column(name = "expected_budget")
-    private Integer expectedBudget;
+    private Integer expectedBudget; // 희망하는 착수금
 
     @Column(name = "portfolio_url", length = 100)
     private String portfolioUrl;
 
     @Column(name = "start_date")
-    private LocalDateTime startDate;
+    private LocalDateTime startDate; // 시작 가능일
 }

@@ -14,7 +14,7 @@ import lombok.*;
 public class Client {
     @Id
     @Column(name = "user_id")
-    private Long userId;
+    private Long user_id;
 
     @OneToOne(fetch = FetchType.LAZY)
     @MapsId

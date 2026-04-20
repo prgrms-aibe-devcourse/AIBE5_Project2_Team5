@@ -1,6 +1,5 @@
 package com.example.pixel_project2.common.entity;
 
-import com.example.pixel_project2.common.entity.enums.Provider;
 import com.example.pixel_project2.common.entity.enums.UserRole;
 import jakarta.persistence.*;
 import lombok.*;
@@ -16,13 +15,13 @@ import lombok.*;
 public class User extends BaseTimeEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "user_id")
-    private Long id;
+    @Column(name = "id") // column에선 id로 표시되지만 우리가 작업하는 공간에선 user_id로 표시
+    private Long user_id;
 
-    @Column(name = "login_id", nullable = false, length = 30, unique = true)
-    private String loginId;
+    @Column(name = "email", nullable = false, length = 30, unique = true)
+    private String email;
 
-    @Column(nullable = false)
+    @Column(name = "password", nullable = false)
     private String password;
 
     @Column(name = "nickname", nullable = false, length = 10)
@@ -32,17 +31,9 @@ public class User extends BaseTimeEntity {
     private String profileImage;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(name = "role", nullable = false)
     private UserRole role;
 
-    @Builder.Default
-    @Column(name = "follow_count")
-    private Integer followCount = 0;
-
-    @Column(length = 255)
+    @Column(name = "url", length = 255)
     private String url;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private Provider provider;
 }
