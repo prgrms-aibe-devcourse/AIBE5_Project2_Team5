@@ -45,6 +45,7 @@ dist/
 out/
 .env
 *.local
+*.log
 .DS_Store
 Thumbs.db
 

@@ -1,14 +1,16 @@
-import { Link, useLocation } from "react-router";
-import { Bell } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router";
+import { Bell, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { motion, LayoutGroup } from "motion/react";
 import {
   hasUnreadNotifications,
   subscribeNotificationState,
 } from "../utils/notificationState";
+import { clearAuthenticated } from "../utils/auth";
 
 export default function Navigation() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [hasUnread, setHasUnread] = useState(hasUnreadNotifications);
   const [scrolled, setScrolled] = useState(false);
 
@@ -21,6 +23,11 @@ export default function Navigation() {
   ];
 
   const isActive = (path: string) => location.pathname.startsWith(path);
+
+  const handleLogout = () => {
+    clearAuthenticated();
+    navigate("/", { replace: true });
+  };
 
   useEffect(() => {
     const refreshUnreadState = () => setHasUnread(hasUnreadNotifications());
@@ -95,6 +102,14 @@ export default function Navigation() {
 
           {/* 우: 액션 */}
           <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="hidden h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-gray-600 transition-colors hover:border-[#FF5C3A]/40 hover:bg-[#FFF7F4] hover:text-[#FF5C3A] md:flex"
+            >
+              <LogOut className="size-4" />
+              로그아웃
+            </button>
             <Link
               to="/notifications"
               className="relative size-10 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500 hover:text-[#0F0F0F]"
