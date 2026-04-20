@@ -5,6 +5,7 @@ public record LoginResponse(
         String refreshToken,
         Long userId,
         String loginId,
+        String name,
         String nickname,
         String role,
         String profileImage
