@@ -13,13 +13,14 @@ import lombok.*;
 public class Collection {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "collection_id")
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "folder_id")
+    @JoinColumn(name = "folder_id", nullable = false)
     private CollectionFolder folder;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "post_id")
+    @JoinColumn(name = "post_id", nullable = false)
     private Post post;
 }

@@ -1,10 +1,14 @@
 package com.example.pixel_project2.common.entity.enums;
 
 import lombok.AllArgsConstructor;
+import lombok.Getter;
 
+@Getter
 @AllArgsConstructor
 public enum WorkStatus {
-    AVAILABLE("작업가능"), UNAVAILABLE("의뢰 불가"), CONSULTATION_REQUIRED("문의 필요");
+    AVAILABLE("Available"),
+    UNAVAILABLE("Unavailable"),
+    CONSULTATION_AVAILABLE("Consultation Available");
 
-    private final String name;
+    private final String label;
 }

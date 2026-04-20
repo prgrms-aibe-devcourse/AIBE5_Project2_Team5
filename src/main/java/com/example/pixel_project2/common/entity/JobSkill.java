@@ -4,24 +4,22 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "praises")
+@Table(name = "job_skills")
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class Praise extends BaseTimeEntity {
+public class JobSkill {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "jobskill_id")
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "from_user_id")
-    private User fromUser;
+    @JoinColumn(name = "post_id", nullable = false)
+    private Project project;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "to_user_id")
-    private User toUser;
-
-    private String praiseType; // ENUM 처리 가능 (Fast, Quality, Kind 등)
+    @Column(name = "skill_name", nullable = false, length = 100)
+    private String skillName;
 }

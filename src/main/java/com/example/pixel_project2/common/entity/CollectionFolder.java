@@ -5,6 +5,7 @@ import lombok.*;
 
 @Entity
 @Table(name = "collection_folders")
+@AttributeOverride(name = "createdAt", column = @Column(name = "created_collect", nullable = false, updatable = false))
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -13,12 +14,13 @@ import lombok.*;
 public class CollectionFolder extends BaseTimeEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "folder_id")
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id")
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(nullable = false, length = 100)
+    @Column(name = "folder_name", nullable = false, length = 100)
     private String folderName;
 }
