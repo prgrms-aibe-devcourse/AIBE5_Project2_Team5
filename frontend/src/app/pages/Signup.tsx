@@ -1,9 +1,10 @@
 import { ArrowRight, Building2, CheckCircle, Lock, Mail, Palette, User, X } from "lucide-react";
-import { Link, Navigate, useNavigate } from "react-router";
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
-import { signupApi } from "../api/authApi";
+import kakaoTalkLogo from "../assets/kakao-talk-logo.png";
+import { getGoogleOAuthUrl, getKakaoOAuthUrl, signupApi } from "../api/authApi";
 import { isAuthenticated, setAuthenticated, setAuthTokens, setCurrentUser, type UserRole } from "../utils/auth";
 
 const showcaseItems = [
@@ -36,6 +37,7 @@ const stepVariants = {
 
 const NAME_MIN_LENGTH = 2;
 const NAME_MAX_LENGTH = 30;
+const EMAIL_MAX_LENGTH = 30;
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_LENGTH = 20;
 
@@ -48,6 +50,10 @@ type SignupErrors = {
   confirmPassword?: string;
   terms?: string;
   form?: string;
+};
+
+type SignupLocationState = {
+  message?: string;
 };
 
 const isPasswordInRange = (password: string) =>
@@ -76,8 +82,16 @@ function Logo({ className = "" }: { className?: string }) {
 
 export default function Signup() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const openedSocialSignupRef = useRef(false);
+  const locationState = location.state as SignupLocationState | null;
+  const socialSignupPrompt = typeof locationState?.message === "string" ? locationState.message : "";
   const [activeShowcaseIndex, setActiveShowcaseIndex] = useState(0);
   const [pendingSocialProvider, setPendingSocialProvider] = useState<"Google" | "카카오" | null>(null);
+  const [socialNickname, setSocialNickname] = useState("");
+  const [socialEmail, setSocialEmail] = useState("");
+  const [socialSignupError, setSocialSignupError] = useState("");
   const [signupErrors, setSignupErrors] = useState<SignupErrors>({});
   const [isPasswordConfirmed, setIsPasswordConfirmed] = useState(false);
   const [agreedTerms, setAgreedTerms] = useState(false);
@@ -97,6 +111,22 @@ export default function Signup() {
 
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (openedSocialSignupRef.current) {
+      return;
+    }
+    if (searchParams.get("social") !== "kakao" || searchParams.get("mode") !== "signup") {
+      return;
+    }
+
+    openedSocialSignupRef.current = true;
+    setSignupErrors({});
+    setSocialNickname(formData.nickname.trim());
+    setSocialEmail(formData.email.trim());
+    setSocialSignupError("");
+    setPendingSocialProvider("카카오");
+  }, [formData.email, formData.nickname, searchParams]);
 
   if (isAuthenticated()) {
     return <Navigate to="/feed" replace />;
@@ -238,18 +268,52 @@ export default function Signup() {
   };
 
   const startSocialSignup = (provider: "Google" | "카카오") => {
+    setSignupErrors({});
+    setSocialNickname(formData.nickname.trim());
+    setSocialEmail(formData.email.trim());
+    setSocialSignupError("");
     setPendingSocialProvider(provider);
   };
 
   const completeSocialSignup = (role: UserRole) => {
-    setCurrentUser({
-      name: role === "designer" ? "소셜 디자이너" : "소셜 클라이언트",
-      nickname: role === "designer" ? "소셜 디자이너" : "소셜 클라이언트",
-      email: `${pendingSocialProvider === "Google" ? "google" : "kakao"}@pickxel.local`,
-      role,
+    if (!pendingSocialProvider) {
+      return;
+    }
+
+    const nickname = socialNickname.trim();
+    if (!nickname) {
+      setSocialSignupError("닉네임을 입력해주세요.");
+      return;
+    }
+    if (nickname.length > 10) {
+      setSocialSignupError("닉네임은 10자 이하로 입력해주세요.");
+      return;
+    }
+
+    const email = socialEmail.trim();
+    if (pendingSocialProvider === "카카오") {
+      if (!email) {
+        setSocialSignupError("카카오 회원가입에 사용할 이메일을 입력해주세요.");
+        return;
+      }
+      if (email.length > EMAIL_MAX_LENGTH) {
+        setSocialSignupError("이메일은 30자 이하로 입력해주세요.");
+        return;
+      }
+      if (!isEmailValid(email)) {
+        setSocialSignupError("이메일에 @를 포함해서 입력해주세요.");
+        return;
+      }
+    }
+
+    const oauthUrl = pendingSocialProvider === "카카오" ? getKakaoOAuthUrl : getGoogleOAuthUrl;
+    window.location.href = oauthUrl({
+      mode: "signup",
+      role: role.toUpperCase() as "CLIENT" | "DESIGNER",
+      nickname,
+      email: pendingSocialProvider === "카카오" ? email : undefined,
+      redirectTo: "/feed",
     });
-    setAuthenticated(true);
-    navigate("/feed", { replace: true });
   };
 
   const hasName = formData.name.trim().length > 0;
@@ -483,6 +547,7 @@ export default function Signup() {
                         name="email"
                         value={formData.email}
                         onChange={handleChange}
+                        maxLength={EMAIL_MAX_LENGTH}
                         aria-invalid={Boolean(signupErrors.email)}
                         aria-describedby={signupErrors.email ? "signup-email-error" : undefined}
                         className={`h-12 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
@@ -751,9 +816,7 @@ export default function Signup() {
                 onClick={() => startSocialSignup("카카오")}
                 className="flex h-12 items-center justify-center gap-3 rounded-lg bg-[#FEE500] px-4 transition-colors hover:bg-[#FDD835]"
               >
-                <svg className="h-5 w-5" viewBox="0 0 24 24">
-                  <path fill="#000000" d="M3.0273 10.9441c0 3.9802 2.4648 7.3789 6.7383 7.3789 2.2148 0 3.6953-0.8789 4.8281-2.1367l-1.9688-1.5234c-0.5859 0.7031-1.4297 1.2891-2.8594 1.2891-1.8398 0-3.1406-1.1367-3.5156-2.7539h8.6133c0.0703-0.293 0.1172-0.6328 0.1172-1.0078 0-3.5508-2.332-7.3789-6.457-7.3789-3.8516 0-6.5508 3.4219-6.5508 7.1328zm3.2227-1.2891c0.2461-1.8164 1.4648-2.8711 3.3281-2.8711 1.7109 0 2.9063 1.0078 3.0938 2.8711z"/>
-                </svg>
+                <img src={kakaoTalkLogo} alt="" className="h-6 w-6 rounded-[6px]" />
                 <span className="font-medium text-gray-900">카카오</span>
               </button>
             </div>
@@ -765,13 +828,21 @@ export default function Signup() {
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-2xl">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <p className="mb-1 text-sm font-semibold text-[#00A88C]">
-                  {pendingSocialProvider} 인증 완료
+                <p className="mb-1 flex items-center gap-2 text-sm font-semibold text-[#00A88C]">
+                  {pendingSocialProvider === "카카오" && (
+                    <img src={kakaoTalkLogo} alt="" className="h-5 w-5 rounded-[5px]" />
+                  )}
+                  {pendingSocialProvider} 회원가입
                 </p>
                 <h2 className="text-2xl font-bold">역할을 선택해주세요</h2>
                 <p className="mt-2 text-sm text-gray-600">
-                  이 선택에 따라 프로필에 디자이너 또는 클라이언트 배지가 표시됩니다.
+                  최초 소셜 가입 시 선택한 역할이 저장됩니다. 기존 계정이면 저장된 역할로 로그인됩니다.
                 </p>
+                {socialSignupPrompt && (
+                  <p className="mt-3 rounded-lg bg-[#FFF7F4] px-3 py-2 text-sm font-medium text-[#C2412D]">
+                    {socialSignupPrompt}
+                  </p>
+                )}
               </div>
               <button
                 type="button"
@@ -781,6 +852,62 @@ export default function Signup() {
               >
                 <X className="size-5" />
               </button>
+            </div>
+
+            <div className="mb-5">
+              <label htmlFor="social-nickname" className="mb-2 block text-sm font-medium text-gray-700">
+                닉네임
+              </label>
+              <div className="relative">
+                <User className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                <input
+                  id="social-nickname"
+                  type="text"
+                  maxLength={10}
+                  value={socialNickname}
+                  onChange={(event) => {
+                    setSocialNickname(event.target.value);
+                    setSocialSignupError("");
+                  }}
+                  className={`h-11 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                    socialSignupError ? "border-[#FF5C3A]" : "border-gray-200"
+                  }`}
+                  placeholder="10자 이하"
+                />
+              </div>
+              <p className="mt-2 text-xs text-gray-500">
+                {pendingSocialProvider === "카카오"
+                  ? "이름은 카카오 프로필에서 가져오고, 이메일은 pickxel 계정용으로 직접 입력합니다."
+                  : "이름과 이메일은 소셜 계정 정보로 가져옵니다."}
+              </p>
+              {pendingSocialProvider === "카카오" && (
+                <div className="mt-4">
+                  <label htmlFor="social-email" className="mb-2 block text-sm font-medium text-gray-700">
+                    이메일
+                  </label>
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                    <input
+                      id="social-email"
+                      type="email"
+                      maxLength={EMAIL_MAX_LENGTH}
+                      value={socialEmail}
+                      onChange={(event) => {
+                        setSocialEmail(event.target.value);
+                        setSocialSignupError("");
+                      }}
+                      className={`h-11 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                        socialSignupError ? "border-[#FF5C3A]" : "border-gray-200"
+                      }`}
+                      placeholder="your@email.com"
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-gray-500">이메일에 @를 포함해서 입력해주세요.</p>
+                </div>
+              )}
+              {socialSignupError && (
+                <p className="mt-2 text-xs font-medium text-[#FF5C3A]">{socialSignupError}</p>
+              )}
             </div>
 
             <div className="grid gap-3">
