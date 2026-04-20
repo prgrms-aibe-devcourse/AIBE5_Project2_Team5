@@ -197,7 +197,8 @@ export default function Profile() {
     currentUserRole === "client"
       ? {
           ...profileData,
-          name: currentUser?.name || profileData.name,
+          name: currentUser?.nickname || currentUser?.name || profileData.name,
+          realName: currentUser?.name,
           roleType: "client",
           title: "클라이언트 · 프로젝트 의뢰자",
           badges: ["#클라이언트", "#프로젝트의뢰", "#브랜드협업", "#크리에이티브"],
@@ -206,7 +207,8 @@ export default function Profile() {
         }
       : {
           ...profileData,
-          name: currentUser?.name || profileData.name,
+          name: currentUser?.nickname || currentUser?.name || profileData.name,
+          realName: currentUser?.name,
           roleType: "designer",
         };
   const displayProfile = isKimMinjae
@@ -483,6 +485,11 @@ export default function Profile() {
                     {profileRoleLabel}
                   </span>
                 </div>
+                {"realName" in displayProfile &&
+                  displayProfile.realName &&
+                  displayProfile.realName !== displayProfile.name && (
+                    <p className="mb-2 text-sm font-medium text-gray-500">{displayProfile.realName}</p>
+                  )}
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-yellow-500">★ {displayProfile.rating}</span>
                 </div>
