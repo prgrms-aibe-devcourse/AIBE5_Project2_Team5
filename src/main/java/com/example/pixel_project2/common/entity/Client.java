@@ -13,6 +13,7 @@ import lombok.*;
 @Builder
 public class Client {
     @Id
+    @Column(name = "user_id")
     private Long userId;
 
     @OneToOne(fetch = FetchType.LAZY)
@@ -21,7 +22,9 @@ public class Client {
     private User user;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "client_type")
     private ClientType clientType;
 
+    @Column(name = "company_name", length = 50)
     private String companyName;
 }

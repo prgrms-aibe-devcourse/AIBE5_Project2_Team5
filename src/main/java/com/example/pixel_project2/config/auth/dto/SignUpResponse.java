@@ -4,10 +4,6 @@ public record SignUpResponse(
         Long userId,
         String loginId,
         String nickname,
-        String role //프론트에서 클라, 디자이너 구분 가능
-
-
+        String role //프론트에서 클라이언트, 디자이너 구분 가능
 ) {
-
-
 }
