@@ -3,7 +3,8 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
-import { loginApi, resetPasswordApi } from "../api/authApi";
+import kakaoTalkLogo from "../assets/kakao-talk-logo.png";
+import { getGoogleOAuthUrl, getKakaoOAuthUrl, loginApi, requestPasswordResetEmailApi } from "../api/authApi";
 import { isAuthenticated, setAuthenticated, setAuthTokens, setCurrentUser, type UserRole } from "../utils/auth";
 
 const floatingPixels = [
@@ -72,10 +73,6 @@ type LoginErrors = {
 
 type PasswordResetErrors = {
   loginId?: string;
-  name?: string;
-  nickname?: string;
-  newPassword?: string;
-  confirmPassword?: string;
   form?: string;
 };
 
@@ -86,10 +83,6 @@ type LoginLocationState = {
 
 const emptyPasswordResetForm = {
   loginId: "",
-  name: "",
-  nickname: "",
-  newPassword: "",
-  confirmPassword: "",
 };
 
 type PasswordResetField = keyof typeof emptyPasswordResetForm;
@@ -185,27 +178,11 @@ export default function Login() {
 
     const nextErrors: PasswordResetErrors = {};
     const loginId = passwordResetForm.loginId.trim();
-    const name = passwordResetForm.name.trim();
-    const nickname = passwordResetForm.nickname.trim();
 
     if (!loginId) {
       nextErrors.loginId = "이메일을 입력해주세요.";
     } else if (!isEmailValid(loginId)) {
       nextErrors.loginId = "이메일에는 @를 포함해서 입력해주세요.";
-    }
-    if (name.length < 2 || name.length > 30) {
-      nextErrors.name = "이름은 2자 이상 30자 이하로 입력해주세요.";
-    }
-    if (!nickname || nickname.length > 10) {
-      nextErrors.nickname = "닉네임은 1자 이상 10자 이하로 입력해주세요.";
-    }
-    if (passwordResetForm.newPassword.length < 8 || passwordResetForm.newPassword.length > 20) {
-      nextErrors.newPassword = "새 비밀번호는 8자 이상 20자 이하로 입력해주세요.";
-    }
-    if (!passwordResetForm.confirmPassword) {
-      nextErrors.confirmPassword = "새 비밀번호 확인을 입력해주세요.";
-    } else if (passwordResetForm.newPassword !== passwordResetForm.confirmPassword) {
-      nextErrors.confirmPassword = "새 비밀번호와 확인 비밀번호가 일치하지 않습니다.";
     }
 
     if (Object.keys(nextErrors).length > 0) {
@@ -215,23 +192,17 @@ export default function Login() {
 
     try {
       setIsPasswordResetSubmitting(true);
-      const result = await resetPasswordApi({
-        loginId,
-        name,
-        nickname,
-        newPassword: passwordResetForm.newPassword,
-        confirmPassword: passwordResetForm.confirmPassword,
-      });
-      setEmail(result.loginId);
+      const result = await requestPasswordResetEmailApi(loginId);
+      setEmail(loginId);
       setPassword("");
       setPasswordResetForm({
         ...emptyPasswordResetForm,
-        loginId: result.loginId,
+        loginId,
       });
-      setPasswordResetSuccess("비밀번호가 변경됐습니다. 새 비밀번호로 로그인해주세요.");
+      setPasswordResetSuccess(result.message);
     } catch (error) {
       setPasswordResetErrors({
-        form: error instanceof Error ? error.message : "비밀번호 재설정에 실패했습니다.",
+        form: error instanceof Error ? error.message : "비밀번호 재설정 메일 전송에 실패했습니다.",
       });
     } finally {
       setIsPasswordResetSubmitting(false);
@@ -239,18 +210,21 @@ export default function Login() {
   };
 
   const startSocialLogin = (provider: "Google" | "카카오") => {
+    setLoginErrors({});
     setPendingSocialProvider(provider);
   };
 
   const completeSocialLogin = (role: UserRole) => {
-    setCurrentUser({
-      name: role === "designer" ? "소셜 디자이너" : "소셜 클라이언트",
-      nickname: role === "designer" ? "소셜 디자이너" : "소셜 클라이언트",
-      email: `${pendingSocialProvider === "Google" ? "google" : "kakao"}@pickxel.local`,
-      role,
+    if (!pendingSocialProvider) {
+      return;
+    }
+
+    const oauthUrl = pendingSocialProvider === "카카오" ? getKakaoOAuthUrl : getGoogleOAuthUrl;
+    window.location.href = oauthUrl({
+      mode: "login",
+      role: role.toUpperCase() as "CLIENT" | "DESIGNER",
+      redirectTo,
     });
-    setAuthenticated(true);
-    navigate(redirectTo, { replace: true });
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -501,9 +475,7 @@ export default function Login() {
                 onClick={() => startSocialLogin("카카오")}
                 className="flex h-12 w-full items-center justify-center gap-3 rounded-lg bg-[#FEE500] px-4 transition-colors hover:bg-[#FDD835]"
               >
-                <svg className="h-5 w-5" viewBox="0 0 24 24">
-                  <path fill="#000000" d="M3.0273 10.9441c0 3.9802 2.4648 7.3789 6.7383 7.3789 2.2148 0 3.6953-0.8789 4.8281-2.1367l-1.9688-1.5234c-0.5859 0.7031-1.4297 1.2891-2.8594 1.2891-1.8398 0-3.1406-1.1367-3.5156-2.7539h8.6133c0.0703-0.293 0.1172-0.6328 0.1172-1.0078 0-3.5508-2.332-7.3789-6.457-7.3789-3.8516 0-6.5508 3.4219-6.5508 7.1328zm3.2227-1.2891c0.2461-1.8164 1.4648-2.8711 3.3281-2.8711 1.7109 0 2.9063 1.0078 3.0938 2.8711z"/>
-                </svg>
+                <img src={kakaoTalkLogo} alt="" className="h-6 w-6 rounded-[6px]" />
                 <span className="font-medium text-gray-900">카카오로 계속하기</span>
               </button>
             </div>
@@ -524,9 +496,9 @@ export default function Login() {
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <p className="mb-1 text-sm font-semibold text-[#00A88C]">비밀번호 재설정</p>
-                <h2 className="text-2xl font-bold">계정 정보를 확인해주세요</h2>
+                <h2 className="text-2xl font-bold">가입 이메일을 입력해주세요</h2>
                 <p className="mt-2 text-sm text-gray-600">
-                  가입한 이메일, 이름, 닉네임이 일치하면 새 비밀번호로 변경됩니다.
+                  가입한 이메일로 비밀번호 재설정 링크를 보내드립니다.
                 </p>
               </div>
               <button
@@ -568,90 +540,6 @@ export default function Login() {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label htmlFor="reset-name" className="mb-2 block text-sm font-medium text-gray-700">
-                    이름
-                  </label>
-                  <input
-                    id="reset-name"
-                    type="text"
-                    value={passwordResetForm.name}
-                    onChange={(e) => handlePasswordResetFieldChange("name", e.target.value)}
-                    className={`h-11 w-full rounded-lg border bg-white px-4 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
-                      passwordResetErrors.name ? "border-[#FF5C3A]" : "border-gray-200"
-                    }`}
-                    placeholder="이름"
-                  />
-                  {passwordResetErrors.name && (
-                    <p className="mt-2 text-xs font-medium text-[#FF5C3A]">{passwordResetErrors.name}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="reset-nickname" className="mb-2 block text-sm font-medium text-gray-700">
-                    닉네임
-                  </label>
-                  <input
-                    id="reset-nickname"
-                    type="text"
-                    value={passwordResetForm.nickname}
-                    onChange={(e) => handlePasswordResetFieldChange("nickname", e.target.value)}
-                    className={`h-11 w-full rounded-lg border bg-white px-4 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
-                      passwordResetErrors.nickname ? "border-[#FF5C3A]" : "border-gray-200"
-                    }`}
-                    placeholder="닉네임"
-                  />
-                  {passwordResetErrors.nickname && (
-                    <p className="mt-2 text-xs font-medium text-[#FF5C3A]">{passwordResetErrors.nickname}</p>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="reset-new-password" className="mb-2 block text-sm font-medium text-gray-700">
-                  새 비밀번호
-                </label>
-                <div className="relative">
-                  <Lock className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
-                  <input
-                    id="reset-new-password"
-                    type="password"
-                    value={passwordResetForm.newPassword}
-                    onChange={(e) => handlePasswordResetFieldChange("newPassword", e.target.value)}
-                    className={`h-11 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
-                      passwordResetErrors.newPassword ? "border-[#FF5C3A]" : "border-gray-200"
-                    }`}
-                    placeholder="8자 이상 20자 이하"
-                  />
-                </div>
-                {passwordResetErrors.newPassword && (
-                  <p className="mt-2 text-xs font-medium text-[#FF5C3A]">{passwordResetErrors.newPassword}</p>
-                )}
-              </div>
-
-              <div>
-                <label htmlFor="reset-confirm-password" className="mb-2 block text-sm font-medium text-gray-700">
-                  새 비밀번호 확인
-                </label>
-                <div className="relative">
-                  <Lock className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
-                  <input
-                    id="reset-confirm-password"
-                    type="password"
-                    value={passwordResetForm.confirmPassword}
-                    onChange={(e) => handlePasswordResetFieldChange("confirmPassword", e.target.value)}
-                    className={`h-11 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
-                      passwordResetErrors.confirmPassword ? "border-[#FF5C3A]" : "border-gray-200"
-                    }`}
-                    placeholder="새 비밀번호를 한 번 더 입력"
-                  />
-                </div>
-                {passwordResetErrors.confirmPassword && (
-                  <p className="mt-2 text-xs font-medium text-[#FF5C3A]">{passwordResetErrors.confirmPassword}</p>
-                )}
-              </div>
-
               {passwordResetErrors.form && (
                 <p className="rounded-lg bg-[#FFF7F4] px-4 py-3 text-sm font-medium text-[#FF5C3A]">
                   {passwordResetErrors.form}
@@ -671,7 +559,7 @@ export default function Login() {
                   disabled={isPasswordResetSubmitting}
                   className="h-11 flex-1 rounded-lg bg-[#00C9A7] text-sm font-semibold text-[#0F0F0F] transition-colors hover:bg-[#00A88C] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isPasswordResetSubmitting ? "변경 중..." : "비밀번호 변경"}
+                  {isPasswordResetSubmitting ? "전송 중..." : "재설정 메일 받기"}
                 </button>
               </div>
             </form>
@@ -684,12 +572,15 @@ export default function Login() {
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-2xl">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <p className="mb-1 text-sm font-semibold text-[#00A88C]">
-                  {pendingSocialProvider} 인증 완료
+                <p className="mb-1 flex items-center gap-2 text-sm font-semibold text-[#00A88C]">
+                  {pendingSocialProvider === "카카오" && (
+                    <img src={kakaoTalkLogo} alt="" className="h-5 w-5 rounded-[5px]" />
+                  )}
+                  {pendingSocialProvider} 로그인
                 </p>
                 <h2 className="text-2xl font-bold">어떤 역할로 시작할까요?</h2>
                 <p className="mt-2 text-sm text-gray-600">
-                  선택한 역할은 프로필 배지와 주요 화면 권한에 반영됩니다.
+                  최초 소셜 가입 시 선택한 역할이 저장됩니다. 기존 계정이면 저장된 역할로 로그인됩니다.
                 </p>
               </div>
               <button

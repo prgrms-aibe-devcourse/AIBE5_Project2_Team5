@@ -12,6 +12,8 @@ import CreateProject from "./pages/CreateProject";
 import ProjectDetail from "./pages/ProjectDetail";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import OAuth2Redirect from "./pages/OAuth2Redirect";
+import PasswordReset from "./pages/PasswordReset";
 import ReviewWrite from "./pages/ReviewWrite";
 import { isAuthenticated } from "./utils/auth";
 
@@ -50,6 +52,14 @@ export const router = createBrowserRouter([
   {
     path: "/signup",
     Component: Signup,
+  },
+  {
+    path: "/oauth2/redirect",
+    Component: OAuth2Redirect,
+  },
+  {
+    path: "/password-reset",
+    Component: PasswordReset,
   },
   {
     path: "/feed",
