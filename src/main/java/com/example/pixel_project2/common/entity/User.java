@@ -14,7 +14,12 @@ import lombok.*;
 @Builder
 public class User extends BaseTimeEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @SequenceGenerator(
+            name = "user_seq_generator",
+            sequenceName = "USER_SEQ",
+            allocationSize = 1
+    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "user_seq_generator")
     private Long id;
 
     @Column(nullable = false, length = 30, unique = true)
@@ -22,6 +27,9 @@ public class User extends BaseTimeEntity {
 
     @Column(nullable = false)
     private String password;
+
+    @Column(nullable = false, length = 30)
+    private String name;
 
     @Column(nullable = false, length = 10)
     private String nickname;
