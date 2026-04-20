@@ -13,14 +13,16 @@ import lombok.*;
 public class PostImage {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "image_id")
+    private Long image_id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "post_id")
+    @JoinColumn(name = "post_id", nullable = false)
     private Post post;
 
-    @Column(nullable = false)
+    @Column(name = "image_url", nullable = false, length = 255)
     private String imageUrl;
 
+    @Column(name = "sort_order")
     private Integer sortOrder;
 }

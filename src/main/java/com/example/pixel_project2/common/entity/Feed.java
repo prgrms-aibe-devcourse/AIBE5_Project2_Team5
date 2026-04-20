@@ -1,31 +1,28 @@
 package com.example.pixel_project2.common.entity;
 
-import com.example.pixel_project2.common.entity.enums.JobPostState;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDateTime;
-
 @Entity
-@Table(name = "job_posts")
+@Table(name = "feeds")
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class JobPost {
+public class Feed {
     @Id
-    private Long postId;
+    @Column(name = "post_id")
+    private Long post_id;
 
     @OneToOne(fetch = FetchType.LAZY)
     @MapsId
     @JoinColumn(name = "post_id")
     private Post post;
 
-    private Integer budget;
+    @Column(columnDefinition = "CLOB")
+    private String description;
 
-    @Enumerated(EnumType.STRING)
-    private JobPostState state;
-
-    private LocalDateTime deadline;
+    @Column(name = "portfolio_url", length = 200)
+    private String portfolioUrl;
 }
