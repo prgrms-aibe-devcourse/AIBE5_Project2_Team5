@@ -1,9 +1,11 @@
 import { ArrowRight, Building2, CheckCircle, Lock, Mail, Palette, User, X } from "lucide-react";
-import { Link, Navigate, useNavigate } from "react-router";
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
-import { isAuthenticated, setAuthenticated, setCurrentUser, type UserRole } from "../utils/auth";
+import kakaoTalkLogo from "../assets/kakao-talk-logo.png";
+import { getGoogleOAuthUrl, getKakaoOAuthUrl, signupApi } from "../api/authApi";
+import { isAuthenticated, setAuthenticated, setAuthTokens, setCurrentUser, type UserRole } from "../utils/auth";
 
 const showcaseItems = [
   {
@@ -33,6 +35,35 @@ const stepVariants = {
   exit: { opacity: 0, y: -10, height: 0 },
 };
 
+const NAME_MIN_LENGTH = 2;
+const NAME_MAX_LENGTH = 30;
+const EMAIL_MAX_LENGTH = 30;
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 20;
+
+type SignupErrors = {
+  name?: string;
+  nickname?: string;
+  email?: string;
+  role?: string;
+  password?: string;
+  confirmPassword?: string;
+  terms?: string;
+  form?: string;
+};
+
+type SignupLocationState = {
+  message?: string;
+};
+
+const isPasswordInRange = (password: string) =>
+  password.length >= PASSWORD_MIN_LENGTH && password.length <= PASSWORD_MAX_LENGTH;
+const isNameInRange = (name: string) => {
+  const length = name.trim().length;
+  return length >= NAME_MIN_LENGTH && length <= NAME_MAX_LENGTH;
+};
+const isEmailValid = (email: string) => /^\S+@\S+$/.test(email.trim());
+
 function Logo({ className = "" }: { className?: string }) {
   return (
     <Link to="/" className={`flex items-center gap-2 ${className}`}>
@@ -51,10 +82,22 @@ function Logo({ className = "" }: { className?: string }) {
 
 export default function Signup() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const openedSocialSignupRef = useRef(false);
+  const locationState = location.state as SignupLocationState | null;
+  const socialSignupPrompt = typeof locationState?.message === "string" ? locationState.message : "";
   const [activeShowcaseIndex, setActiveShowcaseIndex] = useState(0);
   const [pendingSocialProvider, setPendingSocialProvider] = useState<"Google" | "카카오" | null>(null);
+  const [socialNickname, setSocialNickname] = useState("");
+  const [socialEmail, setSocialEmail] = useState("");
+  const [socialSignupError, setSocialSignupError] = useState("");
+  const [signupErrors, setSignupErrors] = useState<SignupErrors>({});
+  const [isPasswordConfirmed, setIsPasswordConfirmed] = useState(false);
+  const [agreedTerms, setAgreedTerms] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
+    nickname: "",
     email: "",
     password: "",
     confirmPassword: "",
@@ -69,60 +112,222 @@ export default function Signup() {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (openedSocialSignupRef.current) {
+      return;
+    }
+    if (searchParams.get("social") !== "kakao" || searchParams.get("mode") !== "signup") {
+      return;
+    }
+
+    openedSocialSignupRef.current = true;
+    setSignupErrors({});
+    setSocialNickname(formData.nickname.trim());
+    setSocialEmail(formData.email.trim());
+    setSocialSignupError("");
+    setPendingSocialProvider("카카오");
+  }, [formData.email, formData.nickname, searchParams]);
+
   if (isAuthenticated()) {
     return <Navigate to="/feed" replace />;
   }
 
-  const handleSignup = (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.password !== formData.confirmPassword) {
-      alert("비밀번호가 일치하지 않습니다.");
-      return;
+
+    const nextErrors: SignupErrors = {};
+    if (!formData.name.trim()) {
+      nextErrors.name = "이름을 입력해주세요.";
+    } else if (!isNameInRange(formData.name)) {
+      nextErrors.name = "이름은 2자 이상 30자 이하로 입력해주세요.";
+    }
+    if (!formData.nickname.trim()) {
+      nextErrors.nickname = "닉네임을 입력해주세요.";
+    }
+    if (!formData.email.trim()) {
+      nextErrors.email = "이메일을 입력해주세요.";
+    } else if (!isEmailValid(formData.email)) {
+      nextErrors.email = "이메일에는 @를 포함해서 입력해주세요.";
     }
     if (!formData.role) {
-      alert("역할을 선택해주세요.");
+      nextErrors.role = "역할을 선택해주세요.";
+    }
+    if (!formData.password) {
+      nextErrors.password = "비밀번호를 입력해주세요.";
+    } else if (!isPasswordInRange(formData.password)) {
+      nextErrors.password = "비밀번호는 8자 이상 20자 이하로 입력해주세요.";
+    }
+    if (!formData.confirmPassword) {
+      nextErrors.confirmPassword = "비밀번호를 한 번 더 입력해주세요.";
+    } else if (formData.password !== formData.confirmPassword) {
+      nextErrors.confirmPassword = "비밀번호가 일치하지 않습니다.";
+    } else if (!isPasswordConfirmed) {
+      nextErrors.confirmPassword = "비밀번호 확인 버튼을 눌러주세요.";
+    }
+    if (!agreedTerms) {
+      nextErrors.terms = "이용약관과 개인정보처리방침에 동의해주세요.";
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setSignupErrors(nextErrors);
       return;
     }
 
     const selectedRole = formData.role as UserRole;
-    setCurrentUser({
-      name: formData.name.trim(),
-      email: formData.email.trim(),
-      role: selectedRole,
-    });
-    setAuthenticated(true);
-    navigate("/feed", { replace: true });
+    try {
+      const user = await signupApi({
+        loginId: formData.email.trim(),
+        password: formData.password,
+        name: formData.name.trim(),
+        nickname: formData.nickname.trim(),
+        role: selectedRole.toUpperCase() as "CLIENT" | "DESIGNER",
+      });
+
+      setAuthTokens(user.accessToken, user.refreshToken, true);
+      setCurrentUser({
+        name: user.name,
+        nickname: user.nickname,
+        email: user.loginId,
+        role: user.role.toLowerCase() as UserRole,
+      });
+      setAuthenticated(true);
+      navigate("/feed", { replace: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "회원가입에 실패했습니다.";
+      const apiErrors: SignupErrors = {};
+      if (message.includes("아이디") || message.includes("이메일")) {
+        apiErrors.email = message;
+      } else if (message.includes("닉네임")) {
+        apiErrors.nickname = message;
+      } else if (message.includes("비밀번호")) {
+        apiErrors.password = message;
+      } else {
+        apiErrors.form = message;
+      }
+      setSignupErrors(apiErrors);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+    const fieldName = e.target.name as keyof typeof formData;
+    setFormData((current) => ({
+      ...current,
+      [fieldName]: e.target.value,
+    }));
+    setSignupErrors((errors) => ({ ...errors, [fieldName]: undefined, form: undefined }));
+
+    if (fieldName === "password" || fieldName === "confirmPassword") {
+      setIsPasswordConfirmed(false);
+    }
+  };
+
+  const handleRoleChange = (role: string) => {
+    setFormData((current) => ({ ...current, role }));
+    setSignupErrors((errors) => ({ ...errors, role: undefined, form: undefined }));
+  };
+
+  const handleTermsChange = (checked: boolean) => {
+    setAgreedTerms(checked);
+    setSignupErrors((errors) => ({ ...errors, terms: undefined, form: undefined }));
+  };
+
+  const handleConfirmPassword = () => {
+    if (!formData.confirmPassword) {
+      setIsPasswordConfirmed(false);
+      setSignupErrors((errors) => ({
+        ...errors,
+        confirmPassword: "비밀번호를 한 번 더 입력해주세요.",
+        form: undefined,
+      }));
+      return;
+    }
+
+    if (!isPasswordInRange(formData.password)) {
+      setIsPasswordConfirmed(false);
+      setSignupErrors((errors) => ({
+        ...errors,
+        password: "비밀번호는 8자 이상 20자 이하로 입력해주세요.",
+        confirmPassword: "먼저 비밀번호 규칙을 확인해주세요.",
+        form: undefined,
+      }));
+      return;
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      setIsPasswordConfirmed(false);
+      setSignupErrors((errors) => ({
+        ...errors,
+        confirmPassword: "비밀번호가 일치하지 않습니다.",
+        form: undefined,
+      }));
+      return;
+    }
+
+    setIsPasswordConfirmed(true);
+    setSignupErrors((errors) => ({ ...errors, confirmPassword: undefined, form: undefined }));
   };
 
   const startSocialSignup = (provider: "Google" | "카카오") => {
+    setSignupErrors({});
+    setSocialNickname(formData.nickname.trim());
+    setSocialEmail(formData.email.trim());
+    setSocialSignupError("");
     setPendingSocialProvider(provider);
   };
 
   const completeSocialSignup = (role: UserRole) => {
-    setCurrentUser({
-      name: role === "designer" ? "소셜 디자이너" : "소셜 클라이언트",
-      email: `${pendingSocialProvider === "Google" ? "google" : "kakao"}@pickxel.local`,
-      role,
+    if (!pendingSocialProvider) {
+      return;
+    }
+
+    const nickname = socialNickname.trim();
+    if (!nickname) {
+      setSocialSignupError("닉네임을 입력해주세요.");
+      return;
+    }
+    if (nickname.length > 10) {
+      setSocialSignupError("닉네임은 10자 이하로 입력해주세요.");
+      return;
+    }
+
+    const email = socialEmail.trim();
+    if (pendingSocialProvider === "카카오") {
+      if (!email) {
+        setSocialSignupError("카카오 회원가입에 사용할 이메일을 입력해주세요.");
+        return;
+      }
+      if (email.length > EMAIL_MAX_LENGTH) {
+        setSocialSignupError("이메일은 30자 이하로 입력해주세요.");
+        return;
+      }
+      if (!isEmailValid(email)) {
+        setSocialSignupError("이메일에 @를 포함해서 입력해주세요.");
+        return;
+      }
+    }
+
+    const oauthUrl = pendingSocialProvider === "카카오" ? getKakaoOAuthUrl : getGoogleOAuthUrl;
+    window.location.href = oauthUrl({
+      mode: "signup",
+      role: role.toUpperCase() as "CLIENT" | "DESIGNER",
+      nickname,
+      email: pendingSocialProvider === "카카오" ? email : undefined,
+      redirectTo: "/feed",
     });
-    setAuthenticated(true);
-    navigate("/feed", { replace: true });
   };
 
   const hasName = formData.name.trim().length > 0;
+  const hasNickname = formData.nickname.trim().length > 0;
   const hasEmail = formData.email.trim().length > 0;
   const hasRole = formData.role !== "";
   const hasPassword = formData.password.length > 0;
   const hasConfirmPassword = formData.confirmPassword.length > 0;
+  const isNameLengthValid = isNameInRange(formData.name);
+  const isPasswordLengthValid = isPasswordInRange(formData.password);
   const activeStep =
     1 +
     Number(hasName) +
+    Number(hasNickname) +
     Number(hasEmail) +
     Number(hasRole) +
     Number(hasPassword);
@@ -248,7 +453,7 @@ export default function Signup() {
             transition={{ duration: 0.6, delay: 0.32 }}
             className="rounded-lg border border-gray-200 bg-white/95 p-8 shadow-2xl backdrop-blur-md"
           >
-            <form onSubmit={handleSignup} className="space-y-5">
+            <form onSubmit={handleSignup} noValidate className="space-y-5">
               <div>
                 <label htmlFor="name" className="mb-2 block text-sm font-medium text-gray-700">
                   먼저 이름을 알려주세요
@@ -261,15 +466,67 @@ export default function Signup() {
                     name="name"
                     value={formData.name}
                     onChange={handleChange}
-                    className="h-12 w-full rounded-lg border border-gray-200 bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10"
+                    maxLength={NAME_MAX_LENGTH}
+                    aria-invalid={Boolean(signupErrors.name)}
+                    aria-describedby={signupErrors.name ? "signup-name-error" : undefined}
+                    className={`h-12 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                      signupErrors.name ? "border-[#FF5C3A]" : "border-gray-200"
+                    }`}
                     placeholder="홍길동"
-                    required
                   />
                 </div>
+                <div className="mt-2 rounded-lg bg-[#F7F7F5] px-3 py-2 text-xs text-gray-600">
+                  <p className={hasName && isNameLengthValid ? "font-medium text-[#00A88C]" : ""}>
+                    이름은 2자 이상 30자 이하로 입력해주세요.
+                  </p>
+                </div>
+                {signupErrors.name && (
+                  <p id="signup-name-error" className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                    {signupErrors.name}
+                  </p>
+                )}
               </div>
 
               <AnimatePresence initial={false}>
                 {hasName && (
+                  <motion.div
+                    key="nickname-step"
+                    variants={stepVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    transition={{ duration: 0.35, ease: "easeOut" }}
+                    className="overflow-hidden"
+                  >
+                    <label htmlFor="nickname" className="mb-2 block text-sm font-medium text-gray-700">
+                      프로필에 보일 닉네임을 정해주세요
+                    </label>
+                    <div className="relative">
+                      <User className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        id="nickname"
+                        name="nickname"
+                        value={formData.nickname}
+                        onChange={handleChange}
+                        maxLength={10}
+                        aria-invalid={Boolean(signupErrors.nickname)}
+                        aria-describedby={signupErrors.nickname ? "signup-nickname-error" : undefined}
+                        className={`h-12 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                          signupErrors.nickname ? "border-[#FF5C3A]" : "border-gray-200"
+                        }`}
+                        placeholder="닉네임"
+                      />
+                    </div>
+                    {signupErrors.nickname && (
+                      <p id="signup-nickname-error" className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                        {signupErrors.nickname}
+                      </p>
+                    )}
+                  </motion.div>
+                )}
+
+                {hasName && hasNickname && (
                   <motion.div
                     key="email-step"
                     variants={stepVariants}
@@ -290,15 +547,29 @@ export default function Signup() {
                         name="email"
                         value={formData.email}
                         onChange={handleChange}
-                        className="h-12 w-full rounded-lg border border-gray-200 bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10"
+                        maxLength={EMAIL_MAX_LENGTH}
+                        aria-invalid={Boolean(signupErrors.email)}
+                        aria-describedby={signupErrors.email ? "signup-email-error" : undefined}
+                        className={`h-12 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                          signupErrors.email ? "border-[#FF5C3A]" : "border-gray-200"
+                        }`}
                         placeholder="your@email.com"
-                        required
                       />
                     </div>
+                    {signupErrors.email && (
+                      <p id="signup-email-error" className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                        {signupErrors.email}
+                      </p>
+                    )}
+                    {!signupErrors.email && (
+                      <p className="mt-2 text-xs text-gray-500">
+                        이메일에는 @를 포함해서 입력해주세요.
+                      </p>
+                    )}
                   </motion.div>
                 )}
 
-                {hasName && hasEmail && (
+                {hasName && hasNickname && hasEmail && (
                   <motion.div
                     key="role-step"
                     variants={stepVariants}
@@ -333,7 +604,7 @@ export default function Signup() {
                             type="button"
                             whileHover={{ y: -2 }}
                             whileTap={{ scale: 0.98 }}
-                            onClick={() => setFormData({ ...formData, role: role.id })}
+                            onClick={() => handleRoleChange(role.id)}
                             className={`rounded-lg border p-4 text-left transition-all ${
                               isSelected
                                 ? "border-[#00C9A7] bg-[#A8F0E4]/20 shadow-lg shadow-[#00C9A7]/10"
@@ -352,10 +623,15 @@ export default function Signup() {
                         );
                       })}
                     </div>
+                    {signupErrors.role && (
+                      <p className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                        {signupErrors.role}
+                      </p>
+                    )}
                   </motion.div>
                 )}
 
-                {hasName && hasEmail && hasRole && (
+                {hasName && hasNickname && hasEmail && hasRole && (
                   <motion.div
                     key="password-step"
                     variants={stepVariants}
@@ -376,15 +652,29 @@ export default function Signup() {
                         name="password"
                         value={formData.password}
                         onChange={handleChange}
-                        className="h-12 w-full rounded-lg border border-gray-200 bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10"
+                        maxLength={PASSWORD_MAX_LENGTH}
+                        aria-invalid={Boolean(signupErrors.password)}
+                        aria-describedby="signup-password-rule signup-password-error"
+                        className={`h-12 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                          signupErrors.password ? "border-[#FF5C3A]" : "border-gray-200"
+                        }`}
                         placeholder="비밀번호"
-                        required
                       />
                     </div>
+                    <div id="signup-password-rule" className="mt-2 rounded-lg bg-[#F7F7F5] px-3 py-2 text-xs text-gray-600">
+                      <p className={hasPassword && isPasswordLengthValid ? "font-medium text-[#00A88C]" : ""}>
+                        비밀번호는 8자 이상 20자 이하로 입력해주세요.
+                      </p>
+                    </div>
+                    {signupErrors.password && (
+                      <p id="signup-password-error" className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                        {signupErrors.password}
+                      </p>
+                    )}
                   </motion.div>
                 )}
 
-                {hasName && hasEmail && hasRole && hasPassword && (
+                {hasName && hasNickname && hasEmail && hasRole && hasPassword && (
                   <motion.div
                     key="confirm-password-step"
                     variants={stepVariants}
@@ -397,23 +687,46 @@ export default function Signup() {
                     <label htmlFor="confirmPassword" className="mb-2 block text-sm font-medium text-gray-700">
                       한 번 더 확인할게요
                     </label>
-                    <div className="relative">
-                      <Lock className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
-                      <input
-                        type="password"
-                        id="confirmPassword"
-                        name="confirmPassword"
-                        value={formData.confirmPassword}
-                        onChange={handleChange}
-                        className="h-12 w-full rounded-lg border border-gray-200 bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10"
-                        placeholder="한 번 더 입력"
-                        required
-                      />
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Lock className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="password"
+                          id="confirmPassword"
+                          name="confirmPassword"
+                          value={formData.confirmPassword}
+                          onChange={handleChange}
+                          maxLength={PASSWORD_MAX_LENGTH}
+                          aria-invalid={Boolean(signupErrors.confirmPassword)}
+                          aria-describedby={signupErrors.confirmPassword ? "signup-confirm-password-error" : undefined}
+                          className={`h-12 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                            signupErrors.confirmPassword ? "border-[#FF5C3A]" : "border-gray-200"
+                          }`}
+                          placeholder="한 번 더 입력"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleConfirmPassword}
+                        className="h-12 shrink-0 rounded-lg border border-[#00C9A7] px-4 text-sm font-semibold text-[#007C69] transition-colors hover:bg-[#E8FFF9]"
+                      >
+                        확인
+                      </button>
                     </div>
+                    {signupErrors.confirmPassword && (
+                      <p id="signup-confirm-password-error" className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                        {signupErrors.confirmPassword}
+                      </p>
+                    )}
+                    {isPasswordConfirmed && !signupErrors.confirmPassword && (
+                      <p className="mt-2 text-xs font-medium text-[#00A88C]">
+                        비밀번호가 일치합니다.
+                      </p>
+                    )}
                   </motion.div>
                 )}
 
-                {hasName && hasEmail && hasRole && hasPassword && hasConfirmPassword && (
+                {hasName && hasNickname && hasEmail && hasRole && hasPassword && hasConfirmPassword && (
                   <motion.div
                     key="submit-step"
                     variants={stepVariants}
@@ -423,13 +736,25 @@ export default function Signup() {
                     transition={{ duration: 0.35, ease: "easeOut" }}
                     className="space-y-5 overflow-hidden"
                   >
+                    <div>
                     <label className="flex items-start gap-2">
-                      <input type="checkbox" className="mt-1 h-4 w-4 rounded border-gray-300 text-[#00C9A7] focus:ring-[#00C9A7]" required />
+                      <input
+                        type="checkbox"
+                        checked={agreedTerms}
+                        onChange={(event) => handleTermsChange(event.target.checked)}
+                        className="mt-1 h-4 w-4 rounded border-gray-300 text-[#00C9A7] focus:ring-[#00C9A7]"
+                      />
                       <span className="text-sm text-gray-600">
                         <a href="#" className="text-[#00A88C] hover:underline">이용약관</a> 및{" "}
                         <a href="#" className="text-[#00A88C] hover:underline">개인정보처리방침</a>에 동의합니다.
                       </span>
                     </label>
+                    {signupErrors.terms && (
+                      <p className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                        {signupErrors.terms}
+                      </p>
+                    )}
+                    </div>
 
                     <motion.button
                       type="submit"
@@ -440,6 +765,11 @@ export default function Signup() {
                       회원가입
                       <ArrowRight className="size-5" />
                     </motion.button>
+                    {signupErrors.form && (
+                      <p className="text-xs font-medium text-[#FF5C3A]">
+                        {signupErrors.form}
+                      </p>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -486,9 +816,7 @@ export default function Signup() {
                 onClick={() => startSocialSignup("카카오")}
                 className="flex h-12 items-center justify-center gap-3 rounded-lg bg-[#FEE500] px-4 transition-colors hover:bg-[#FDD835]"
               >
-                <svg className="h-5 w-5" viewBox="0 0 24 24">
-                  <path fill="#000000" d="M3.0273 10.9441c0 3.9802 2.4648 7.3789 6.7383 7.3789 2.2148 0 3.6953-0.8789 4.8281-2.1367l-1.9688-1.5234c-0.5859 0.7031-1.4297 1.2891-2.8594 1.2891-1.8398 0-3.1406-1.1367-3.5156-2.7539h8.6133c0.0703-0.293 0.1172-0.6328 0.1172-1.0078 0-3.5508-2.332-7.3789-6.457-7.3789-3.8516 0-6.5508 3.4219-6.5508 7.1328zm3.2227-1.2891c0.2461-1.8164 1.4648-2.8711 3.3281-2.8711 1.7109 0 2.9063 1.0078 3.0938 2.8711z"/>
-                </svg>
+                <img src={kakaoTalkLogo} alt="" className="h-6 w-6 rounded-[6px]" />
                 <span className="font-medium text-gray-900">카카오</span>
               </button>
             </div>
@@ -500,13 +828,21 @@ export default function Signup() {
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-2xl">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <p className="mb-1 text-sm font-semibold text-[#00A88C]">
-                  {pendingSocialProvider} 인증 완료
+                <p className="mb-1 flex items-center gap-2 text-sm font-semibold text-[#00A88C]">
+                  {pendingSocialProvider === "카카오" && (
+                    <img src={kakaoTalkLogo} alt="" className="h-5 w-5 rounded-[5px]" />
+                  )}
+                  {pendingSocialProvider} 회원가입
                 </p>
                 <h2 className="text-2xl font-bold">역할을 선택해주세요</h2>
                 <p className="mt-2 text-sm text-gray-600">
-                  이 선택에 따라 프로필에 디자이너 또는 클라이언트 배지가 표시됩니다.
+                  최초 소셜 가입 시 선택한 역할이 저장됩니다. 기존 계정이면 저장된 역할로 로그인됩니다.
                 </p>
+                {socialSignupPrompt && (
+                  <p className="mt-3 rounded-lg bg-[#FFF7F4] px-3 py-2 text-sm font-medium text-[#C2412D]">
+                    {socialSignupPrompt}
+                  </p>
+                )}
               </div>
               <button
                 type="button"
@@ -516,6 +852,62 @@ export default function Signup() {
               >
                 <X className="size-5" />
               </button>
+            </div>
+
+            <div className="mb-5">
+              <label htmlFor="social-nickname" className="mb-2 block text-sm font-medium text-gray-700">
+                닉네임
+              </label>
+              <div className="relative">
+                <User className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                <input
+                  id="social-nickname"
+                  type="text"
+                  maxLength={10}
+                  value={socialNickname}
+                  onChange={(event) => {
+                    setSocialNickname(event.target.value);
+                    setSocialSignupError("");
+                  }}
+                  className={`h-11 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                    socialSignupError ? "border-[#FF5C3A]" : "border-gray-200"
+                  }`}
+                  placeholder="10자 이하"
+                />
+              </div>
+              <p className="mt-2 text-xs text-gray-500">
+                {pendingSocialProvider === "카카오"
+                  ? "이름은 카카오 프로필에서 가져오고, 이메일은 pickxel 계정용으로 직접 입력합니다."
+                  : "이름과 이메일은 소셜 계정 정보로 가져옵니다."}
+              </p>
+              {pendingSocialProvider === "카카오" && (
+                <div className="mt-4">
+                  <label htmlFor="social-email" className="mb-2 block text-sm font-medium text-gray-700">
+                    이메일
+                  </label>
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                    <input
+                      id="social-email"
+                      type="email"
+                      maxLength={EMAIL_MAX_LENGTH}
+                      value={socialEmail}
+                      onChange={(event) => {
+                        setSocialEmail(event.target.value);
+                        setSocialSignupError("");
+                      }}
+                      className={`h-11 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                        socialSignupError ? "border-[#FF5C3A]" : "border-gray-200"
+                      }`}
+                      placeholder="your@email.com"
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-gray-500">이메일에 @를 포함해서 입력해주세요.</p>
+                </div>
+              )}
+              {socialSignupError && (
+                <p className="mt-2 text-xs font-medium text-[#FF5C3A]">{socialSignupError}</p>
+              )}
             </div>
 
             <div className="grid gap-3">

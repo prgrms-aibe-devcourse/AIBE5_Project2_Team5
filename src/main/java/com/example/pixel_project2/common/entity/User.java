@@ -14,9 +14,13 @@ import lombok.*;
 @Builder
 public class User extends BaseTimeEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id") // column에선 id로 표시되지만 우리가 작업하는 공간에선 user_id로 표시
-    private Long user_id;
+    @SequenceGenerator(
+            name = "user_seq_generator",
+            sequenceName = "USER_SEQ",
+            allocationSize = 1
+    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "user_seq_generator")
+    private Long id;
 
     @Column(name = "email", nullable = false, length = 30, unique = true)
     private String email;
