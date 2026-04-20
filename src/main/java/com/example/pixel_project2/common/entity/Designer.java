@@ -20,19 +20,19 @@ public class Designer {
     @OneToOne(fetch = FetchType.LAZY)
     @MapsId
     @JoinColumn(name = "user_id")
-    private User user;
+    private User user; // user Table이 부모 Entity라는 증거
 
     @Column(length = 50)
-    private String job;
+    private String job; // 직업
 
-    @Column(columnDefinition = "TEXT")
-    private String introduction;
+    @Column(columnDefinition = "CLOB")
+    private String introduction; // 자기소개
 
-    private Float rating;
+    private Float rating; // 별점
 
     @Enumerated(EnumType.STRING)
     @Column(name = "work_status")
-    private WorkStatus workStatus;
+    private WorkStatus workStatus; // 작업 상태
 
     @Enumerated(EnumType.STRING)
     @Column(name = "work_type")

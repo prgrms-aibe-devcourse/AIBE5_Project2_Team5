@@ -15,7 +15,7 @@ public class CollectionFolder extends BaseTimeEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "folder_id")
-    private Long id;
+    private Long folder_id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)

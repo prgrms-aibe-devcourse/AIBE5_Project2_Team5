@@ -13,14 +13,14 @@ import lombok.*;
 public class Feed {
     @Id
     @Column(name = "post_id")
-    private Long id;
+    private Long post_id;
 
     @OneToOne(fetch = FetchType.LAZY)
     @MapsId
     @JoinColumn(name = "post_id")
     private Post post;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "CLOB")
     private String description;
 
     @Column(name = "portfolio_url", length = 200)

@@ -16,20 +16,20 @@ import lombok.*;
 public class Project {
     @Id
     @Column(name = "post_id")
-    private Long id;
+    private Long post_id;
 
     @OneToOne(fetch = FetchType.LAZY)
     @MapsId
     @JoinColumn(name = "post_id")
     private Post post;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "CLOB")
     private String overview;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "CLOB")
     private String responsibilities;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "CLOB")
     private String qualifications;
 
     private Integer budget;
