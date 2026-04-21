@@ -5,6 +5,7 @@ import lombok.*;
 
 @Entity
 @Table(name = "follows")
+@AttributeOverride(name = "createdAt", column = @Column(name = "created_follow", nullable = false, updatable = false))
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -13,13 +14,16 @@ import lombok.*;
 public class Follow extends BaseTimeEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @Column(name = "follow_id")
+    private Long follow_id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "follower_id")
-    private User follower;
+    @JoinColumn(name = "follower_id", nullable = false)
+    private User follower; // 팔로우하는 쪽 (클라이언트)
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "following_id")
-    private User following;
+    @JoinColumn(name = "following_id", nullable = false)
+    private User following; // 팔로우 당하는 사람 (디자이너)
+
+
 }

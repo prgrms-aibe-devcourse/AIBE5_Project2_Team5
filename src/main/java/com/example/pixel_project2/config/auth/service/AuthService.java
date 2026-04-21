@@ -2,7 +2,9 @@ package com.example.pixel_project2.config.auth.service;
 
 import com.example.pixel_project2.config.auth.dto.LoginRequest;
 import com.example.pixel_project2.config.auth.dto.LoginResponse;
-import com.example.pixel_project2.config.auth.dto.PasswordResetRequest;
+import com.example.pixel_project2.config.auth.dto.PasswordResetConfirmRequest;
+import com.example.pixel_project2.config.auth.dto.PasswordResetEmailRequest;
+import com.example.pixel_project2.config.auth.dto.PasswordResetEmailResponse;
 import com.example.pixel_project2.config.auth.dto.PasswordResetResponse;
 import com.example.pixel_project2.config.auth.dto.SignUpRequest;
 import com.example.pixel_project2.config.auth.dto.SignUpResponse;
@@ -12,5 +14,7 @@ public interface AuthService {
 
     SignUpResponse signUp(SignUpRequest request);
 
-    PasswordResetResponse resetPassword(PasswordResetRequest request);
+    PasswordResetEmailResponse sendPasswordResetEmail(PasswordResetEmailRequest request);
+
+    PasswordResetResponse resetPassword(PasswordResetConfirmRequest request);
 }
