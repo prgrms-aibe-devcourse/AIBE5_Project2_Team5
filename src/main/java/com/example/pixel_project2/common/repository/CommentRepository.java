@@ -7,10 +7,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface CommentRepository extends JpaRepository<Comment, Long> {
-    @Query("select count(c) from Comment c where c.post_id.id = :postId")
-    long countByPostId(@Param("postId") Long postId);
+    long countByPost_Id(Long postId);
+
+    default long countByPostId(Long postId) {
+        return countByPost_Id(postId);
+    }
 
     @Modifying
-    @Query("delete from Comment c where c.post_id.id = :postId")
+    @Query("delete from Comment c where c.post.id = :postId")
     void deleteByPostId(@Param("postId") Long postId);
 }
