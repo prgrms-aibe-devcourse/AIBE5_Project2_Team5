@@ -14,7 +14,12 @@ import lombok.*;
 // 매칭 페이지에서 클라이언트가 기술스택을 작성할 때, 분류
 public class JobSkill {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @SequenceGenerator(
+            name = "JobSkill_SEQ_generator",
+            sequenceName = "JOB_SKILL_SEQ",
+            allocationSize = 1
+    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "JobSkill_SEQ_generator")
     @Column(name = "jobskill_id")
     private Long jobskill_id;
 

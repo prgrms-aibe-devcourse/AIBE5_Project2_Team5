@@ -13,7 +13,12 @@ import lombok.*;
 @Builder
 public class Follow extends BaseTimeEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @SequenceGenerator(
+            name = "Follow_SEQ_generator",
+            sequenceName = "FOLLOW_SEQ",
+            allocationSize = 1
+    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "Follow_SEQ_generator")
     @Column(name = "follow_id")
     private Long follow_id;
 
