@@ -90,7 +90,7 @@ public class KakaoOAuth2LoginService {
         if (signupMode) {
             throw new IllegalArgumentException("이미 가입된 카카오 계정입니다. 로그인해주세요.");
         }
-        if (user.getProvider() == null || user.getProviderId().isBlank()) {
+        if (user.getProvider() == null || user.getProviderId() == null || user.getProviderId().isBlank()) {
             user.setProviderId(providerId);
         }
         return updateKakaoProfile(user, picture);

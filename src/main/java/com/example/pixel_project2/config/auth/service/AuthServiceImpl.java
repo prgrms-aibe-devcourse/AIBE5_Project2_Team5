@@ -6,6 +6,7 @@ import com.example.pixel_project2.common.entity.enums.UserRole;
 import com.example.pixel_project2.common.repository.UserRepository;
 import com.example.pixel_project2.config.auth.dto.LoginRequest;
 import com.example.pixel_project2.config.auth.dto.LoginResponse;
+import com.example.pixel_project2.config.auth.dto.NicknameCheckResponse;
 import com.example.pixel_project2.config.auth.dto.PasswordResetConfirmRequest;
 import com.example.pixel_project2.config.auth.dto.PasswordResetEmailRequest;
 import com.example.pixel_project2.config.auth.dto.PasswordResetEmailResponse;
@@ -73,7 +74,7 @@ public class AuthServiceImpl implements AuthService {
                 "",
                 user.getId(),
                 user.getLoginId(),
-                user.getNickname(),
+                user.getName(),
                 user.getNickname(),
                 user.getRole().name(),
                 user.getProfileImage()
@@ -95,7 +96,7 @@ public class AuthServiceImpl implements AuthService {
         User user = User.builder()
                 .loginId(request.loginId())
                 .password(passwordEncoder.encode(request.password()))
-                .nickname(request.name())
+                .name(request.name())
                 .nickname(request.nickname())
                 .role(role)
                 .provider(Provider.LOCAL)
@@ -111,6 +112,22 @@ public class AuthServiceImpl implements AuthService {
                 savedUser.getName(),
                 savedUser.getNickname(),
                 savedUser.getRole().name()
+        );
+    }
+
+    @Override
+    public NicknameCheckResponse checkNickname(String nickname) {
+        String normalizedNickname = nickname == null ? "" : nickname.trim();
+        if (normalizedNickname.isBlank()) {
+            throw new IllegalArgumentException("닉네임을 입력해주세요.");
+        }
+        if (normalizedNickname.length() > 10) {
+            throw new IllegalArgumentException("닉네임은 10자 이하로 입력해주세요.");
+        }
+
+        return new NicknameCheckResponse(
+                normalizedNickname,
+                userRepository.countByNickname(normalizedNickname) == 0
         );
     }
 

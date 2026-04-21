@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import kakaoTalkLogo from "../assets/kakao-talk-logo.png";
-import { getGoogleOAuthUrl, getKakaoOAuthUrl, signupApi } from "../api/authApi";
+import { checkNicknameAvailabilityApi, getGoogleOAuthUrl, getKakaoOAuthUrl, signupApi } from "../api/authApi";
 import { isAuthenticated, setAuthenticated, setAuthTokens, setCurrentUser, type UserRole } from "../utils/auth";
 
 const showcaseItems = [
@@ -92,6 +92,9 @@ export default function Signup() {
   const [socialNickname, setSocialNickname] = useState("");
   const [socialEmail, setSocialEmail] = useState("");
   const [socialSignupError, setSocialSignupError] = useState("");
+  const [socialNicknameCheckMessage, setSocialNicknameCheckMessage] = useState("");
+  const [checkedSocialNickname, setCheckedSocialNickname] = useState("");
+  const [isCheckingSocialNickname, setIsCheckingSocialNickname] = useState(false);
   const [signupErrors, setSignupErrors] = useState<SignupErrors>({});
   const [isPasswordConfirmed, setIsPasswordConfirmed] = useState(false);
   const [agreedTerms, setAgreedTerms] = useState(false);
@@ -125,6 +128,8 @@ export default function Signup() {
     setSocialNickname(formData.nickname.trim());
     setSocialEmail(formData.email.trim());
     setSocialSignupError("");
+    setSocialNicknameCheckMessage("");
+    setCheckedSocialNickname("");
     setPendingSocialProvider("카카오");
   }, [formData.email, formData.nickname, searchParams]);
 
@@ -272,7 +277,41 @@ export default function Signup() {
     setSocialNickname(formData.nickname.trim());
     setSocialEmail(formData.email.trim());
     setSocialSignupError("");
+    setSocialNicknameCheckMessage("");
+    setCheckedSocialNickname("");
     setPendingSocialProvider(provider);
+  };
+
+  const handleCheckSocialNickname = async () => {
+    const nickname = socialNickname.trim();
+    setSocialSignupError("");
+    setSocialNicknameCheckMessage("");
+    setCheckedSocialNickname("");
+
+    if (!nickname) {
+      setSocialSignupError("닉네임을 입력해주세요.");
+      return;
+    }
+    if (nickname.length > 10) {
+      setSocialSignupError("닉네임은 10자 이하로 입력해주세요.");
+      return;
+    }
+
+    try {
+      setIsCheckingSocialNickname(true);
+      const result = await checkNicknameAvailabilityApi(nickname);
+      if (!result.available) {
+        setSocialSignupError("이미 사용 중인 닉네임입니다.");
+        return;
+      }
+
+      setCheckedSocialNickname(result.nickname);
+      setSocialNicknameCheckMessage("사용 가능한 닉네임입니다.");
+    } catch (error) {
+      setSocialSignupError(error instanceof Error ? error.message : "닉네임 중복 확인에 실패했습니다.");
+    } finally {
+      setIsCheckingSocialNickname(false);
+    }
   };
 
   const completeSocialSignup = (role: UserRole) => {
@@ -287,6 +326,10 @@ export default function Signup() {
     }
     if (nickname.length > 10) {
       setSocialSignupError("닉네임은 10자 이하로 입력해주세요.");
+      return;
+    }
+    if (checkedSocialNickname !== nickname) {
+      setSocialSignupError("닉네임 중복 확인을 먼저 해주세요.");
       return;
     }
 
@@ -858,28 +901,43 @@ export default function Signup() {
               <label htmlFor="social-nickname" className="mb-2 block text-sm font-medium text-gray-700">
                 닉네임
               </label>
-              <div className="relative">
-                <User className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
-                <input
-                  id="social-nickname"
-                  type="text"
-                  maxLength={10}
-                  value={socialNickname}
-                  onChange={(event) => {
-                    setSocialNickname(event.target.value);
-                    setSocialSignupError("");
-                  }}
-                  className={`h-11 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
-                    socialSignupError ? "border-[#FF5C3A]" : "border-gray-200"
-                  }`}
-                  placeholder="10자 이하"
-                />
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <User className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                  <input
+                    id="social-nickname"
+                    type="text"
+                    maxLength={10}
+                    value={socialNickname}
+                    onChange={(event) => {
+                      setSocialNickname(event.target.value);
+                      setSocialSignupError("");
+                      setSocialNicknameCheckMessage("");
+                      setCheckedSocialNickname("");
+                    }}
+                    className={`h-11 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                      socialSignupError ? "border-[#FF5C3A]" : "border-gray-200"
+                    }`}
+                    placeholder="10자 이하"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCheckSocialNickname}
+                  disabled={isCheckingSocialNickname}
+                  className="h-11 shrink-0 rounded-lg border border-[#00C9A7] px-4 text-sm font-semibold text-[#007C69] transition-colors hover:bg-[#E8FFF9] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isCheckingSocialNickname ? "확인 중" : "중복 확인"}
+                </button>
               </div>
               <p className="mt-2 text-xs text-gray-500">
                 {pendingSocialProvider === "카카오"
                   ? "이름은 카카오 프로필에서 가져오고, 이메일은 pickxel 계정용으로 직접 입력합니다."
                   : "이름과 이메일은 소셜 계정 정보로 가져옵니다."}
               </p>
+              {socialNicknameCheckMessage && !socialSignupError && (
+                <p className="mt-2 text-xs font-medium text-[#00A88C]">{socialNicknameCheckMessage}</p>
+              )}
               {pendingSocialProvider === "카카오" && (
                 <div className="mt-4">
                   <label htmlFor="social-email" className="mb-2 block text-sm font-medium text-gray-700">
