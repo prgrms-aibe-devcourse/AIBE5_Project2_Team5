@@ -1,11 +1,22 @@
 import Navigation from "../components/Navigation";
 import Footer from "../components/Footer";
-import { Heart, MessageCircle, Bookmark, Calendar, MapPin, Star, ImagePlus, Upload, X, Figma, Sparkles, ExternalLink, CheckCircle } from "lucide-react";
+import { Heart, MessageCircle, Bookmark, Calendar, MapPin, Star, ImagePlus, Upload, X, Figma, Sparkles, ExternalLink, CheckCircle, Pencil, Trash2 } from "lucide-react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useParams, useNavigate, useSearchParams } from "react-router";
 import { useState, useEffect, useRef, type ChangeEvent } from "react";
-import { getCurrentUser, getCurrentUserRole } from "../utils/auth";
+import { getCurrentUser, getCurrentUserRole, setCurrentUser } from "../utils/auth";
 import { matchingCategories } from "../utils/matchingCategories";
+import {
+  getMyProfileApi,
+  getMyProfileFeedsApi,
+  getProfileApi,
+  getProfileFeedsApi,
+  updateMyDesignerProfileApi,
+  updateMyProfileApi,
+  type ProfileFeedResponse,
+  type ProfileResponse,
+} from "../api/profileApi";
+import { createFeedApi, deleteFeedApi, updateFeedApi } from "../api/feedApi";
 
 type FeedProjectAuthor = {
   name: string;
@@ -28,6 +39,7 @@ type FeedProject = {
   images?: string[];
   integrations?: FeedIntegration[];
   createdAt?: string;
+  persisted?: boolean;
 };
 
 type FeedIntegration = {
@@ -42,6 +54,68 @@ const getProfileTabFromParam = (tab: string | null): ProfileTab => {
   if (tab === "collection" || tab === "reviews") return tab;
   return "feed";
 };
+
+const formatProfileCount = (count?: number | null) => {
+  const safeCount = count ?? 0;
+  if (safeCount >= 1000) {
+    const value = safeCount / 1000;
+    return `${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1)}k`;
+  }
+  return String(safeCount);
+};
+
+const getProfileLookupKey = (username: string) => {
+  const normalizedUsername = username.trim();
+  if (!normalizedUsername || normalizedUsername.toLowerCase() === "me" || normalizedUsername === "jieun") {
+    return "me";
+  }
+  return normalizedUsername;
+};
+
+const buildProfileBadges = (profile: ProfileResponse, fallbackBadges: string[]) => {
+  const badges = [
+    profile.job,
+    profile.workType,
+    profile.workStatus,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => (value.startsWith("#") ? value : `#${value}`));
+
+  return badges.length > 0 ? badges : fallbackBadges;
+};
+
+const mapProfileFeedToProject = (
+  feed: ProfileFeedResponse,
+  profile: ProfileResponse,
+): FeedProject => ({
+  id: feed.postId,
+  title: feed.title,
+  description: feed.description ?? "",
+  likes: feed.pickCount ?? 0,
+  comments: feed.commentCount,
+  tags: feed.tags ?? [],
+  category: feed.category ?? undefined,
+  author: {
+    name: profile.nickname,
+    role: profile.job ?? profile.role,
+    avatar: profile.profileImage ?? "",
+    username: String(profile.userId),
+    roleType: profile.role.toLowerCase(),
+  },
+  imageUrl: feed.imageUrls.length <= 1 ? feed.thumbnailImageUrl ?? undefined : undefined,
+  images: feed.imageUrls.length > 1 ? feed.imageUrls : undefined,
+  integrations: feed.portfolioUrl
+    ? [
+        {
+          provider: "figma",
+          label: "Portfolio",
+          url: feed.portfolioUrl,
+        },
+      ]
+    : undefined,
+  createdAt: feed.createdAt ?? undefined,
+  persisted: true,
+});
 
 const profileData = {
   name: "이지은 (Ji-eun Lee)",
@@ -176,9 +250,25 @@ export default function Profile() {
   );
   const [allReviews, setAllReviews] = useState(reviews);
   const username = params.username ? decodeURIComponent(params.username) : profileData.name;
+  const profileLookupKey = getProfileLookupKey(username);
   const currentUser = getCurrentUser();
   const currentUserRole = getCurrentUserRole("designer");
   const profileFeedStorageKey = `pickxel:profile-feed:${username}`;
+  const [apiProfile, setApiProfile] = useState<ProfileResponse | null>(null);
+  const [apiFeedProjects, setApiFeedProjects] = useState<FeedProject[]>([]);
+  const [isProfileLoading, setIsProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState("");
+  const [hasLoadedProfileFeeds, setHasLoadedProfileFeeds] = useState(false);
+  const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileEditError, setProfileEditError] = useState("");
+  const [editName, setEditName] = useState("");
+  const [editNickname, setEditNickname] = useState("");
+  const [editUrl, setEditUrl] = useState("");
+  const [editJob, setEditJob] = useState("");
+  const [editIntroduction, setEditIntroduction] = useState("");
+  const [editWorkStatus, setEditWorkStatus] = useState("");
+  const [editWorkType, setEditWorkType] = useState("");
   const [uploadedProjects, setUploadedProjects] = useState<FeedProject[]>([]);
   const [isWorkComposerOpen, setIsWorkComposerOpen] = useState(false);
   const [workTitle, setWorkTitle] = useState("");
@@ -189,6 +279,13 @@ export default function Profile() {
   const [coverImageIndex, setCoverImageIndex] = useState(0);
   const [figmaUrl, setFigmaUrl] = useState("");
   const [adobeUrl, setAdobeUrl] = useState("");
+  const [editingFeed, setEditingFeed] = useState<FeedProject | null>(null);
+  const [editFeedTitle, setEditFeedTitle] = useState("");
+  const [editFeedDescription, setEditFeedDescription] = useState("");
+  const [editFeedCategory, setEditFeedCategory] = useState("");
+  const [editFeedPortfolioUrl, setEditFeedPortfolioUrl] = useState("");
+  const [isSavingFeedEdit, setIsSavingFeedEdit] = useState(false);
+  const [feedEditError, setFeedEditError] = useState("");
   const workImageInputRef = useRef<HTMLInputElement>(null);
   const isKimMinjae = username.includes("김민재");
   const isLeeSoyeon = username.includes("이소연");
@@ -211,7 +308,7 @@ export default function Profile() {
           realName: currentUser?.name,
           roleType: "designer",
         };
-  const displayProfile = isKimMinjae
+  const fallbackProfile = isKimMinjae
     ? {
         ...profileData,
         name: "김민재",
@@ -258,15 +355,159 @@ export default function Profile() {
               "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300",
           }
     : defaultProfile;
+  const displayProfile = apiProfile
+    ? {
+        ...fallbackProfile,
+        name: apiProfile.nickname,
+        realName: apiProfile.name ?? undefined,
+        roleType: apiProfile.role.toLowerCase(),
+        rating: apiProfile.rating ?? fallbackProfile.rating,
+        title: apiProfile.job || apiProfile.introduction || fallbackProfile.title,
+        followers: formatProfileCount(apiProfile.followerCount ?? apiProfile.followCount),
+        following: formatProfileCount(apiProfile.followingCount),
+        badges: buildProfileBadges(apiProfile, fallbackProfile.badges),
+        recentProject: apiProfile.introduction || fallbackProfile.recentProject,
+        avatar: apiProfile.profileImage || currentUser?.profileImage || fallbackProfile.avatar,
+        location: apiProfile.url || fallbackProfile.location,
+      }
+    : fallbackProfile;
   const isClientProfile = displayProfile.roleType === "client";
   const profileRoleLabel = isClientProfile ? "클라이언트" : "디자이너";
   const profileRoleBadgeClass = isClientProfile
     ? "border-[#FFB9AA] bg-[#FFF1ED] text-[#B13A21]"
     : "border-[#BDEFD8] bg-[#DDF8EC] text-[#007E68]";
+  const canEditProfile = Boolean(apiProfile?.owner || profileLookupKey === "me");
 
   const handleProfileTabChange = (tab: ProfileTab) => {
     setActiveTab(tab);
     setSearchParams(tab === "feed" ? {} : { tab });
+  };
+
+  useEffect(() => {
+    let ignore = false;
+    setIsProfileLoading(true);
+    setProfileError("");
+
+    const request = profileLookupKey === "me" ? getMyProfileApi() : getProfileApi(profileLookupKey);
+
+    request
+      .then((profile) => {
+        if (ignore) return;
+        setApiProfile(profile);
+      })
+      .catch((error) => {
+        if (ignore) return;
+        setApiProfile(null);
+        setProfileError(error instanceof Error ? error.message : "Failed to load profile.");
+      })
+      .finally(() => {
+        if (!ignore) {
+          setIsProfileLoading(false);
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [profileLookupKey]);
+
+  useEffect(() => {
+    if (!apiProfile) {
+      setApiFeedProjects([]);
+      setHasLoadedProfileFeeds(false);
+      return;
+    }
+
+    let ignore = false;
+    setHasLoadedProfileFeeds(false);
+    const request =
+      profileLookupKey === "me" ? getMyProfileFeedsApi() : getProfileFeedsApi(profileLookupKey);
+
+    request
+      .then((feeds) => {
+        if (ignore) return;
+        setApiFeedProjects(feeds.map((feed) => mapProfileFeedToProject(feed, apiProfile)));
+        setHasLoadedProfileFeeds(true);
+      })
+      .catch(() => {
+        if (ignore) return;
+        setApiFeedProjects([]);
+        setHasLoadedProfileFeeds(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [apiProfile, profileLookupKey]);
+
+  useEffect(() => {
+    if (!apiProfile) return;
+
+    setEditName(apiProfile.name ?? "");
+    setEditNickname(apiProfile.nickname);
+    setEditUrl(apiProfile.url ?? "");
+    setEditJob(apiProfile.job ?? "");
+    setEditIntroduction(apiProfile.introduction ?? "");
+    setEditWorkStatus(apiProfile.workStatus ?? "");
+    setEditWorkType(apiProfile.workType ?? "");
+  }, [apiProfile]);
+
+  const handleOpenProfileEditor = () => {
+    setProfileEditError("");
+    setEditName(apiProfile?.name ?? currentUser?.name ?? "");
+    setEditNickname(apiProfile?.nickname ?? currentUser?.nickname ?? "");
+    setEditUrl(apiProfile?.url ?? "");
+    setEditJob(apiProfile?.job ?? "");
+    setEditIntroduction(apiProfile?.introduction ?? "");
+    setEditWorkStatus(apiProfile?.workStatus ?? "");
+    setEditWorkType(apiProfile?.workType ?? "");
+    setIsProfileEditorOpen(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editName.trim()) {
+      setProfileEditError("이름을 입력해주세요.");
+      return;
+    }
+    if (!editNickname.trim()) {
+      setProfileEditError("닉네임을 입력해주세요.");
+      return;
+    }
+
+    setIsSavingProfile(true);
+    setProfileEditError("");
+
+    try {
+      let updatedProfile = await updateMyProfileApi({
+        name: editName.trim(),
+        nickname: editNickname.trim(),
+        url: editUrl.trim(),
+      });
+
+      if (updatedProfile.role === "DESIGNER") {
+        updatedProfile = await updateMyDesignerProfileApi({
+          job: editJob.trim(),
+          introduction: editIntroduction.trim(),
+          workStatus: editWorkStatus,
+          workType: editWorkType,
+        });
+      }
+
+      setApiProfile(updatedProfile);
+      setCurrentUser({
+        userId: updatedProfile.userId,
+        name: updatedProfile.name ?? editName.trim(),
+        nickname: updatedProfile.nickname,
+        email: updatedProfile.loginId,
+        role: updatedProfile.role.toLowerCase() as "designer" | "client",
+        profileImage: updatedProfile.profileImage,
+      });
+      setIsProfileEditorOpen(false);
+    } catch (error) {
+      setProfileEditError(error instanceof Error ? error.message : "프로필 수정에 실패했습니다.");
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   useEffect(() => {
@@ -383,17 +624,104 @@ export default function Profile() {
     });
   };
 
-  const handleUploadWork = () => {
+  const getProjectPortfolioUrl = (project: FeedProject) =>
+    project.integrations?.find((integration) => integration.url)?.url ?? "";
+
+  const openFeedEditor = (project: FeedProject) => {
+    setFeedEditError("");
+    setEditingFeed(project);
+    setEditFeedTitle(project.title);
+    setEditFeedDescription(project.description);
+    setEditFeedCategory(project.category ?? "");
+    setEditFeedPortfolioUrl(getProjectPortfolioUrl(project));
+  };
+
+  const closeFeedEditor = () => {
+    if (isSavingFeedEdit) return;
+    setEditingFeed(null);
+    setFeedEditError("");
+  };
+
+  const applyUpdatedFeedProject = (project: FeedProject) => {
+    setApiFeedProjects((current) =>
+      current.map((item) => (item.id === project.id ? project : item))
+    );
+    setUploadedProjects((current) =>
+      current.map((item) => (item.id === project.id ? project : item))
+    );
+  };
+
+  const removeDeletedFeedProject = (postId: number) => {
+    setApiFeedProjects((current) => current.filter((item) => item.id !== postId));
+    setUploadedProjects((current) => current.filter((item) => item.id !== postId));
+  };
+
+  const handleUpdateFeed = async () => {
+    if (!editingFeed) return;
+    if (!editFeedTitle.trim() || !editFeedDescription.trim() || !editFeedCategory) {
+      setFeedEditError("제목, 설명, 카테고리를 입력해주세요.");
+      return;
+    }
+
+    setIsSavingFeedEdit(true);
+    setFeedEditError("");
+
+    try {
+      const updatedFeed = await updateFeedApi(editingFeed.id, {
+        title: editFeedTitle.trim(),
+        description: editFeedDescription.trim(),
+        category: editFeedCategory,
+        portfolioUrl: editFeedPortfolioUrl.trim(),
+      });
+      const integrations = updatedFeed.portfolioUrl
+        ? [
+            {
+              provider: "figma" as const,
+              label: "Portfolio",
+              url: updatedFeed.portfolioUrl,
+            },
+          ]
+        : undefined;
+      const updatedProject: FeedProject = {
+        ...editingFeed,
+        title: updatedFeed.title,
+        description: updatedFeed.description,
+        likes: updatedFeed.pickCount ?? editingFeed.likes,
+        comments: updatedFeed.commentCount ?? editingFeed.comments,
+        category: updatedFeed.category,
+        tags: [`#${updatedFeed.category}`],
+        integrations,
+        createdAt: updatedFeed.createdAt ?? editingFeed.createdAt,
+        persisted: true,
+      };
+
+      applyUpdatedFeedProject(updatedProject);
+      setEditingFeed(null);
+    } catch (error) {
+      setFeedEditError(error instanceof Error ? error.message : "피드 수정에 실패했습니다.");
+    } finally {
+      setIsSavingFeedEdit(false);
+    }
+  };
+
+  const handleDeleteFeed = async (project: FeedProject) => {
+    if (!window.confirm("이 작업물을 삭제할까요?")) return;
+
+    try {
+      await deleteFeedApi(project.id);
+      removeDeletedFeedProject(project.id);
+      setProfileError("");
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : "피드 삭제에 실패했습니다.");
+    }
+  };
+
+  const handleUploadWork = async () => {
     const trimmedTitle = workTitle.trim();
     const trimmedDescription = workDescription.trim();
-    if (!trimmedTitle || !trimmedDescription || !workCategory || workImages.length === 0) return;
+    if (!trimmedTitle || !trimmedDescription || !workCategory) return;
 
     const tags = getWorkTagList(workTags);
-    const safeCoverIndex = Math.min(coverImageIndex, workImages.length - 1);
-    const orderedImages = [
-      workImages[safeCoverIndex],
-      ...workImages.filter((_, index) => index !== safeCoverIndex),
-    ].filter(Boolean);
     const integrations = [
       {
         provider: "figma" as const,
@@ -406,48 +734,60 @@ export default function Profile() {
         url: normalizeExternalUrl(adobeUrl),
       },
     ].filter((integration) => integration.url);
+    const portfolioUrl = integrations[0]?.url ?? "";
 
-    const newProject: FeedProject = {
-      id: Date.now(),
-      title: trimmedTitle,
-      description: trimmedDescription,
-      likes: 0,
-      comments: 0,
-      tags,
-      category: workCategory,
-      author: {
-        name: displayProfile.name,
-        role: displayProfile.title,
-        avatar: displayProfile.avatar,
-        username,
-        roleType: displayProfile.roleType,
-      },
-      imageUrl: orderedImages.length === 1 ? orderedImages[0] : undefined,
-      images: orderedImages.length > 1 ? orderedImages : undefined,
-      integrations,
-      createdAt: new Date().toISOString(),
-    };
+    try {
+      const createdFeed = await createFeedApi({
+        title: trimmedTitle,
+        description: trimmedDescription,
+        category: workCategory,
+        portfolioUrl,
+      });
 
-    const nextProjects = [newProject, ...uploadedProjects];
-    setUploadedProjects(nextProjects);
-    localStorage.setItem(profileFeedStorageKey, JSON.stringify(nextProjects));
-    resetWorkComposer();
-    setIsWorkComposerOpen(false);
+      const newProject: FeedProject = {
+        id: createdFeed.postId,
+        title: createdFeed.title,
+        description: createdFeed.description ?? trimmedDescription,
+        likes: createdFeed.pickCount ?? 0,
+        comments: createdFeed.commentCount ?? 0,
+        tags,
+        category: createdFeed.category ?? workCategory,
+        author: {
+          name: displayProfile.name,
+          role: displayProfile.title,
+          avatar: displayProfile.avatar,
+          username,
+          roleType: displayProfile.roleType,
+        },
+        integrations,
+        createdAt: createdFeed.createdAt ?? new Date().toISOString(),
+        persisted: true,
+      };
+
+      setUploadedProjects((current) => [newProject, ...current]);
+      resetWorkComposer();
+      setIsWorkComposerOpen(false);
+      setProfileError("");
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : "Failed to create feed.");
+    }
   };
 
-  const feedProjects = [...uploadedProjects, ...projects];
+  const feedProjects = [
+    ...uploadedProjects,
+    ...(hasLoadedProfileFeeds ? apiFeedProjects : projects),
+  ];
   const canUploadWork =
     workTitle.trim().length > 0 &&
     workDescription.trim().length > 0 &&
-    workCategory.length > 0 &&
-    workImages.length > 0;
+    workCategory.length > 0;
   const workTagList = getWorkTagList(workTags);
   const previewCoverImage = workImages[Math.min(coverImageIndex, workImages.length - 1)] ?? "";
   const suggestedWorkTags = workCategory ? categoryTagSuggestions[workCategory] ?? [] : [];
   const uploadChecklist = [
     {
       label: workImages.length > 0 ? `이미지 ${workImages.length}장 추가됨` : "이미지를 추가해주세요",
-      done: workImages.length > 0,
+      done: true,
     },
     {
       label: workCategory ? "카테고리 선택됨" : "카테고리를 선택해주세요",
@@ -464,6 +804,18 @@ export default function Profile() {
       <Navigation />
 
       <div className="max-w-[1200px] mx-auto px-6 py-12">
+        {isProfileLoading && (
+          <div className="mb-6 rounded-lg border border-[#BDEFD8] bg-[#F5FFFB] px-4 py-3 text-sm font-semibold text-[#007E68]">
+            Loading profile...
+          </div>
+        )}
+
+        {profileError && (
+          <div className="mb-6 rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-4 py-3 text-sm font-semibold text-[#B13A21]">
+            {profileError}
+          </div>
+        )}
+
         {/* Profile Header */}
         <div className="flex gap-8 mb-12">
           <div className="size-32 flex-shrink-0 overflow-hidden rounded-full bg-gray-100 shadow-sm">
@@ -496,6 +848,15 @@ export default function Profile() {
                 <p className="text-gray-600 mb-4">{displayProfile.title}</p>
               </div>
               <div className="flex gap-2">
+                {canEditProfile && (
+                  <button
+                    type="button"
+                    onClick={handleOpenProfileEditor}
+                    className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-bold text-gray-700 transition-all hover:-translate-y-0.5 hover:border-[#00C9A7] hover:text-[#007E68] focus:outline-none focus:ring-2 focus:ring-[#9EE7D0] focus:ring-offset-2"
+                  >
+                    프로필 수정
+                  </button>
+                )}
                 <button
                   onClick={() => navigate('/messages')}
                   className="hidden"
@@ -636,9 +997,31 @@ export default function Profile() {
                         )}
                       </div>
                     </div>
-                    <button className="ml-auto">
-                      <MessageCircle className="size-5 text-gray-600" />
-                    </button>
+                    <div className="ml-auto flex items-center gap-2">
+                      {canEditProfile && project.persisted && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openFeedEditor(project)}
+                            className="rounded-lg border border-gray-200 p-2 text-gray-500 transition-colors hover:border-[#00C9A7] hover:text-[#007E68]"
+                            aria-label="피드 수정"
+                          >
+                            <Pencil className="size-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteFeed(project)}
+                            className="rounded-lg border border-gray-200 p-2 text-gray-500 transition-colors hover:border-[#FFB9AA] hover:text-[#B13A21]"
+                            aria-label="피드 삭제"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        </>
+                      )}
+                      <button>
+                        <MessageCircle className="size-5 text-gray-600" />
+                      </button>
+                    </div>
                   </div>
 
                   {project.imageUrl && (
@@ -1296,6 +1679,250 @@ export default function Profile() {
                 </article>
               </div>
             </aside>
+          </div>
+        </div>
+      )}
+
+      {isProfileEditorOpen && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+          onClick={() => setIsProfileEditorOpen(false)}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-bold text-[#00A88C]">내 프로필</p>
+                <h2 className="mt-1 text-2xl font-bold text-[#0F0F0F]">프로필 수정</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsProfileEditorOpen(false)}
+                className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-black"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            {profileEditError && (
+              <div className="mb-4 rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-4 py-3 text-sm font-semibold text-[#B13A21]">
+                {profileEditError}
+              </div>
+            )}
+
+            <div className="grid gap-4">
+              <label className="grid gap-2">
+                <span className="text-sm font-bold text-gray-700">이름</span>
+                <input
+                  value={editName}
+                  onChange={(event) => setEditName(event.target.value)}
+                  maxLength={30}
+                  className="h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                  placeholder="실명을 입력해주세요"
+                />
+              </label>
+
+              <label className="grid gap-2">
+                <span className="text-sm font-bold text-gray-700">닉네임</span>
+                <input
+                  value={editNickname}
+                  onChange={(event) => setEditNickname(event.target.value)}
+                  maxLength={10}
+                  className="h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                  placeholder="프로필에 보일 닉네임"
+                />
+              </label>
+
+              <label className="grid gap-2">
+                <span className="text-sm font-bold text-gray-700">URL</span>
+                <input
+                  value={editUrl}
+                  onChange={(event) => setEditUrl(event.target.value)}
+                  maxLength={255}
+                  className="h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                  placeholder="https://portfolio.example.com"
+                />
+              </label>
+
+              {!isClientProfile && (
+                <div className="mt-2 grid gap-4 rounded-lg border border-gray-200 bg-[#F7F7F5] p-4">
+                  <div>
+                    <p className="text-sm font-bold text-[#0F0F0F]">디자이너 정보</p>
+                    <p className="mt-1 text-xs text-gray-500">프로필 상단에 보일 직무와 소개를 저장해요.</p>
+                  </div>
+
+                  <label className="grid gap-2">
+                    <span className="text-sm font-bold text-gray-700">직무</span>
+                    <input
+                      value={editJob}
+                      onChange={(event) => setEditJob(event.target.value)}
+                      maxLength={50}
+                      className="h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                      placeholder="UI/UX Designer"
+                    />
+                  </label>
+
+                  <label className="grid gap-2">
+                    <span className="text-sm font-bold text-gray-700">소개</span>
+                    <textarea
+                      value={editIntroduction}
+                      onChange={(event) => setEditIntroduction(event.target.value)}
+                      rows={4}
+                      className="resize-none rounded-lg border border-gray-200 bg-white px-3 py-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                      placeholder="작업 스타일이나 가능한 프로젝트를 적어주세요"
+                    />
+                  </label>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="grid gap-2">
+                      <span className="text-sm font-bold text-gray-700">작업 상태</span>
+                      <select
+                        value={editWorkStatus}
+                        onChange={(event) => setEditWorkStatus(event.target.value)}
+                        className="h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                      >
+                        <option value="">선택 안 함</option>
+                        <option value="AVAILABLE">작업 가능</option>
+                        <option value="CONSULTATION_AVAILABLE">상담 가능</option>
+                        <option value="UNAVAILABLE">작업 불가</option>
+                      </select>
+                    </label>
+
+                    <label className="grid gap-2">
+                      <span className="text-sm font-bold text-gray-700">작업 형태</span>
+                      <select
+                        value={editWorkType}
+                        onChange={(event) => setEditWorkType(event.target.value)}
+                        className="h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                      >
+                        <option value="">선택 안 함</option>
+                        <option value="FREELANCER">프리랜서</option>
+                        <option value="FULL_TIME">풀타임</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsProfileEditorOpen(false)}
+                className="h-11 rounded-lg border border-gray-200 px-5 text-sm font-bold text-gray-600 transition-colors hover:bg-gray-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveProfile}
+                disabled={isSavingProfile}
+                className="h-11 rounded-lg bg-[#00C9A7] px-5 text-sm font-bold text-[#0F0F0F] transition-colors hover:bg-[#00A88C] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSavingProfile ? "저장 중..." : "저장하기"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingFeed && (
+        <div
+          className="fixed inset-0 z-[125] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+          onClick={closeFeedEditor}
+        >
+          <div
+            className="w-full max-w-xl rounded-lg bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-6 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-bold text-[#00A88C]">작업물</p>
+                <h2 className="mt-1 text-2xl font-bold text-[#0F0F0F]">피드 수정</h2>
+              </div>
+              <button
+                type="button"
+                onClick={closeFeedEditor}
+                className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-black"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            {feedEditError && (
+              <div className="mb-4 rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-4 py-3 text-sm font-semibold text-[#B13A21]">
+                {feedEditError}
+              </div>
+            )}
+
+            <div className="grid gap-4">
+              <label className="grid gap-2">
+                <span className="text-sm font-bold text-gray-700">제목</span>
+                <input
+                  value={editFeedTitle}
+                  onChange={(event) => setEditFeedTitle(event.target.value)}
+                  maxLength={100}
+                  className="h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                />
+              </label>
+
+              <label className="grid gap-2">
+                <span className="text-sm font-bold text-gray-700">설명</span>
+                <textarea
+                  value={editFeedDescription}
+                  onChange={(event) => setEditFeedDescription(event.target.value)}
+                  rows={4}
+                  className="resize-none rounded-lg border border-gray-200 px-3 py-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                />
+              </label>
+
+              <label className="grid gap-2">
+                <span className="text-sm font-bold text-gray-700">카테고리</span>
+                <select
+                  value={editFeedCategory}
+                  onChange={(event) => setEditFeedCategory(event.target.value)}
+                  className="h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                >
+                  <option value="">카테고리 선택</option>
+                  {matchingCategories.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="grid gap-2">
+                <span className="text-sm font-bold text-gray-700">포트폴리오 URL</span>
+                <input
+                  value={editFeedPortfolioUrl}
+                  onChange={(event) => setEditFeedPortfolioUrl(event.target.value)}
+                  maxLength={200}
+                  className="h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                  placeholder="https://portfolio.example.com/work"
+                />
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeFeedEditor}
+                className="h-11 rounded-lg border border-gray-200 px-5 text-sm font-bold text-gray-600 transition-colors hover:bg-gray-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleUpdateFeed}
+                disabled={isSavingFeedEdit}
+                className="h-11 rounded-lg bg-[#00C9A7] px-5 text-sm font-bold text-[#0F0F0F] transition-colors hover:bg-[#00A88C] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSavingFeedEdit ? "저장 중..." : "저장하기"}
+              </button>
+            </div>
           </div>
         </div>
       )}

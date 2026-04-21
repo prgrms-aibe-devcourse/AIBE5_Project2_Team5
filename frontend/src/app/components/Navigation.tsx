@@ -6,13 +6,16 @@ import {
   hasUnreadNotifications,
   subscribeNotificationState,
 } from "../utils/notificationState";
-import { clearAuthenticated } from "../utils/auth";
+import { clearAuthenticated, getCurrentUser } from "../utils/auth";
 
 export default function Navigation() {
   const location = useLocation();
   const navigate = useNavigate();
+  const currentUser = getCurrentUser();
   const [hasUnread, setHasUnread] = useState(hasUnreadNotifications);
   const [scrolled, setScrolled] = useState(false);
+  const profilePath = currentUser?.userId ? `/profile/${currentUser.userId}` : "/profile/me";
+  const profileInitial = (currentUser?.nickname || currentUser?.name || "J").slice(0, 1).toUpperCase();
 
   const navItems = [
     { path: "/feed", label: "피드" },
@@ -120,10 +123,10 @@ export default function Navigation() {
               )}
             </Link>
             <Link
-              to="/profile/jieun"
+              to={profilePath}
               className="size-9 rounded-full bg-gradient-to-br from-[#00C9A7] to-[#009E88] flex items-center justify-center text-white text-xs font-bold shadow-sm shadow-[#00C9A7]/20 hover:shadow-md hover:shadow-[#00C9A7]/30 transition-shadow"
             >
-              J
+              {profileInitial}
             </Link>
           </div>
         </div>
