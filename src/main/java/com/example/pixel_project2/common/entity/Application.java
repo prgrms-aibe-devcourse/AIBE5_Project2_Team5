@@ -15,7 +15,12 @@ import java.time.LocalDateTime;
 @Builder
 public class Application {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @SequenceGenerator(
+            name = "Application_SEQ_generator",
+            sequenceName = "APPLICATION_SEQ",
+            allocationSize = 1
+    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "Application_SEQ_generator")
     @Column(name = "application_id")
     private Long application_id;
 

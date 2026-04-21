@@ -44,7 +44,7 @@ public class GoogleOAuth2LoginService {
         String picture = stringAttribute(oauth2User, "picture");
         boolean signupMode = "signup".equals(requestedMode);
 
-        User user = userRepository.findByLoginId(email)
+        User user = userRepository.findByloginId(email)
                 .map(existingUser -> loginExistingUser(existingUser, picture, signupMode))
                 .orElseGet(() -> createGoogleUser(email, name, picture, requestedRole, requestedNickname, signupMode));
 
@@ -96,7 +96,6 @@ public class GoogleOAuth2LoginService {
                 .profileImage(picture.isBlank() ? null : picture)
                 .role(requestedRole == null ? UserRole.DESIGNER : requestedRole)
                 .provider(Provider.GOOGLE)
-                .followCount(0)
                 .build();
 
         return userRepository.save(user);
