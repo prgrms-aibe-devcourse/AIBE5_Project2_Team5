@@ -13,7 +13,12 @@ import lombok.*;
 @Builder
 public class CollectionFolder extends BaseTimeEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @SequenceGenerator(
+            name = "CollectionFolder_SEQ_generator",
+            sequenceName = "COLLECTION_FOLDER_SEQ",
+            allocationSize = 1
+    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "CollectionFolder_SEQ_generator")
     @Column(name = "folder_id")
     private Long folder_id;
 

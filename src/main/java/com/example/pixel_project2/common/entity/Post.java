@@ -15,9 +15,14 @@ import lombok.*;
 @Builder
 public class Post extends BaseTimeEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @SequenceGenerator(
+            name = "Post_SEQ_generator",
+            sequenceName = "POST_SEQ",
+            allocationSize = 1
+    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "Post_SEQ_generator")
     @Column(name = "post_id")
-    private Long post_id;
+    private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)

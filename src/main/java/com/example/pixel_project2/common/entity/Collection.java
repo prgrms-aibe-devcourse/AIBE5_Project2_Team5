@@ -12,7 +12,12 @@ import lombok.*;
 @Builder
 public class Collection {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @SequenceGenerator(
+            name = "Collection_SEQ_generator",
+            sequenceName = "COLLECTION_SEQ",
+            allocationSize = 1
+    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "Collection_SEQ_generator")
     @Column(name = "collection_id")
     private Long collection_id;
 
