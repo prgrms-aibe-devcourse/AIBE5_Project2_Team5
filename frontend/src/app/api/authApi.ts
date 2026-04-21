@@ -41,6 +41,11 @@ export type PasswordResetEmailResponse = {
   message: string;
 };
 
+export type NicknameCheckResponse = {
+  nickname: string;
+  available: boolean;
+};
+
 export async function loginApi(loginId: string, password: string) {
   return publicApiRequest<LoginResponse>(
     "/api/auth/login",
@@ -66,6 +71,15 @@ export async function signupApi(params: {
       body: JSON.stringify(params),
     },
     "Sign up failed.",
+  );
+}
+
+export async function checkNicknameAvailabilityApi(nickname: string) {
+  const query = new URLSearchParams({ nickname });
+  return publicApiRequest<NicknameCheckResponse>(
+    `/api/auth/nickname/check?${query.toString()}`,
+    {},
+    "Failed to check nickname.",
   );
 }
 
