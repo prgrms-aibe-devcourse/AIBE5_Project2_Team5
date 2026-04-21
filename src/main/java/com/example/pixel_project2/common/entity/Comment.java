@@ -12,20 +12,25 @@ import lombok.*;
 @Builder
 public class Comment {
     @Id
+    @SequenceGenerator(
+            name = "Comment_SEQ_generator",
+            sequenceName = "COMMENT_SEQ",
+            allocationSize = 1
+    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "Comment_SEQ_generator")
     @Column(name = "comment_id")
     private Long comment_Id;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @MapsId
-    @JoinColumn(name = "user_id")
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
     private User user_id;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @MapsId
-    @JoinColumn(name = "post_id")
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "post_id", nullable = false)
     private Post post_id;
 
-    @Lob
-    @Column(name = "description")
-    private String description;
+    @Builder.Default
+    @Column(columnDefinition = "CLOB")
+    private String description = "";
+
 }
