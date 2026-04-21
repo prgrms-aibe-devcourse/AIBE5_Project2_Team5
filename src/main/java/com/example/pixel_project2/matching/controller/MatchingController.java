@@ -23,21 +23,25 @@ import java.util.List;
 public class MatchingController {
     private final MatchingService matchingService;
 
+    // 매칭 페이지 조회(목록 All 조회)
     @GetMapping
     public ApiResponse<List<ProjectListItemResponse>> getProjects() {
         return ApiResponse.ok("프로젝트 목록을 조회했습니다.", matchingService.getProjects());
     }
 
+    // 프로젝트 공고 상세페이지
     @GetMapping("/{postId}")
     public ApiResponse<ProjectDetailResponse> getProjectDetail(@PathVariable Long postId) {
         return ApiResponse.ok("프로젝트 상세를 조회했습니다.", matchingService.getProjectDetail(postId));
     }
 
+    // 프로젝트 새로 등록
     @PostMapping("/new")
     public ApiResponse<ProjectDetailResponse> createProject(@RequestBody CreateProjectRequest request) {
         return ApiResponse.ok("프로젝트를 등록했습니다.", matchingService.createProject(request));
     }
 
+    //
     @PostMapping("/{postId}/apply")
     public ApiResponse<String> applyProject(@PathVariable Long postId, @RequestBody ApplyProjectRequest request) {
         return ApiResponse.ok("프로젝트 지원이 완료되었습니다.", matchingService.applyProject(postId, request));
