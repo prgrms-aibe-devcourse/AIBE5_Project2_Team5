@@ -1,6 +1,12 @@
 package com.example.pixel_project2.common.entity.enums;
 
-// 고용형태
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
+@Getter
+@AllArgsConstructor
 public enum JobState {
-    SHORT, MID, LONG // 단기(1~2개월), 중기(3~5개월), 장기(6개월 이상)
+    SHORT("단기"), MID("중기"), LONG("장기");
+
+    private final String label;
 }
