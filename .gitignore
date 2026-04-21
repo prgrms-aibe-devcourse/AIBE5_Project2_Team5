@@ -52,7 +52,8 @@ node_modules/
 .pnpm-store/
 dist/
 out/
-.env
+/.env
+/env
 *.local
 *.log
 .DS_Store
