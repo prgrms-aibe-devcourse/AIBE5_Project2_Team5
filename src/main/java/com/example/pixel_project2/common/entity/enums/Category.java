@@ -21,4 +21,15 @@ public enum Category {
     SOUND("사운드"); // 사운드
 
     private final String label;
+
+    public static Category fromLabel(String label) {
+        if (label == null) return null;
+        String trimmedLabel = label.trim();
+        for (Category category : Category.values()) {
+            if (category.label.equalsIgnoreCase(trimmedLabel)) {
+                return category;
+            }
+        }
+        return null;
+    }
 }
