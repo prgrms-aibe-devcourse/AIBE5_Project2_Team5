@@ -61,7 +61,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public LoginResponse login(LoginRequest request) {
-        User user = userRepository.findByEmail(request.loginId())
+        User user = userRepository.findByloginId(request.loginId())
                 .orElseThrow(() -> new IllegalArgumentException("아이디 또는 비밀번호가 일치하지 않습니다."));
 
         if (!passwordEncoder.matches(request.password(), user.getPassword())) {
@@ -72,7 +72,7 @@ public class AuthServiceImpl implements AuthService {
                 jwtTokenProvider.createAccessToken(user),
                 "",
                 user.getId(),
-                user.getEmail(),
+                user.getLoginId(),
                 user.getNickname(),
                 user.getNickname(),
                 user.getRole().name(),
@@ -82,7 +82,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public SignUpResponse signUp(SignUpRequest request) {
-        if (userRepository.countByEmail(request.loginId()) > 0) {
+        if (userRepository.countByLoginId(request.loginId()) > 0) {
             throw new IllegalArgumentException("이미 사용 중인 아이디입니다.");
         }
 
@@ -93,7 +93,7 @@ public class AuthServiceImpl implements AuthService {
         UserRole role = UserRole.valueOf(request.role().toUpperCase());
 
         User user = User.builder()
-                .email(request.loginId())
+                .loginId(request.loginId())
                 .password(passwordEncoder.encode(request.password()))
                 .nickname(request.name())
                 .nickname(request.nickname())
@@ -107,8 +107,8 @@ public class AuthServiceImpl implements AuthService {
                 jwtTokenProvider.createAccessToken(savedUser),
                 "",
                 savedUser.getId(),
-                savedUser.getEmail(),
-                savedUser.getNickname(),
+                savedUser.getLoginId(),
+                savedUser.getName(),
                 savedUser.getNickname(),
                 savedUser.getRole().name()
         );
@@ -119,7 +119,7 @@ public class AuthServiceImpl implements AuthService {
     public PasswordResetEmailResponse sendPasswordResetEmail(PasswordResetEmailRequest request) {
         String loginId = request.loginId().trim();
 
-        userRepository.findByEmail(loginId)
+        userRepository.findByloginId(loginId)
                 .ifPresent(user -> {
                     if (user.getProvider() != Provider.LOCAL) {
                         throw new IllegalArgumentException(
@@ -162,7 +162,7 @@ public class AuthServiceImpl implements AuthService {
         userRepository.save(user);
         passwordResetTokenRepository.save(resetToken);
 
-        return new PasswordResetResponse(user.getEmail());
+        return new PasswordResetResponse(user.getLoginId());
     }
 
     private void createTokenAndSendEmail(User user) {
@@ -188,7 +188,7 @@ public class AuthServiceImpl implements AuthService {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
 
-            helper.setTo(user.getEmail());
+            helper.setTo(user.getLoginId());
             if (!mailUsername.isBlank()) {
                 helper.setFrom(mailUsername);
             }
