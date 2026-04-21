@@ -25,12 +25,12 @@ public class Application {
     private Long application_id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User clientUser;
+    @JoinColumn(name = "applicant_id", nullable = false)
+    private User applicant;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id2", nullable = false)
-    private User designerUser;
+    @JoinColumn(name = "poster_id", nullable = false)
+    private User poster;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "post_id", nullable = false)

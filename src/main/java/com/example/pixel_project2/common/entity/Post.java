@@ -5,6 +5,9 @@ import com.example.pixel_project2.common.entity.enums.PostType;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Entity
 @Table(name = "posts")
 @AttributeOverride(name = "createdAt", column = @Column(name = "created_post", nullable = false, updatable = false))
@@ -42,4 +45,8 @@ public class Post extends BaseTimeEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Category category;
+
+    @Builder.Default
+    @OneToMany(mappedBy = "post", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<PostImage> images = new ArrayList<>();
 }

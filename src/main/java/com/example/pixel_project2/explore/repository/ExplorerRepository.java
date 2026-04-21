@@ -7,10 +7,11 @@ import java.util.List;
 import com.example.pixel_project2.explore.dto.DesignerPostCount;
 
 public interface ExplorerRepository extends JpaRepository<User, Long> {
-    @Query("SELECT new com.example.pixel_project2.explore.dto.DesignerPostCount(u.id, u.nickname, COUNT(p)) " +
+    @Query("SELECT new com.example.pixel_project2.explore.dto.DesignerPostCount(u.id, u.nickname, u.profileImage, d.job, u.followCount, COUNT(p)) " +
             "FROM User u " +
+            "LEFT JOIN Designer d ON u.id = d.userId " +
             "LEFT JOIN Post p ON u.id = p.user.id AND p.postType = 'PORTFOLIO' " +
             "WHERE u.role = 'DESIGNER' " +
-            "GROUP BY u.id, u.nickname")
+            "GROUP BY u.id, u.nickname, u.profileImage, d.job, u.followCount")
     List<DesignerPostCount> findDesignersWithPostCount();
 }
