@@ -1,20 +1,17 @@
 package com.example.pixel_project2.matching.controller;
 
+import com.example.pixel_project2.common.entity.enums.Category;
+import com.example.pixel_project2.common.entity.enums.ExperienceLevel;
+import com.example.pixel_project2.common.entity.enums.JobState;
 import com.example.pixel_project2.common.dto.ApiResponse;
-import com.example.pixel_project2.matching.dto.ApplyProjectRequest;
-import com.example.pixel_project2.matching.dto.CreateProjectRequest;
-import com.example.pixel_project2.matching.dto.MyApplicationItemResponse;
-import com.example.pixel_project2.matching.dto.MyPostItemResponse;
-import com.example.pixel_project2.matching.dto.ProjectApplicationItemResponse;
-import com.example.pixel_project2.matching.dto.ProjectDetailResponse;
-import com.example.pixel_project2.matching.dto.ProjectInquiryRequest;
-import com.example.pixel_project2.matching.dto.ProjectListItemResponse;
-import com.example.pixel_project2.matching.dto.UpdateProjectRequest;
+import com.example.pixel_project2.matching.dto.*;
 import com.example.pixel_project2.matching.service.MatchingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/projects")
@@ -35,26 +32,25 @@ public class MatchingController {
         return ApiResponse.ok("프로젝트 상세를 조회했습니다.", matchingService.getProjectDetail(postId));
     }
 
+    @GetMapping("/filtering")
+    public ApiResponse<FilteringResponse> getFilterOptions() {
+        List<String> jobStates = Arrays.stream(JobState.values()).map(JobState::getLabel).collect(Collectors.toList());
+        List<String> experienceLevels = Arrays.stream(ExperienceLevel.values()).map(ExperienceLevel::getLabel).collect(Collectors.toList());
+        List<String> categories = Arrays.stream(Category.values()).map(Category::getLabel).collect(Collectors.toList());
+
+        FilteringResponse response = new FilteringResponse(jobStates, experienceLevels, categories);
+        return ApiResponse.ok("필터 옵션을 조회했습니다.", response);
+    }
+
     // 프로젝트 새로 등록
     @PostMapping("/new")
     public ApiResponse<ProjectDetailResponse> createProject(@RequestBody CreateProjectRequest request) {
         return ApiResponse.ok("프로젝트를 등록했습니다.", matchingService.createProject(request));
     }
 
-    //
     @PostMapping("/{postId}/apply")
     public ApiResponse<String> applyProject(@PathVariable Long postId, @RequestBody ApplyProjectRequest request) {
         return ApiResponse.ok("프로젝트 지원이 완료되었습니다.", matchingService.applyProject(postId, request));
-    }
-
-    @GetMapping("/my_applications")
-    public ApiResponse<List<MyApplicationItemResponse>> getMyApplications() {
-        return ApiResponse.ok("내 지원 현황을 조회했습니다.", matchingService.getMyApplications());
-    }
-
-    @GetMapping("/my_posts")
-    public ApiResponse<List<MyPostItemResponse>> getMyPosts() {
-        return ApiResponse.ok("내가 등록한 공고를 조회했습니다.", matchingService.getMyPosts());
     }
 
     @PostMapping("/{postId}/close")
