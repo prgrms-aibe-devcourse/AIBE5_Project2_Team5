@@ -16,6 +16,8 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 
     Page<Post> findByUserIdAndPostType(Long userId, PostType postType, Pageable pageable);
 
+    long countByUserIdAndPostType(Long userId, PostType postType);
+
     Optional<Post> findByIdAndPostType(Long id, PostType postType);
 
     // 카테고리별 조회 추가

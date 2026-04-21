@@ -4,7 +4,9 @@ import com.example.pixel_project2.common.dto.ApiResponse;
 import com.example.pixel_project2.config.auth.dto.CurrentUserResponse;
 import com.example.pixel_project2.config.auth.dto.LoginRequest;
 import com.example.pixel_project2.config.auth.dto.LoginResponse;
-import com.example.pixel_project2.config.auth.dto.PasswordResetRequest;
+import com.example.pixel_project2.config.auth.dto.PasswordResetConfirmRequest;
+import com.example.pixel_project2.config.auth.dto.PasswordResetEmailRequest;
+import com.example.pixel_project2.config.auth.dto.PasswordResetEmailResponse;
 import com.example.pixel_project2.config.auth.dto.PasswordResetResponse;
 import com.example.pixel_project2.config.auth.dto.SignUpRequest;
 import com.example.pixel_project2.config.auth.dto.SignUpResponse;
@@ -35,8 +37,15 @@ public class AuthController {
         return ApiResponse.ok("회원가입 요청을 처리했습니다.", authService.signUp(request));
     }
 
+    @PostMapping("/password-reset/request")
+    public ApiResponse<PasswordResetEmailResponse> sendPasswordResetEmail(
+            @Valid @RequestBody PasswordResetEmailRequest request
+    ) {
+        return ApiResponse.ok("비밀번호 재설정 메일 요청을 처리했습니다.", authService.sendPasswordResetEmail(request));
+    }
+
     @PostMapping("/password-reset")
-    public ApiResponse<PasswordResetResponse> resetPassword(@Valid @RequestBody PasswordResetRequest request) {
+    public ApiResponse<PasswordResetResponse> resetPassword(@Valid @RequestBody PasswordResetConfirmRequest request) {
         return ApiResponse.ok("비밀번호를 재설정했습니다.", authService.resetPassword(request));
     }
 

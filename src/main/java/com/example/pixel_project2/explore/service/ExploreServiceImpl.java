@@ -5,8 +5,10 @@ import com.example.pixel_project2.common.entity.PostImage;
 import com.example.pixel_project2.common.entity.enums.Category;
 import com.example.pixel_project2.common.entity.enums.PostType;
 import com.example.pixel_project2.common.repository.PostRepository;
+import com.example.pixel_project2.explore.dto.DesignerPostCount;
 import com.example.pixel_project2.explore.dto.ExplorePostResponseDto;
 import com.example.pixel_project2.explore.dto.ExplorePolicyResponse;
+import com.example.pixel_project2.explore.repository.ExplorerRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +22,7 @@ import java.util.stream.Collectors;
 public class ExploreServiceImpl implements ExploreService {
 
     private final PostRepository postRepository;
+    private final ExplorerRepository explorerRepository;
 
     @Override
     public List<ExplorePostResponseDto> getExploreFeeds(String categoryName) {
@@ -46,6 +49,11 @@ public class ExploreServiceImpl implements ExploreService {
     public ExplorePolicyResponse getExplorePolicy() {
         // 기존 코드 유지
         return new ExplorePolicyResponse(true, true, true);
+    }
+
+    @Override
+    public List<DesignerPostCount> getDesignerListWithPostCount() {
+        return explorerRepository.findDesignersWithPostCount();
     }
 
     private ExplorePostResponseDto convertToDto(Post post) {

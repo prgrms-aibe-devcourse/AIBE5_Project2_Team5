@@ -1,12 +1,13 @@
 package com.example.pixel_project2.common.entity;
 
-import com.example.pixel_project2.common.entity.enums.Provider;
 import com.example.pixel_project2.common.entity.enums.UserRole;
+import com.example.pixel_project2.common.entity.enums.Provider;
 import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
 @Table(name = "users")
+@AttributeOverride(name = "createdAt", column = @Column(name = "created_user", nullable = false, updatable = false))
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -22,28 +23,26 @@ public class User extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "user_seq_generator")
     private Long id;
 
-    @Column(nullable = false, length = 30, unique = true)
-    private String loginId;
+    @Column(name = "email", nullable = false, length = 30, unique = true)
+    private String email;
 
-    @Column(nullable = false)
+    @Column(name = "password", nullable = false)
     private String password;
 
-    @Column(nullable = false, length = 30)
-    private String name;
-
-    @Column(nullable = false, length = 10)
+    @Column(name = "nickname", nullable = false, length = 10)
     private String nickname;
 
+    @Column(name = "profile_image", length = 255)
     private String profileImage;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "role", nullable = false)
     private UserRole role;
 
-    @Builder.Default
-    private Integer followCount = 0;
-
+    @Column(name = "provider")
+    private Provider provider;
+    @Column(name = "url", length = 255)
     private String url;
 
-    @Enumerated(EnumType.STRING)
-    private Provider provider;
+
 }
