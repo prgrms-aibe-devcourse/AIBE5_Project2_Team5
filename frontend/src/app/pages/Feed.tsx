@@ -13,8 +13,6 @@ import {
   ChevronRight,
   Check,
   FolderPlus,
-  Loader2,
-  Plus,
   Figma,
   Sparkles,
   ExternalLink,
@@ -22,6 +20,7 @@ import {
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { apiRequest } from "../api/apiClient";
 import { saveFeedProposalMessage } from "../utils/feedProposalMessages";
 
 type FeedAuthor = {
@@ -49,6 +48,21 @@ type BaseFeedItem = {
   category?: string;
   integrations?: FeedIntegration[];
   createdAt?: string;
+};
+
+type FeedApiItem = {
+  postId: number;
+  title: string;
+  nickname: string;
+  thumbnailUrl: string | null;
+  pickCount: number;
+  commentCount: number;
+  postType: string;
+  category: string;
+};
+
+type FeedListApiData = {
+  feeds: FeedApiItem[];
 };
 
 const feedItems: BaseFeedItem[] = [
@@ -493,13 +507,14 @@ export default function Feed() {
   const [selectedFeed, setSelectedFeed] = useState<FeedCardItem | null>(null);
   const [commentText, setCommentText] = useState("");
   const [likedItems, setLikedItems] = useState<Set<number>>(new Set());
+  const [apiFeedItems, setApiFeedItems] = useState<BaseFeedItem[]>([]);
+  const [isFeedLoading, setIsFeedLoading] = useState(true);
+  const [feedError, setFeedError] = useState<string | null>(null);
   const [feedComments, setFeedComments] = useState<Record<number, FeedComment[]>>(
     createInitialFeedComments
   );
   const [isFollowingOpen, setIsFollowingOpen] = useState(true);
   const [showAllFollowing, setShowAllFollowing] = useState(false);
-  const [feedPageCount, setFeedPageCount] = useState(1);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [carouselIndexes, setCarouselIndexes] = useState<Record<number, number>>({});
   const [modalImageIndex, setModalImageIndex] = useState(0);
   const [collections, setCollections] = useState<SavedCollection[]>(loadSavedCollections);
@@ -507,21 +522,16 @@ export default function Feed() {
   const [newCollectionName, setNewCollectionName] = useState("");
   const [collectionSavedNotice, setCollectionSavedNotice] = useState("");
   const [profileFeedItems] = useState<BaseFeedItem[]>(loadProfileFeedItems);
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
   const shouldFocusCommentRef = useRef(false);
-  const isLoadingMoreRef = useRef(false);
-  const loadingTimerRef = useRef<number | null>(null);
 
   const visibleFeedItems = useMemo(
     () => {
-      const generatedFeedItems = Array.from({ length: feedPageCount }).flatMap((_, page) =>
-        feedItems.map((item) => ({
-          ...item,
-          feedKey: page * 1000 + item.id,
-          page,
-        }))
-      );
+      const generatedFeedItems = apiFeedItems.map((item, index) => ({
+        ...item,
+        feedKey: item.id * 1000 + index,
+        page: 0,
+      }));
 
       return [
         ...profileFeedItems.map((item, index) => ({
@@ -532,7 +542,7 @@ export default function Feed() {
         ...generatedFeedItems,
       ];
     },
-    [feedPageCount, profileFeedItems]
+    [apiFeedItems, profileFeedItems]
   );
 
   const savedItemIds = useMemo(() => {
@@ -553,6 +563,59 @@ export default function Feed() {
   }, [collections]);
 
   useEffect(() => {
+    let mounted = true;
+
+    async function loadFeeds() {
+      try {
+        setIsFeedLoading(true);
+        setFeedError(null);
+
+        const feedData = await apiRequest<FeedListApiData>(
+          "/api/feeds",
+          {},
+          "피드 목록을 불러오지 못했습니다."
+        );
+
+        if (!mounted) return;
+
+        setApiFeedItems(
+          (feedData?.feeds ?? []).map((feedItem) => ({
+            id: feedItem.postId,
+            author: {
+              name: feedItem.nickname,
+              role: feedItem.postType,
+              avatar: `https://i.pravatar.cc/150?u=feed-${feedItem.postId}`,
+            },
+            title: feedItem.title,
+            description: `${feedItem.category} · ${feedItem.postType}`,
+            image:
+              feedItem.thumbnailUrl ??
+              "https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&w=1200&q=80",
+            likes: feedItem.pickCount,
+            comments: feedItem.commentCount,
+            tags: [feedItem.category, feedItem.postType],
+            category: feedItem.category,
+          }))
+        );
+      } catch (error) {
+        if (!mounted) return;
+        setFeedError(error instanceof Error ? error.message : "피드 목록을 불러오지 못했습니다.");
+        setApiFeedItems([]);
+      } finally {
+        if (mounted) {
+          setIsFeedLoading(false);
+        }
+      }
+    }
+
+    void loadFeeds();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!selectedFeed || !shouldFocusCommentRef.current) return;
 
     window.setTimeout(() => {
@@ -560,35 +623,6 @@ export default function Feed() {
       shouldFocusCommentRef.current = false;
     }, 80);
   }, [selectedFeed]);
-
-  useEffect(() => {
-    const target = loadMoreRef.current;
-    if (!target) return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry.isIntersecting || isLoadingMoreRef.current) return;
-
-        isLoadingMoreRef.current = true;
-        setIsLoadingMore(true);
-        loadingTimerRef.current = window.setTimeout(() => {
-          setFeedPageCount((prev) => prev + 1);
-          setIsLoadingMore(false);
-          isLoadingMoreRef.current = false;
-        }, 520);
-      },
-      { rootMargin: "520px 0px" }
-    );
-
-    observer.observe(target);
-
-    return () => {
-      observer.disconnect();
-      if (loadingTimerRef.current) {
-        window.clearTimeout(loadingTimerRef.current);
-      }
-    };
-  }, []);
 
   const getCompactName = (name: string) => {
     if (name.length <= 7) return name;
@@ -786,6 +820,24 @@ export default function Feed() {
         <div className="flex gap-8">
           {/* Main Feed */}
           <div className="flex-1">
+            {isFeedLoading && (
+              <div className="mb-6 rounded-xl border border-dashed border-[#A8F0E4] bg-white px-6 py-10 text-center text-sm font-medium text-gray-500">
+                피드 목록을 불러오는 중입니다.
+              </div>
+            )}
+
+            {!isFeedLoading && feedError && (
+              <div className="mb-6 rounded-xl border border-[#FFB9AA] bg-[#FFF7F4] px-6 py-10 text-center text-sm font-medium text-[#B13A21]">
+                {feedError}
+              </div>
+            )}
+
+            {!isFeedLoading && !feedError && visibleFeedItems.length === 0 && (
+              <div className="mb-6 rounded-xl border border-dashed border-[#A8F0E4] bg-white px-6 py-10 text-center text-sm font-medium text-gray-500">
+                아직 표시할 피드가 없습니다.
+              </div>
+            )}
+
             {/* Feed Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {visibleFeedItems.map((item) => {
@@ -968,7 +1020,8 @@ export default function Feed() {
               })}
             </div>
 
-            <div ref={loadMoreRef} className="flex justify-center py-8">
+            {false && (
+            <div className="flex justify-center py-8">
               <div className="min-h-12 px-5 py-3 rounded-lg bg-white border border-[#A8F0E4]/60 text-sm font-semibold text-[#00A88C] shadow-sm flex items-center gap-2">
                 {isLoadingMore ? (
                   <>
@@ -983,6 +1036,7 @@ export default function Feed() {
                 )}
               </div>
             </div>
+            )}
           </div>
 
           {/* Right Sidebar - Following Profiles */}

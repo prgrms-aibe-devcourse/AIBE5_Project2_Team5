@@ -5,7 +5,7 @@ import com.example.pixel_project2.feed.dto.FeedListResponse;
 import com.example.pixel_project2.feed.dto.FeedPolicyResponse;
 
 public interface FeedService {
-    FeedListResponse getFeeds(PostType postType, int page, int size);
+    FeedListResponse getFeeds(PostType postType);
 
     FeedPolicyResponse getFeedDetailPolicy();
 }

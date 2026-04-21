@@ -4,14 +4,11 @@ import com.example.pixel_project2.common.entity.Post;
 import com.example.pixel_project2.common.entity.PostImage;
 import com.example.pixel_project2.common.entity.enums.PostType;
 import com.example.pixel_project2.common.repository.CommentRepository;
-import com.example.pixel_project2.common.repository.PostImageRepository;
 import com.example.pixel_project2.common.repository.PostRepository;
 import com.example.pixel_project2.feed.dto.FeedItemResponse;
 import com.example.pixel_project2.feed.dto.FeedListResponse;
 import com.example.pixel_project2.feed.dto.FeedPolicyResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -20,21 +17,17 @@ import java.util.List;
 @RequiredArgsConstructor
 public class FeedServiceImpl implements FeedService {
     private final PostRepository postRepository;
-    private final PostImageRepository postImageRepository;
     private final CommentRepository commentRepository;
 
     @Override
-    public FeedListResponse getFeeds(PostType postType, int page, int size) {
-        PageRequest pageRequest = PageRequest.of(page, size);
-        Page<Post> posts = postType == null
-                ? postRepository.findAll(pageRequest)
-                : postRepository.findByPostType(postType, pageRequest);
-
-        List<FeedItemResponse> feeds = posts.getContent().stream()
+    public FeedListResponse getFeeds(PostType postType) {
+        PostType resolvedPostType = postType == null ? PostType.PORTFOLIO : postType;
+        List<Post> posts = postRepository.findAllByTypeWithDetails(resolvedPostType);
+        List<FeedItemResponse> feeds = posts.stream()
                 .map(this::toFeedItemResponse)
                 .toList();
 
-        return new FeedListResponse(feeds, page, size, posts.hasNext());
+        return new FeedListResponse(feeds);
     }
 
     @Override
@@ -43,8 +36,11 @@ public class FeedServiceImpl implements FeedService {
     }
 
     private FeedItemResponse toFeedItemResponse(Post post) {
-        List<PostImage> postImages = postImageRepository.findByPostIdOrderBySortOrderAsc(post.getId());
-        String thumbnailUrl = postImages.isEmpty() ? null : postImages.get(0).getImageUrl();
+        String thumbnailUrl = post.getImages().stream()
+                .filter(image -> image.getSortOrder() != null && image.getSortOrder() == 1)
+                .map(PostImage::getImageUrl)
+                .findFirst()
+                .orElse(post.getImages().isEmpty() ? null : post.getImages().get(0).getImageUrl());
 
         return new FeedItemResponse(
                 post.getId(),
@@ -52,7 +48,7 @@ public class FeedServiceImpl implements FeedService {
                 post.getUser().getNickname(),
                 thumbnailUrl,
                 post.getPickCount(),
-                Math.toIntExact(commentRepository.countByPostId(post.getId())),
+                Math.toIntExact(commentRepository.countByPost_Id(post.getId())),
                 post.getPostType().name(),
                 post.getCategory().name()
         );
