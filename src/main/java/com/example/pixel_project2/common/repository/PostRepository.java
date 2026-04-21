@@ -12,14 +12,24 @@ import java.util.Optional;
 
 // 피드공고 게시글 저장, 목록 조회, 상세 조회
 public interface PostRepository extends JpaRepository<Post, Long> {
-    Page<Post> findByPostType(PostType postType, Pageable pageable);
+    // 피드 목록 조회 최적화 (User, Designer, Feed, Images 한꺼번에 가져오기)
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT p FROM Post p " +
+            "JOIN FETCH p.user u " +
+            "LEFT JOIN FETCH u.designer d " +
+            "LEFT JOIN FETCH p.feed f " +
+            "LEFT JOIN FETCH p.images i " +
+            "WHERE p.postType = :postType " +
+            "ORDER BY p.id DESC")
+    List<Post> findAllByTypeWithDetails(@org.springframework.data.repository.query.Param("postType") PostType postType);
 
-    Page<Post> findByUserIdAndPostType(Long userId, PostType postType, Pageable pageable);
-
-    long countByUserIdAndPostType(Long userId, PostType postType);
-
-    Optional<Post> findByIdAndPostType(Long id, PostType postType);
-
-    // 카테고리별 조회 추가
-    List<Post> findByPostTypeAndCategory(PostType postType, Category category);
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT p FROM Post p " +
+            "JOIN FETCH p.user u " +
+            "LEFT JOIN FETCH u.designer d " +
+            "LEFT JOIN FETCH p.feed f " +
+            "LEFT JOIN FETCH p.images i " +
+            "WHERE p.postType = :postType AND p.category = :category " +
+            "ORDER BY p.id DESC")
+    List<Post> findByTypeAndCategoryWithDetails(
+            @org.springframework.data.repository.query.Param("postType") PostType postType,
+            @org.springframework.data.repository.query.Param("category") Category category);
 }

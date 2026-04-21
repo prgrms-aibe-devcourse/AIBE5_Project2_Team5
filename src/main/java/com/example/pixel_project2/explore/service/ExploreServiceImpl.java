@@ -28,16 +28,17 @@ public class ExploreServiceImpl implements ExploreService {
     public List<ExplorePostResponseDto> getExploreFeeds(String categoryName) {
         List<Post> posts;
 
-        if (categoryName == null || categoryName.equalsIgnoreCase("all") || categoryName.isBlank()) {
-            posts = postRepository.findByPostType(PostType.PORTFOLIO, null).getContent();
+        if (categoryName == null || 
+            categoryName.equalsIgnoreCase("all") || 
+            categoryName.equalsIgnoreCase("전체") || 
+            categoryName.isBlank()) {
+            posts = postRepository.findAllByTypeWithDetails(PostType.PORTFOLIO);
         } else {
-            Category category;
-            try {
-                category = Category.valueOf(categoryName);
-            } catch (IllegalArgumentException e) {
+            Category category = Category.fromLabel(categoryName);
+            if (category == null) {
                 return List.of();
             }
-            posts = postRepository.findByPostTypeAndCategory(PostType.PORTFOLIO, category);
+            posts = postRepository.findByTypeAndCategoryWithDetails(PostType.PORTFOLIO, category);
         }
 
         return posts.stream()
@@ -47,7 +48,6 @@ public class ExploreServiceImpl implements ExploreService {
 
     @Override
     public ExplorePolicyResponse getExplorePolicy() {
-        // 기존 코드 유지
         return new ExplorePolicyResponse(true, true, true);
     }
 
@@ -63,12 +63,20 @@ public class ExploreServiceImpl implements ExploreService {
                 .findFirst()
                 .orElse(post.getImages().isEmpty() ? null : post.getImages().get(0).getImageUrl());
 
+        String job = (post.getUser().getDesigner() != null) ? post.getUser().getDesigner().getJob() : null;
+        String description = (post.getFeed() != null) ? post.getFeed().getDescription() : null;
+
         return ExplorePostResponseDto.builder()
                 .postId(post.getId())
                 .title(post.getTitle())
                 .nickname(post.getUser().getNickname())
                 .pickCount(post.getPickCount())
                 .imageUrl(firstImageUrl)
+                .profileImage(post.getUser().getProfileImage())
+                .category(post.getCategory() != null ? post.getCategory().getLabel() : null)
+                .job(job)
+                .description(description)
                 .build();
     }
 }
+
