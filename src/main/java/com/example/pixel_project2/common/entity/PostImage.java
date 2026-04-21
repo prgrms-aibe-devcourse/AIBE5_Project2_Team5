@@ -12,7 +12,12 @@ import lombok.*;
 @Builder
 public class PostImage {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @SequenceGenerator(
+            name = "PostImage_SEQ_generator",
+            sequenceName = "POST_IMAGE_SEQ",
+            allocationSize = 1
+    )
+    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "PostImage_SEQ_generator")
     @Column(name = "image_id")
     private Long image_id;
 
