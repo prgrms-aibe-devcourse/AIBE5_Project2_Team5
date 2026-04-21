@@ -1,6 +1,12 @@
 package com.example.pixel_project2.common.entity.enums;
 
-// 모집 상태
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
+@Getter
+@AllArgsConstructor
 public enum ProjectState {
-    OPEN, CLOSED // 모집중, 모집완료
+    OPEN("모집중"), CLOSED("모집완료");
+
+    private final String label;
 }

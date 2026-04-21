@@ -8,7 +8,7 @@ public record CreateProjectRequest(
         String overview,
         String responsibilities,
         String qualifications,
-        String state,
+        String state, // Open으로 들어가야함
         String deadline
 ) {
 }

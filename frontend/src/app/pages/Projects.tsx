@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import axios from 'axios';
 import { Link } from "react-router";
 import {
   AlertTriangle,
@@ -14,6 +15,7 @@ import Footer from "../components/Footer";
 import ProjectDetailModal from "../components/ProjectDetailModal";
 import type { ProjectData } from "../components/ProjectDetailModal";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
+import { publicApiRequest } from "../api/apiClient";
 
 // [기능: 타입 정의] API 응답 및 프로젝트 데이터 구조 정의
 type ProjectApiItem = {
@@ -30,19 +32,18 @@ type ProjectApiItem = {
   experienceLevel: string;
 };
 
-type ProjectApiResponse = {
-  success: boolean;
-  message: string;
-  data: ProjectApiItem[];
-};
+// 왼쪽 중단바의 필터링 옵션들
+interface FilterOptions {
+  jobStates: string[];
+  experienceLevels: string[];
+  categories: string[];
+}
 
-const PROJECTS_API_URL = `${(import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8080"}/api/projects`;
+const PROJECTS_API_URL = `${(import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:5173"}/api/projects`;
 
-const CATEGORY_OPTIONS = ["그래픽 디자인", "포토그래피", "일러스트레이션", "3D Art", "UI/UX", "건축",
-  "패션", "광고", "공예", "미술", "제품 디자인", "게임 디자인", "사운드"
-];
 const SORT_OPTIONS = ["최신순", "예산순", "마감임박순"] as const;
 const DEFAULT_AVATAR = "https://i.pravatar.cc/40?img=12";
+
 
 // [기능: 헬퍼 함수] 마감일 계산 및 프로젝트 데이터 변환 로직
 function getDday(deadline: string): number {
@@ -59,7 +60,7 @@ function getPriority(deadline: string): ProjectData["priority"] {
 function getBadge(deadline: string): string {
   const dday = getDday(deadline);
   if (dday <= 0) return "마감";
-  if (dday <= 3) return "긴급";
+  if (dday <= 3) return "곧 마감";
   return "모집중";
 }
 
@@ -134,6 +135,11 @@ function Thumbnail({ project, mode }: { project: ProjectData; mode: "list" | "gr
 export default function Projects() {
   // [기능: 상태 관리] 프로젝트 목록, 필터, 정렬, 뷰 모드 등
   const [apiProjects, setApiProjects] = useState<ProjectApiItem[]>([]);
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>({
+    jobStates: [],
+    experienceLevels: [],
+    categories: [],
+  });
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedExperience, setSelectedExperience] = useState<string | null>(null);
   const [selectedProjectType, setSelectedProjectType] = useState<string | null>(null);
@@ -148,29 +154,22 @@ export default function Projects() {
   useEffect(() => {
     let mounted = true;
 
-    async function loadProjects() {
+    async function loadData() {
       try {
         setLoading(true);
         setError(null);
 
-        const response = await fetch(PROJECTS_API_URL, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`프로젝트 목록 요청 실패: ${response.status}`);
-        }
-
-        const payload: ProjectApiResponse = await response.json();
+        const [projectsData, filtersData] = await Promise.all([
+          publicApiRequest<ProjectApiItem[]>(PROJECTS_API_URL),
+          publicApiRequest<FilterOptions>(`${PROJECTS_API_URL}/filtering`)
+        ]);
 
         if (!mounted) return;
-        setApiProjects(payload.data ?? []);
+        setApiProjects(projectsData ?? []);
+        setFilterOptions(filtersData ?? { jobStates: [], experienceLevels: [], categories: [] });
       } catch (fetchError) {
         if (!mounted) return;
-        setError(fetchError instanceof Error ? fetchError.message : "프로젝트 목록을 불러오지 못했습니다.");
+        setError(fetchError instanceof Error ? fetchError.message : "데이터를 불러오지 못했습니다.");
       } finally {
         if (mounted) {
           setLoading(false);
@@ -178,7 +177,7 @@ export default function Projects() {
       }
     }
 
-    void loadProjects();
+    void loadData();
 
     return () => {
       mounted = false;
@@ -189,11 +188,11 @@ export default function Projects() {
   const projectsData = useMemo(() => apiProjects.map(toProjectData), [apiProjects]);
 
   const categoryCounts = useMemo(() => {
-    return CATEGORY_OPTIONS.reduce<Record<string, number>>((acc, category) => {
+    return filterOptions.categories.reduce<Record<string, number>>((acc, category) => {
       acc[category] = projectsData.filter((project) => project.category === category).length;
       return acc;
     }, {});
-  }, [projectsData]);
+  }, [projectsData, filterOptions.categories]);
 
   const filteredProjects = useMemo(() => {
     let list = [...projectsData];
@@ -221,8 +220,8 @@ export default function Projects() {
     return list;
   }, [projectsData, selectedCategory, selectedExperience, selectedProjectType, sortBy]);
 
-  const projectTypes = useMemo(() => [...new Set(projectsData.map((project) => project.projectType))], [projectsData]);
-  const experienceLevels = useMemo(() => [...new Set(projectsData.map((project) => project.experienceLevel))], [projectsData]);
+  const projectTypes = filterOptions.jobStates;
+  const experienceLevels = filterOptions.experienceLevels;
 
   // [기능: 북마크 토글] 즐겨찾기 상태 변경
   const toggleBookmark = (projectId: number, event: React.MouseEvent) => {
@@ -257,17 +256,12 @@ export default function Projects() {
           <div className="flex items-center gap-6">
           <div className="flex items-center gap-5">
             <div className="text-center">
-              <p className="text-2xl font-bold text-white">{projectsData.length}</p>
+              <p className="text-2xl font-bold text-white"><span className="text-[#00C9A7] font-semibold">{projectsData.length}</span></p>
               <p className="text-[11px] text-gray-400 mt-0.5">등록 공고</p>
             </div>
             <div className="w-px h-8 bg-white/10" />
             <div className="text-center">
-              <p className="text-2xl font-bold text-white">{CATEGORY_OPTIONS.length}</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">카테고리</p>
-            </div>
-            <div className="w-px h-8 bg-white/10" />
-            <div className="text-center">
-              <p className="text-2xl font-bold text-[#00C9A7]">{projectsData.filter((p) => p.priority === "high").length}</p>
+              <p className="text-2xl font-bold text-[#FF5C3A]">{projectsData.filter((p) => p.priority === "high").length}</p>
               <p className="text-[11px] text-gray-400 mt-0.5">급구 공고</p>
             </div>
           </div>
@@ -275,7 +269,7 @@ export default function Projects() {
             to="/projects/new"
             className="rounded-xl bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-900 transition hover:bg-emerald-300"
           >
-            + 프로젝트 등록
+            <span className="text-[#111827] font-semibold">+ 프로젝트 등록</span>
           </Link>
           </div>
         </div>
@@ -290,8 +284,8 @@ export default function Projects() {
 
           {/* 사이드 필터: 프로젝트 유형 */}
           <div>
-            <p className="mb-3 text-xs font-bold text-gray-400">프로젝트 유형</p>
-            <div className="flex flex-wrap gap-2">
+            <p className="mb-1 text-xs font-bold text-gray-400">프로젝트 유형</p>
+            <div className="flex flex-wrap gap-2 mb-4">
               {projectTypes.map((projectType) => (
                   <button
                       key={projectType}
@@ -308,8 +302,8 @@ export default function Projects() {
 
           {/* 사이드 필터: 경력 */}
           <div>
-            <p className="mb-3 text-xs font-bold text-gray-400">경력</p>
-            <div className="flex flex-wrap gap-2">
+            <p className="mb-1 text-xs font-bold text-gray-400">경력</p>
+            <div className="flex flex-wrap gap-2 mb-4">
               {experienceLevels.map((experienceLevel) => (
                   <button
                       key={experienceLevel}
@@ -327,9 +321,9 @@ export default function Projects() {
           {/* 사이드 필터: 카테고리 */}
           <div className="space-y-6">
             <div>
-              <p className="mb-3 text-xs font-bold text-gray-400">카테고리</p>
+              <p className="mb-1 text-xs font-bold text-gray-400">카테고리</p>
               <div className="space-y-2">
-                {CATEGORY_OPTIONS.map((category) => (
+                {filterOptions.categories.map((category) => (
                   <button
                     key={category}
                     onClick={() => setSelectedCategory((prev) => (prev === category ? null : category))}
