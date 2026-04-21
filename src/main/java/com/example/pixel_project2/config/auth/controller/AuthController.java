@@ -4,6 +4,7 @@ import com.example.pixel_project2.common.dto.ApiResponse;
 import com.example.pixel_project2.config.auth.dto.CurrentUserResponse;
 import com.example.pixel_project2.config.auth.dto.LoginRequest;
 import com.example.pixel_project2.config.auth.dto.LoginResponse;
+import com.example.pixel_project2.config.auth.dto.NicknameCheckResponse;
 import com.example.pixel_project2.config.auth.dto.PasswordResetConfirmRequest;
 import com.example.pixel_project2.config.auth.dto.PasswordResetEmailRequest;
 import com.example.pixel_project2.config.auth.dto.PasswordResetEmailResponse;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -35,6 +37,11 @@ public class AuthController {
     @PostMapping("/signup")
     public ApiResponse<SignUpResponse> signUp(@Valid @RequestBody SignUpRequest request) {
         return ApiResponse.ok("회원가입 요청을 처리했습니다.", authService.signUp(request));
+    }
+
+    @GetMapping("/nickname/check")
+    public ApiResponse<NicknameCheckResponse> checkNickname(@RequestParam String nickname) {
+        return ApiResponse.ok("닉네임 중복 확인을 완료했습니다.", authService.checkNickname(nickname));
     }
 
     @PostMapping("/password-reset/request")
