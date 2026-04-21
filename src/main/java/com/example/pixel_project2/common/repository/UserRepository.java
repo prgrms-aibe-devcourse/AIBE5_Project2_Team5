@@ -16,7 +16,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByloginId(String email);
 
-    @Query("select count(u.id) from User u where u.loginId = :email")
+    @Query("select count(u.id) from User u where u.loginId = :loginId")
     long countByLoginId(@Param("loginId") String loginId);
 
     @Query("select count(u.id) from User u where u.nickname = :nickname")
