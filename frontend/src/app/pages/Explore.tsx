@@ -831,80 +831,73 @@ export default function Explore() {
 
       {/* ── 피드 상세 모달 ── */}
       <AnimatePresence>
-        {selectedProjectForModal && (() => {
-          const authorProfile = creatorProfiles.find(p => p.name === selectedProjectForModal.author) || {
-            name: selectedProjectForModal.author,
-            role: '크리에이터',
-            avatar: `https://i.pravatar.cc/150?u=${selectedProjectForModal.author}`
-          };
-
-          return (
+        {selectedProjectForModal && (
+          <div 
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+            onClick={() => setSelectedProjectForModal(null)}
+          >
             <div 
-              className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
-              onClick={() => setSelectedProjectForModal(null)}
+              className="bg-white rounded-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
             >
-              <div 
-                className="bg-white rounded-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex h-[90vh]">
-                  {/* Left Side - Image */}
-                  <div className="flex-1 bg-[#0F0F0F] flex items-center justify-center relative">
-                    <ImageWithFallback
-                      src={selectedProjectForModal.imageUrl}
-                      alt={selectedProjectForModal.title}
-                      className="max-w-full max-h-full object-contain"
-                    />
+              <div className="flex h-[90vh]">
+                {/* Left Side - Image */}
+                <div className="flex-1 bg-[#0F0F0F] flex items-center justify-center relative">
+                  <ImageWithFallback
+                    src={selectedProjectForModal.imageUrl}
+                    alt={selectedProjectForModal.title}
+                    className="max-w-full max-h-full object-contain"
+                  />
 
-                    {/* Close Button */}
-                    <button
-                      onClick={() => setSelectedProjectForModal(null)}
-                      className="absolute top-4 left-4 p-2 bg-black/50 hover:bg-black/70 backdrop-blur-md text-white rounded-full transition-all border border-white/20"
-                    >
-                      <X className="size-6" />
-                    </button>
-                  </div>
+                  {/* Close Button */}
+                  <button
+                    onClick={() => setSelectedProjectForModal(null)}
+                    className="absolute top-4 left-4 p-2 bg-black/50 hover:bg-black/70 backdrop-blur-md text-white rounded-full transition-all border border-white/20"
+                  >
+                    <X className="size-6" />
+                  </button>
+                </div>
 
-                  {/* Right Side - Details & Comments */}
-                  <div className="w-[400px] flex flex-col bg-white">
-                    {/* Author Header */}
-                    <div className="p-5 border-b border-gray-200">
-                      <div className="flex items-center justify-between mb-4">
-                        <Link 
-                          to={`/profile/${authorProfile.name}`}
-                          className="flex items-center gap-3 hover:opacity-80 transition-opacity"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <ImageWithFallback
-                            src={authorProfile.avatar}
-                            alt={authorProfile.name}
-                            className="size-12 rounded-full ring-2 ring-[#00C9A7]"
-                          />
-                          <div>
-                            <h4 className="font-bold text-sm">{authorProfile.name}</h4>
-                            <p className="text-xs text-gray-500">{authorProfile.role}</p>
-                          </div>
-                        </Link>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#FFB6A6] bg-[#FF5C3A] px-3.5 text-[0px] font-bold text-white shadow-[0_8px_18px_rgba(255,92,58,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#E94F2F] hover:shadow-[0_10px_22px_rgba(255,92,58,0.28)] focus:outline-none focus:ring-2 focus:ring-[#FFB6A6] focus:ring-offset-2 [&>span]:text-xs"
-                          >
-                            <Send className="size-3.5" />
-                            <span>프로젝트 제안</span>
-                            제안하기
-                          </button>
-                          <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                            <MoreVertical className="size-5 text-gray-600" />
-                          </button>
+                {/* Right Side - Details & Comments */}
+                <div className="w-[400px] flex flex-col bg-white">
+                  {/* Author Header */}
+                  <div className="p-5 border-b border-gray-200">
+                    <div className="flex items-center justify-between mb-4">
+                      <Link 
+                        to={`/profile/${selectedProjectForModal.nickname}`}
+                        className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <ImageWithFallback
+                          src={selectedProjectForModal.profileImage || ""}
+                          alt={selectedProjectForModal.nickname}
+                          className="size-12 rounded-full ring-2 ring-[#00C9A7]"
+                        />
+                        <div>
+                          <h4 className="font-bold text-sm">{selectedProjectForModal.nickname}</h4>
+                          <p className="text-xs text-gray-500">{selectedProjectForModal.job || "크리에이터"}</p>
                         </div>
+                      </Link>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#FFB6A6] bg-[#FF5C3A] px-3.5 text-[0px] font-bold text-white shadow-[0_8px_18px_rgba(255,92,58,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#E94F2F] hover:shadow-[0_10px_22px_rgba(255,92,58,0.28)] focus:outline-none focus:ring-2 focus:ring-[#FFB6A6] focus:ring-offset-2 [&>span]:text-xs"
+                        >
+                          <Send className="size-3.5" />
+                          <span>프로젝트 제안</span>
+                          제안하기
+                        </button>
+                        <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                          <MoreVertical className="size-5 text-gray-600" />
+                        </button>
                       </div>
+                    </div>
 
-                      {/* Title & Description */}
-                      <h2 className="font-bold text-xl mb-2">{selectedProjectForModal.title}</h2>
-                      <p className="text-sm text-gray-600 mb-3">{authorProfile.name}님의 유니크한 {selectedProjectForModal.category} 포트폴리오 프로젝트입니다.</p>
+                    {/* Title & Description */}
+                    <h2 className="font-bold text-xl mb-2">{selectedProjectForModal.title}</h2>
+                    <p className="text-sm text-gray-600 mb-3 leading-relaxed">{selectedProjectForModal.description || "상세 설명이 없는 게시글입니다."}</p>
 
-                      {/* Tags */}
+                    {/* Tags */}
                       {selectedProjectForModal.category && (
                         <div className="mb-3">
                           <span className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-1.5 text-xs font-bold text-[#B13A21]">
@@ -1018,9 +1011,8 @@ export default function Explore() {
                 </div>
               </div>
             </div>
-          );
-        })()}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>
 
       {/* Floating Add */}
       <motion.div whileHover={{ scale: 1.1, rotate: 45 }} whileTap={{ scale: 0.9 }} className="fixed bottom-8 right-8 z-50">

@@ -6,6 +6,10 @@ export type ExplorePostResponseDto = {
   nickname: string;
   pickCount: number;
   imageUrl: string | null;
+  profileImage: string | null;
+  category: string | null;
+  job: string | null;
+  description: string | null;
 };
 
 // 탐색 피드 목록 조회 (인증이 필요하므로 apiRequest 사용)

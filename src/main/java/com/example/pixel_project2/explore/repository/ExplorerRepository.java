@@ -14,4 +14,7 @@ public interface ExplorerRepository extends JpaRepository<User, Long> {
             "WHERE u.role = 'DESIGNER' " +
             "GROUP BY u.id, u.nickname, u.profileImage, d.job, u.followCount")
     List<DesignerPostCount> findDesignersWithPostCount();
+
+    @Query("SELECT d.job FROM Designer d WHERE d.userId = :userId")
+    String findDesignerJob(@org.springframework.data.repository.query.Param("userId") Long userId);
 }
