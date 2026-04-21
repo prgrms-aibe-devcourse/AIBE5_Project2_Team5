@@ -1,6 +1,7 @@
 package com.example.pixel_project2.common.entity;
 
 import com.example.pixel_project2.common.entity.enums.UserRole;
+import com.example.pixel_project2.common.entity.enums.Provider;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -38,6 +39,10 @@ public class User extends BaseTimeEntity {
     @Column(name = "role", nullable = false)
     private UserRole role;
 
+    @Column(name = "provider")
+    private Provider provider;
     @Column(name = "url", length = 255)
     private String url;
+
+
 }
