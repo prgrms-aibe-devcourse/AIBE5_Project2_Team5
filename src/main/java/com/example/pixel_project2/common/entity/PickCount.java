@@ -3,7 +3,6 @@ package com.example.pixel_project2.common.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-
 @Entity
 @Table(name = "pick_count", uniqueConstraints = {
         @UniqueConstraint(columnNames = {"user_id", "post_id"})
@@ -26,10 +25,10 @@ public class PickCount {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    private User user_id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "post_id", nullable = false)
-    private Post post;
+    private Post post_id;
 
 }

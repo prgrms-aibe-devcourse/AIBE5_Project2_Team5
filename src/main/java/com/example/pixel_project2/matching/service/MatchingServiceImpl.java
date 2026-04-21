@@ -36,39 +36,39 @@ public class MatchingServiceImpl implements MatchingService {
                         "글로벌 SaaS 브랜딩 리뉴얼",
                         "B2B SaaS 브랜드 아이덴티티를 글로벌 시장에 맞게 리뉴얼합니다.",
                         "로고, 컬러 시스템, 타이포그래피, 브랜드 가이드라인까지 포함하는 브랜딩 프로젝트입니다.",
-                        "브랜딩",
+                        "그래픽 디자인",
                         List.of("Brand Identity", "Illustrator", "Typography"),
                         "800만 ~ 1,200만 원",
                         "2026-05-10",
                         "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
                         "단기",
-                        "5년 이상"
+                        "시니어"
                 ),
                 new ProjectListItemResponse(
                         3L,
                         "제품 글로벌 런칭 3D 모션 영상 제작",
                         "신제품 런칭 캠페인을 위한 3D 모션 그래픽 영상을 제작합니다.",
                         "Cinema 4D와 After Effects 기반으로 4K 모션 그래픽 영상을 제작하는 프로젝트입니다.",
-                        "모션/영상",
+                        "3D Art",
                         List.of("Cinema 4D", "After Effects", "3D Modeling"),
                         "1,500만 ~ 2,500만 원",
                         "2026-06-30",
                         "https://images.unsplash.com/photo-1740174459691-5b93c2fa0592?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
                         "중기",
-                        "5년 이상"
+                        "시니어"
                 ),
                 new ProjectListItemResponse(
                         4L,
                         "이커머스 메인 배너 일러스트 시리즈",
                         "시즌 캠페인용 감성 일러스트 배너 시리즈를 제작합니다.",
                         "메인 배너 12종과 모바일 변형 시안을 포함한 일러스트 중심 캠페인 프로젝트입니다.",
-                        "일러스트",
+                        "일러스트레이션",
                         List.of("Illustration", "Procreate", "Adobe Fresco"),
                         "500만 ~ 700만 원",
                         "2026-04-22",
                         "https://images.unsplash.com/photo-1618004912476-29818d81ae2e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
                         "단기",
-                        "신입 가능"
+                        "신입"
                 ),
                 new ProjectListItemResponse(
                         5L,
@@ -81,7 +81,7 @@ public class MatchingServiceImpl implements MatchingService {
                         "2026-05-25",
                         "https://images.unsplash.com/photo-1551288049-bebda4e38f71?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
                         "장기",
-                        "5년 이상"
+                        "시니어"
                 ),
                 new ProjectListItemResponse(
                         6L,

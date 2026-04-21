@@ -3,7 +3,6 @@ package com.example.pixel_project2.common.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-
 @Entity
 @Table(name = "comments")
 @Getter
@@ -20,15 +19,15 @@ public class Comment {
     )
     @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "Comment_SEQ_generator")
     @Column(name = "comment_id")
-    private Long commentId;
+    private Long comment_Id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    private User user_id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "post_id", nullable = false)
-    private Post post;
+    private Post post_id;
 
     @Builder.Default
     @Column(columnDefinition = "CLOB")
