@@ -37,4 +37,13 @@ public class Designer {
     @Enumerated(EnumType.STRING)
     @Column(name = "work_type")
     private WorkType workType;
+
+    @Column(name = "figma_url", length = 255)
+    private String figmaUrl;
+
+    @Column(name = "photoshop_url", length = 255)
+    private String photoshopUrl;
+
+    @Column(name = "adobe_url", length = 255)
+    private String adobeUrl;
 }

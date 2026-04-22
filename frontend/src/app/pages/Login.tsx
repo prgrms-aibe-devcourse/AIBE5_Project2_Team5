@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import kakaoTalkLogo from "../assets/kakao-talk-logo.png";
 import { getGoogleOAuthUrl, getKakaoOAuthUrl, loginApi, requestPasswordResetEmailApi } from "../api/authApi";
-import { isAuthenticated, setAuthenticated, setAuthTokens, setCurrentUser, type UserRole } from "../utils/auth";
+import { clearAuthenticated, isAuthenticated, setAuthenticated, setAuthTokens, setCurrentUser, type UserRole } from "../utils/auth";
 
 const floatingPixels = [
   { className: "left-[7%] top-[16%] h-14 w-14 bg-[#00C9A7]/20", delay: 0 },
@@ -247,6 +247,7 @@ export default function Login() {
 
     try {
       const user = await loginApi(email.trim(), password);
+      clearAuthenticated();
       setAuthTokens(user.accessToken, user.refreshToken, rememberMe);
       setCurrentUser({
         userId: user.userId,

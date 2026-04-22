@@ -1,21 +1,27 @@
 package com.example.pixel_project2.collection.controller;
 
+import com.example.pixel_project2.collection.dto.CollectionFolderDetailResponse;
+import com.example.pixel_project2.collection.dto.CollectionFolderResponse;
+import com.example.pixel_project2.collection.dto.CollectionPolicyResponse;
+import com.example.pixel_project2.collection.dto.CreateCollectionFolderRequest;
+import com.example.pixel_project2.collection.dto.RenameCollectionFolderRequest;
+import com.example.pixel_project2.collection.dto.SaveFeedToCollectionRequest;
 import com.example.pixel_project2.collection.service.CollectionService;
 import com.example.pixel_project2.common.dto.ApiResponse;
-import com.example.pixel_project2.collection.dto.CollectionPolicyResponse;
+import com.example.pixel_project2.config.jwt.AuthenticatedUser;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import com.example.pixel_project2.config.jwt.AuthenticatedUser;
-import com.example.pixel_project2.collection.dto.CollectionFolderResponseDto;
-import com.example.pixel_project2.collection.dto.SaveFeedRequestDto;
+
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/collections")
@@ -23,35 +29,67 @@ import java.util.Map;
 public class CollectionController {
     private final CollectionService collectionService;
 
+    @GetMapping
+    public ApiResponse<List<CollectionFolderResponse>> getMyFolders(
+            @AuthenticationPrincipal AuthenticatedUser currentUser
+    ) {
+        return ApiResponse.ok("컬렉션 폴더 목록을 불러왔습니다.", collectionService.getMyFolders(currentUser));
+    }
+
     @GetMapping("/policy")
     public ApiResponse<CollectionPolicyResponse> getCollectionPolicy() {
         return ApiResponse.ok("컬렉션 정책을 조회했습니다.", collectionService.getCollectionPolicy());
     }
 
-    // 19. 컬렉션 폴더 목록 조회
-    @GetMapping
-    public ApiResponse<List<CollectionFolderResponseDto>> getCollectionFolders(@AuthenticationPrincipal AuthenticatedUser user) {
-        // user가 null일 수 있는 상황 처리 (인증되지 않은 접근)
-        if (user == null) {
-            return ApiResponse.error("인증 정보가 없습니다. (토큰 확인 필요)");
-        }
-        List<CollectionFolderResponseDto> folders = collectionService.getCollectionFolders(user.id());
-        return ApiResponse.ok("컬렉션 폴더 목록을 조회했습니다.", folders);
+    @GetMapping("/{folderId}")
+    public ApiResponse<CollectionFolderDetailResponse> getFolder(
+            @PathVariable Long folderId
+    ) {
+        return ApiResponse.ok("컬렉션 폴더를 불러왔습니다.", collectionService.getFolder(folderId));
     }
 
-    // 20. 컬렉션에 피드 저장
-    @PostMapping("/{folderId}/feeds")
-    public ApiResponse<Map<String, String>> saveFeedToFolder(
+    @PostMapping("/folders")
+    public ApiResponse<CollectionFolderResponse> createFolder(
+            @AuthenticationPrincipal AuthenticatedUser currentUser,
+            @Valid @RequestBody CreateCollectionFolderRequest request
+    ) {
+        return ApiResponse.ok("컬렉션 폴더를 만들었습니다.", collectionService.createFolder(currentUser, request));
+    }
+
+    @PatchMapping("/folders/{folderId}")
+    public ApiResponse<CollectionFolderResponse> renameFolder(
+            @AuthenticationPrincipal AuthenticatedUser currentUser,
             @PathVariable Long folderId,
-            @RequestBody SaveFeedRequestDto requestDto,
-            @AuthenticationPrincipal AuthenticatedUser user) {
-        
-        if (user == null) {
-            return ApiResponse.error("인증 정보가 없습니다. (토큰 확인 필요)");
-        }
-        
-        collectionService.saveFeedToFolder(folderId, requestDto.postId(), user.id());
-        
-        return ApiResponse.ok("성공", Map.of("message", "저장 완료"));
+            @Valid @RequestBody RenameCollectionFolderRequest request
+    ) {
+        return ApiResponse.ok("컬렉션 폴더 이름을 바꿨습니다.", collectionService.renameFolder(currentUser, folderId, request));
+    }
+
+    @DeleteMapping("/folders/{folderId}")
+    public ApiResponse<Void> deleteFolder(
+            @AuthenticationPrincipal AuthenticatedUser currentUser,
+            @PathVariable Long folderId
+    ) {
+        collectionService.deleteFolder(currentUser, folderId);
+        return ApiResponse.ok("컬렉션 폴더를 삭제했습니다.", null);
+    }
+
+    @PostMapping("/{folderId}/feeds")
+    public ApiResponse<CollectionFolderDetailResponse> saveFeed(
+            @AuthenticationPrincipal AuthenticatedUser currentUser,
+            @PathVariable Long folderId,
+            @Valid @RequestBody SaveFeedToCollectionRequest request
+    ) {
+        return ApiResponse.ok("피드를 컬렉션에 저장했습니다.", collectionService.saveFeed(currentUser, folderId, request));
+    }
+
+    @DeleteMapping("/{folderId}/feeds/{postId}")
+    public ApiResponse<CollectionFolderDetailResponse> removeFeed(
+            @AuthenticationPrincipal AuthenticatedUser currentUser,
+            @PathVariable Long folderId,
+            @PathVariable Long postId
+    ) {
+        return ApiResponse.ok("컬렉션에서 피드를 제거했습니다.", collectionService.removeFeed(currentUser, folderId, postId));
     }
 }
+
