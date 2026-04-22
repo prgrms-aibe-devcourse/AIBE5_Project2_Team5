@@ -909,6 +909,21 @@ export default function Feed() {
     return comments ? comments.length : item.comments;
   };
 
+  const formatFeedDateTime = (value?: string) => {
+    if (!value) return null;
+
+    const parsedDate = new Date(value);
+    if (Number.isNaN(parsedDate.getTime())) return null;
+
+    return parsedDate.toLocaleString("ko-KR", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
   const toggleCommentLike = (feedId: number, commentId: string) => {
     setFeedComments((prev) => ({
       ...prev,
@@ -1614,6 +1629,11 @@ export default function Feed() {
                       <div>
                         <h4 className="font-bold text-sm">{selectedFeed.author.name}</h4>
                         <p className="text-xs text-gray-500">{selectedFeed.author.role}</p>
+                        {formatFeedDateTime(selectedFeed.createdAt) && (
+                          <p className="mt-1 text-[11px] text-gray-400">
+                            {formatFeedDateTime(selectedFeed.createdAt)}
+                          </p>
+                        )}
                       </div>
                     </Link>
                     <div className="flex items-center gap-2">
@@ -1634,19 +1654,9 @@ export default function Feed() {
 
                   {/* Title & Description */}
                   <h2 className="font-bold text-xl mb-2">{selectedFeed.title}</h2>
-                  <p className="text-sm text-gray-600 mb-3">{selectedFeed.description}</p>
-                  {selectedFeed.portfolioUrl && (
-                    <a
-                      href={selectedFeed.portfolioUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(event) => event.stopPropagation()}
-                      className="mb-3 inline-flex items-center gap-2 rounded-lg border border-[#BDEFD8] bg-[#F5FFFB] px-3 py-2 text-xs font-semibold text-[#007E68] transition-colors hover:bg-[#E7FAF6]"
-                    >
-                      <ExternalLink className="size-3.5" />
-                      포트폴리오 보기
-                    </a>
-                  )}
+                  <p className="text-sm text-gray-600 mb-3">
+                    {selectedFeed.description || "등록된 상세 설명이 없습니다."}
+                  </p>
 
                   {/* Tags */}
                   {selectedFeed.category && (
