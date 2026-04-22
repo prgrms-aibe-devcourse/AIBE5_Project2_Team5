@@ -12,7 +12,7 @@ import Lenis from "lenis";
 import "lenis/dist/lenis.css";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { matchingCategories } from "../utils/matchingCategories";
-import { getExploreFeedsApi, ExplorePostResponseDto } from "../api/exploreApi";
+import { getExploreFeedsApi, ExplorePostResponseDto, getExploreDesignersApi, ExploreDesignerResponseDto } from "../api/exploreApi";
 import Footer from "../components/Footer";
 
 const creatorProfiles = [
@@ -305,6 +305,8 @@ export default function Explore() {
   // 실제 서버 데이터 상태
   const [feeds, setFeeds] = useState<ExplorePostResponseDto[]>([]);
   const [isFeedsLoading, setIsFeedsLoading] = useState(false);
+  const [designers, setDesigners] = useState<ExploreDesignerResponseDto[]>([]);
+  const [isDesignersLoading, setIsDesignersLoading] = useState(false);
 
   // 컬렉션
   const [collections, setCollections] = useState<SavedCollection[]>(loadCollections);
@@ -406,6 +408,25 @@ export default function Explore() {
     fetchFeeds();
   }, [selectedCategory, activeTab]);
 
+  // 디자이너 데이터 가져오기 (실제 API 호출)
+  useEffect(() => {
+    if (activeTab !== "profile") return;
+
+    const fetchDesigners = async () => {
+      try {
+        setIsDesignersLoading(true);
+        const data = await getExploreDesignersApi();
+        setDesigners(data);
+      } catch (error) {
+        console.error("디자이너 로딩 중 오류:", error);
+      } finally {
+        setIsDesignersLoading(false);
+      }
+    };
+
+    fetchDesigners();
+  }, [activeTab]);
+
   const filteredProjects = useMemo(() => {
     // 검색어가 있을 때만 프론트엔드에서 필터링하거나, 
     // 나중에 검색 API가 생기면 서버로 요청하도록 할 예정입니다.
@@ -417,12 +438,15 @@ export default function Explore() {
     });
   }, [feeds, searchQuery]);
 
-  const filteredProfiles = useMemo(() => {
+  const filteredDesigners = useMemo(() => {
+    if (!searchQuery.trim()) return designers;
     const q = searchQuery.toLowerCase();
-    return creatorProfiles.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.role.toLowerCase().includes(q) || p.category.toLowerCase().includes(q),
+    return designers.filter(
+      (d) => 
+        d.nickname.toLowerCase().includes(q) || 
+        (d.job && d.job.toLowerCase().includes(q))
     );
-  }, [searchQuery]);
+  }, [designers, searchQuery]);
 
   // AI 검색 실행
   const runAiSearch = useCallback(() => {
@@ -762,26 +786,30 @@ export default function Explore() {
           <section className="max-w-[1800px] mx-auto px-5 py-6">
             <div className="mb-5 flex items-center gap-2">
               <Users className="size-4 text-[#00C9A7]" />
-              <span className="text-sm font-semibold text-[#374151]">크리에이터 {filteredProfiles.length}명</span>
+              <span className="text-sm font-semibold text-[#374151]">크리에이터 {filteredDesigners.length}명</span>
               {searchQuery && <span className="text-sm text-gray-400">— "{searchQuery}"</span>}
             </div>
-            {filteredProfiles.length > 0 ? (
+            {isDesignersLoading ? (
+              <div className="flex justify-center py-20">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00C9A7]"></div>
+              </div>
+            ) : filteredDesigners.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {filteredProfiles.map((profile, index) => (
+                {filteredDesigners.map((profile, index) => (
                   <motion.div
-                    key={profile.id}
+                    key={profile.userId}
                     initial={{ opacity: 0, y: 30 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true, margin: "-40px" }}
                     transition={{ delay: (index % 4) * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
                     className="group pb-2"
                   >
-                    <Link to={`/profile/${profile.name}`} className="flex h-[156px] bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)] group-hover:border-[#00C9A7]/40 group-hover:shadow-[0_16px_40px_rgba(0,0,0,0.1)] group-hover:-translate-y-1 transition-all duration-500">
+                    <Link to={`/profile/${profile.nickname}`} className="flex h-[156px] bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)] group-hover:border-[#00C9A7]/40 group-hover:shadow-[0_16px_40px_rgba(0,0,0,0.1)] group-hover:-translate-y-1 transition-all duration-500">
                       {/* 좌측: 배너 */}
                       <div className="w-32 shrink-0 relative overflow-hidden">
                         <ImageWithFallback
-                          src={profile.banner}
-                          alt={profile.name}
+                          src={profile.bannerImage || "https://images.unsplash.com/photo-1618761714954-0b8cd0026356?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400"}
+                          alt={profile.nickname}
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                         />
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent to-black/10" />
@@ -790,18 +818,18 @@ export default function Explore() {
                       <div className="flex-1 p-3.5 flex flex-col justify-between min-w-0">
                         <div>
                           <div className="flex items-center gap-2 mb-1.5">
-                            <ImageWithFallback src={profile.avatar} alt={profile.name} className="size-9 rounded-full ring-2 ring-[#00C9A7]/15 shadow-sm shrink-0" />
+                            <ImageWithFallback src={profile.profileImage || `https://i.pravatar.cc/150?u=${profile.userId}`} alt={profile.nickname} className="size-9 rounded-full ring-2 ring-[#00C9A7]/15 shadow-sm shrink-0" />
                             <div className="min-w-0">
-                              <h3 className="font-bold text-sm text-[#0F0F0F] group-hover:text-[#00A88C] transition-colors truncate leading-tight">{profile.name}</h3>
-                              <p className="text-[11px] text-gray-500 truncate">{profile.role}</p>
+                              <h3 className="font-bold text-sm text-[#0F0F0F] group-hover:text-[#00A88C] transition-colors truncate leading-tight">{profile.nickname}</h3>
+                              <p className="text-[11px] text-gray-500 truncate">{profile.job}</p>
                             </div>
                           </div>
-                          <span className="inline-block text-[10px] font-semibold bg-[#A8F0E4]/25 text-[#00A88C] px-2 py-0.5 rounded-full mb-1.5">{profile.category}</span>
-                          <p className="text-[11px] text-gray-400 line-clamp-1 leading-relaxed">{profile.bio}</p>
+                          <span className="inline-block text-[10px] font-semibold bg-[#A8F0E4]/25 text-[#00A88C] px-2 py-0.5 rounded-full mb-1.5">{profile.job || "디자이너"}</span>
+                          <p className="text-[11px] text-gray-400 line-clamp-1 leading-relaxed">{profile.introduction || "멋진 디자인을 만듭니다."}</p>
                         </div>
                         <div className="flex items-center gap-3 mt-auto pt-2 border-t border-gray-50 text-[10px]">
-                          <span className="text-gray-500"><strong className="text-[#0F0F0F] text-xs">{profile.followers}</strong> 팔로워</span>
-                          <span className="text-gray-500"><strong className="text-[#0F0F0F] text-xs">{profile.works}</strong> 작품</span>
+                          <span className="text-gray-500"><strong className="text-[#0F0F0F] text-xs">{profile.followCount}</strong> 팔로워</span>
+                          <span className="text-gray-500"><strong className="text-[#0F0F0F] text-xs">{profile.postCount}</strong> 작품</span>
                           <ArrowRight className="ml-auto size-3 text-gray-300 group-hover:text-[#00A88C] transition-colors" />
                         </div>
                       </div>
