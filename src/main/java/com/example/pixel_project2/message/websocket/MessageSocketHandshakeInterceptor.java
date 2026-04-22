@@ -2,6 +2,7 @@ package com.example.pixel_project2.message.websocket;
 
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.config.jwt.JwtTokenProvider;
+import com.example.pixel_project2.common.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.server.ServerHttpRequest;
@@ -19,6 +20,7 @@ public class MessageSocketHandshakeInterceptor implements HandshakeInterceptor {
     public static final String AUTHENTICATED_USER_ATTRIBUTE = "authenticatedUser";
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final UserRepository userRepository;
 
     @Override
     public boolean beforeHandshake(
@@ -39,6 +41,10 @@ public class MessageSocketHandshakeInterceptor implements HandshakeInterceptor {
 
         try {
             AuthenticatedUser user = jwtTokenProvider.parseAccessToken(token.trim());
+            if (!userRepository.existsById(user.id())) {
+                response.setStatusCode(HttpStatus.UNAUTHORIZED);
+                return false;
+            }
             attributes.put(AUTHENTICATED_USER_ATTRIBUTE, user);
             return true;
         } catch (IllegalArgumentException e) {

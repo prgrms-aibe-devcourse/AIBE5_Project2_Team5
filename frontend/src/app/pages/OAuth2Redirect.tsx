@@ -26,6 +26,7 @@ export default function OAuth2Redirect() {
   useEffect(() => {
     const error = searchParams.get("error");
     if (error) {
+      clearAuthenticated();
       if (shouldContinueToKakaoSignup(searchParams.get("provider"), error)) {
         navigate("/signup?social=kakao&mode=signup", {
           replace: true,
