@@ -38,3 +38,23 @@ export async function uploadFeedImagesApi(postId: number, files: File[]) {
     "Failed to upload feed images.",
   );
 }
+
+export async function replaceFeedImagesApi(
+  postId: number,
+  existingImageUrls: string[],
+  files: File[],
+) {
+  const formData = new FormData();
+  formData.append("postId", String(postId));
+  existingImageUrls.forEach((imageUrl) => formData.append("existingImageUrls", imageUrl));
+  files.forEach((file) => formData.append("files", file));
+
+  return apiRequest<FeedImagesUploadResponse>(
+    "/api/uploads/feed-images/replace",
+    {
+      method: "POST",
+      body: formData,
+    },
+    "Failed to replace feed images.",
+  );
+}

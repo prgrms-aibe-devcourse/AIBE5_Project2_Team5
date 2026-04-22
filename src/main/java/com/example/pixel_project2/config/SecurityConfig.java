@@ -64,6 +64,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/auth/login",
+                                "/api/auth/logout",
                                 "/api/auth/signup",
                                 "/api/auth/password-reset",
                                 "/api/auth/password-reset/**"
@@ -90,6 +91,7 @@ public class SecurityConfig {
 
         String path = request.getServletPath();
         return "/api/auth/login".equals(path)
+                || "/api/auth/logout".equals(path)
                 || "/api/auth/signup".equals(path)
                 || "/api/auth/password-reset".equals(path)
                 || path.startsWith("/api/auth/password-reset/");

@@ -87,6 +87,17 @@ export async function getMeApi() {
   return apiRequest<CurrentUserResponse>("/api/auth/me", {}, "Failed to load current user.");
 }
 
+export async function logoutApi() {
+  return publicApiRequest<void>(
+    "/api/auth/logout",
+    {
+      method: "POST",
+      credentials: "include",
+    },
+    "Logout failed.",
+  );
+}
+
 export async function requestPasswordResetEmailApi(loginId: string) {
   return publicApiRequest<PasswordResetEmailResponse>(
     "/api/auth/password-reset/request",
@@ -116,6 +127,7 @@ export async function confirmPasswordResetApi(params: {
 export function getGoogleOAuthUrl(params: {
   mode: "login" | "signup";
   role: AuthRole;
+  name?: string;
   nickname?: string;
   email?: string;
   redirectTo?: string;
@@ -126,6 +138,7 @@ export function getGoogleOAuthUrl(params: {
 export function getKakaoOAuthUrl(params: {
   mode: "login" | "signup";
   role: AuthRole;
+  name?: string;
   nickname?: string;
   email?: string;
   redirectTo?: string;
@@ -138,6 +151,7 @@ function getSocialOAuthUrl(
   params: {
     mode: "login" | "signup";
     role: AuthRole;
+    name?: string;
     nickname?: string;
     email?: string;
     redirectTo?: string;
@@ -146,6 +160,9 @@ function getSocialOAuthUrl(
   const url = new URL(`/api/auth/oauth2/${provider}`, API_ORIGIN);
   url.searchParams.set("mode", params.mode);
   url.searchParams.set("role", params.role);
+  if (params.name) {
+    url.searchParams.set("name", params.name);
+  }
   if (params.nickname) {
     url.searchParams.set("nickname", params.nickname);
   }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { setAuthenticated, setAuthTokens, setCurrentUser, type UserRole } from "../utils/auth";
+import { clearAuthenticated, setAuthenticated, setAuthTokens, setCurrentUser, type UserRole } from "../utils/auth";
 
 function normalizeRedirectTo(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) {
@@ -51,6 +51,7 @@ export default function OAuth2Redirect() {
       return;
     }
 
+    clearAuthenticated();
     setAuthTokens(accessToken, refreshToken, true);
     setCurrentUser({
       userId: Number.isFinite(userId) ? userId : undefined,

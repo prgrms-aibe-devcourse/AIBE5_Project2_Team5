@@ -11,4 +11,11 @@ public interface UploadService {
     ProfileImageUploadResponse uploadProfileImage(AuthenticatedUser currentUser, MultipartFile file);
 
     FeedImagesUploadResponse uploadFeedImages(AuthenticatedUser currentUser, Long postId, List<MultipartFile> files);
+
+    FeedImagesUploadResponse replaceFeedImages(
+            AuthenticatedUser currentUser,
+            Long postId,
+            List<String> existingImageUrls,
+            List<MultipartFile> files
+    );
 }

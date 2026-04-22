@@ -7,6 +7,7 @@ import {
   subscribeNotificationState,
 } from "../utils/notificationState";
 import { clearAuthenticated, getCurrentUser } from "../utils/auth";
+import { logoutApi } from "../api/authApi";
 
 export default function Navigation() {
   const location = useLocation();
@@ -14,7 +15,7 @@ export default function Navigation() {
   const currentUser = getCurrentUser();
   const [hasUnread, setHasUnread] = useState(hasUnreadNotifications);
   const [scrolled, setScrolled] = useState(false);
-  const profilePath = currentUser?.userId ? `/profile/${currentUser.userId}` : "/profile/me";
+  const profilePath = "/profile/me";
   const profileInitial = (currentUser?.nickname || currentUser?.name || "J").slice(0, 1).toUpperCase();
 
   const navItems = [
@@ -27,9 +28,15 @@ export default function Navigation() {
 
   const isActive = (path: string) => location.pathname.startsWith(path);
 
-  const handleLogout = () => {
-    clearAuthenticated();
-    navigate("/", { replace: true });
+  const handleLogout = async () => {
+    try {
+      await logoutApi();
+    } catch {
+      // 클라이언트 인증 정보는 서버 로그아웃 실패와 무관하게 정리합니다.
+    } finally {
+      clearAuthenticated();
+      navigate("/", { replace: true });
+    }
   };
 
   useEffect(() => {

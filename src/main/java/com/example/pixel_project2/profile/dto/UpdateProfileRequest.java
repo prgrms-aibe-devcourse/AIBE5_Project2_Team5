@@ -13,6 +13,9 @@ public record UpdateProfileRequest(
         String nickname,
 
         @Size(max = 255, message = "URL must be 255 characters or less.")
-        String url
+        String url,
+
+        @Size(max = 100, message = "Location must be 100 characters or less.")
+        String location
 ) {
 }

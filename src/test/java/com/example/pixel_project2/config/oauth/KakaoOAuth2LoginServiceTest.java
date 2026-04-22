@@ -50,7 +50,7 @@ class KakaoOAuth2LoginServiceTest {
                 )
         ));
         given(userRepository.findByProviderAndProviderId(Provider.KAKAO, "123456789")).willReturn(Optional.empty());
-        given(userRepository.findByLoginId("kakao_123456789")).willReturn(Optional.empty());
+        given(userRepository.findByloginId("kakao_123456789")).willReturn(Optional.empty());
         given(userRepository.countByLoginId("kakao-user@example.com")).willReturn(0L);
         given(userRepository.countByNickname("kakaoNick")).willReturn(0L);
         given(passwordEncoder.encode(anyString())).willReturn("encoded-random-password");
@@ -65,6 +65,7 @@ class KakaoOAuth2LoginServiceTest {
                 oauth2User,
                 "signup",
                 UserRole.CLIENT,
+                "카카오사용자",
                 "kakaoNick",
                 "kakao-user@example.com"
         );
@@ -75,7 +76,7 @@ class KakaoOAuth2LoginServiceTest {
 
         assertThat(savedUser.getLoginId()).isEqualTo("kakao-user@example.com");
         assertThat(savedUser.getProviderId()).isEqualTo("123456789");
-        assertThat(savedUser.getName()).isEqualTo("Kakao User");
+        assertThat(savedUser.getName()).isEqualTo("카카오사용자");
         assertThat(savedUser.getNickname()).isEqualTo("kakaoNick");
         assertThat(savedUser.getRole()).isEqualTo(UserRole.CLIENT);
         assertThat(savedUser.getProvider()).isEqualTo(Provider.KAKAO);
@@ -85,7 +86,7 @@ class KakaoOAuth2LoginServiceTest {
 
         assertThat(response.accessToken()).isEqualTo("access-token");
         assertThat(response.loginId()).isEqualTo("kakao-user@example.com");
-        assertThat(response.name()).isEqualTo("Kakao User");
+        assertThat(response.name()).isEqualTo("카카오사용자");
         assertThat(response.nickname()).isEqualTo("kakaoNick");
         assertThat(response.role()).isEqualTo("CLIENT");
         assertThat(response.profileImage()).isEqualTo("https://example.com/kakao-profile.png");
