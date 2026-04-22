@@ -17,6 +17,7 @@ import {
   type ProfileResponse,
 } from "../api/profileApi";
 import { createFeedApi, deleteFeedApi, updateFeedApi } from "../api/feedApi";
+import { uploadFeedImagesApi, uploadProfileImageApi } from "../api/uploadApi";
 
 type FeedProjectAuthor = {
   name: string;
@@ -269,6 +270,8 @@ export default function Profile() {
   const [editIntroduction, setEditIntroduction] = useState("");
   const [editWorkStatus, setEditWorkStatus] = useState("");
   const [editWorkType, setEditWorkType] = useState("");
+  const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
+  const [profileImagePreview, setProfileImagePreview] = useState("");
   const [uploadedProjects, setUploadedProjects] = useState<FeedProject[]>([]);
   const [isWorkComposerOpen, setIsWorkComposerOpen] = useState(false);
   const [workTitle, setWorkTitle] = useState("");
@@ -276,6 +279,7 @@ export default function Profile() {
   const [workTags, setWorkTags] = useState("");
   const [workCategory, setWorkCategory] = useState("");
   const [workImages, setWorkImages] = useState<string[]>([]);
+  const [workImageFiles, setWorkImageFiles] = useState<File[]>([]);
   const [coverImageIndex, setCoverImageIndex] = useState(0);
   const [figmaUrl, setFigmaUrl] = useState("");
   const [adobeUrl, setAdobeUrl] = useState("");
@@ -286,6 +290,7 @@ export default function Profile() {
   const [editFeedPortfolioUrl, setEditFeedPortfolioUrl] = useState("");
   const [isSavingFeedEdit, setIsSavingFeedEdit] = useState(false);
   const [feedEditError, setFeedEditError] = useState("");
+  const profileImageInputRef = useRef<HTMLInputElement>(null);
   const workImageInputRef = useRef<HTMLInputElement>(null);
   const isKimMinjae = username.includes("김민재");
   const isLeeSoyeon = username.includes("이소연");
@@ -454,6 +459,8 @@ export default function Profile() {
 
   const handleOpenProfileEditor = () => {
     setProfileEditError("");
+    setProfileImageFile(null);
+    setProfileImagePreview("");
     setEditName(apiProfile?.name ?? currentUser?.name ?? "");
     setEditNickname(apiProfile?.nickname ?? currentUser?.nickname ?? "");
     setEditUrl(apiProfile?.url ?? "");
@@ -493,6 +500,14 @@ export default function Profile() {
         });
       }
 
+      if (profileImageFile) {
+        const uploadedImage = await uploadProfileImageApi(profileImageFile);
+        updatedProfile = {
+          ...updatedProfile,
+          profileImage: uploadedImage.imageUrl,
+        };
+      }
+
       setApiProfile(updatedProfile);
       setCurrentUser({
         userId: updatedProfile.userId,
@@ -502,6 +517,8 @@ export default function Profile() {
         role: updatedProfile.role.toLowerCase() as "designer" | "client",
         profileImage: updatedProfile.profileImage,
       });
+      setProfileImageFile(null);
+      setProfileImagePreview("");
       setIsProfileEditorOpen(false);
     } catch (error) {
       setProfileEditError(error instanceof Error ? error.message : "프로필 수정에 실패했습니다.");
@@ -568,6 +585,7 @@ export default function Profile() {
     setWorkTags("");
     setWorkCategory("");
     setWorkImages([]);
+    setWorkImageFiles([]);
     setCoverImageIndex(0);
     setFigmaUrl("");
     setAdobeUrl("");
@@ -596,26 +614,64 @@ export default function Profile() {
     setIsWorkComposerOpen(false);
   };
 
-  const handleWorkImageChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []).filter((file) =>
-      file.type.startsWith("image/")
-    );
-
-    files.forEach((file) => {
+  const readImageFileAsDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
-        if (typeof reader.result !== "string") return;
-        setWorkImages((prev) => [...prev, reader.result as string].slice(0, 4));
+        if (typeof reader.result === "string") {
+          resolve(reader.result);
+          return;
+        }
+        reject(new Error("Failed to preview image."));
       };
+      reader.onerror = () => reject(new Error("Failed to preview image."));
       reader.readAsDataURL(file);
     });
 
+  const handleProfileImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !file.type.startsWith("image/")) {
+      event.target.value = "";
+      return;
+    }
+
     event.target.value = "";
+
+    try {
+      const preview = await readImageFileAsDataUrl(file);
+      setProfileImageFile(file);
+      setProfileImagePreview(preview);
+    } catch (error) {
+      setProfileEditError(error instanceof Error ? error.message : "Failed to preview image.");
+    }
+  };
+
+  const handleWorkImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []).filter((file) =>
+      file.type.startsWith("image/")
+    ).slice(0, Math.max(0, 4 - workImageFiles.length));
+
+    if (files.length === 0) {
+      event.target.value = "";
+      return;
+    }
+
+    event.target.value = "";
+
+    try {
+      const previews = await Promise.all(files.map(readImageFileAsDataUrl));
+      setWorkImageFiles((prev) => [...prev, ...files].slice(0, 4));
+      setWorkImages((prev) => [...prev, ...previews].slice(0, 4));
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : "Failed to preview image.");
+    }
   };
 
   const handleRemoveWorkImage = (imageIndex: number) => {
     const nextImages = workImages.filter((_, index) => index !== imageIndex);
+    const nextFiles = workImageFiles.filter((_, index) => index !== imageIndex);
     setWorkImages(nextImages);
+    setWorkImageFiles(nextFiles);
     setCoverImageIndex((prev) => {
       if (nextImages.length === 0) return 0;
       if (imageIndex === prev) return Math.min(prev, nextImages.length - 1);
@@ -743,6 +799,16 @@ export default function Profile() {
         category: workCategory,
         portfolioUrl,
       });
+      const orderedImageFiles = [...workImageFiles];
+      if (coverImageIndex > 0 && coverImageIndex < orderedImageFiles.length) {
+        const [coverImageFile] = orderedImageFiles.splice(coverImageIndex, 1);
+        orderedImageFiles.unshift(coverImageFile);
+      }
+      const uploadedImages =
+        orderedImageFiles.length > 0
+          ? await uploadFeedImagesApi(createdFeed.postId, orderedImageFiles)
+          : null;
+      const uploadedImageUrls = uploadedImages?.imageUrls ?? [];
 
       const newProject: FeedProject = {
         id: createdFeed.postId,
@@ -759,6 +825,8 @@ export default function Profile() {
           username,
           roleType: displayProfile.roleType,
         },
+        imageUrl: uploadedImageUrls.length === 1 ? uploadedImageUrls[0] : undefined,
+        images: uploadedImageUrls.length > 1 ? uploadedImageUrls : undefined,
         integrations,
         createdAt: createdFeed.createdAt ?? new Date().toISOString(),
         persisted: true,
@@ -1713,6 +1781,47 @@ export default function Profile() {
             )}
 
             <div className="grid gap-4">
+              <div className="flex items-center gap-4 rounded-lg border border-gray-200 bg-[#F7F7F5] p-4">
+                <ImageWithFallback
+                  src={profileImagePreview || apiProfile?.profileImage || displayProfile.avatar}
+                  alt="프로필 이미지 미리보기"
+                  className="size-20 rounded-full object-cover"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-gray-700">프로필 이미지</p>
+                  <p className="mt-1 text-xs text-gray-500">JPG, PNG, WebP, GIF 파일을 업로드할 수 있습니다.</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => profileImageInputRef.current?.click()}
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-700 transition-colors hover:bg-gray-50"
+                    >
+                      <ImagePlus className="size-4" />
+                      이미지 선택
+                    </button>
+                    {profileImageFile && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileImageFile(null);
+                          setProfileImagePreview("");
+                        }}
+                        className="h-9 rounded-lg border border-[#FFB9AA] bg-white px-3 text-xs font-bold text-[#B13A21] transition-colors hover:bg-[#FFF7F4]"
+                      >
+                        선택 취소
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    ref={profileImageInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProfileImageChange}
+                    className="hidden"
+                  />
+                </div>
+              </div>
+
               <label className="grid gap-2">
                 <span className="text-sm font-bold text-gray-700">이름</span>
                 <input

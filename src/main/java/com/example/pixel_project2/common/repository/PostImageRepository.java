@@ -10,7 +10,7 @@ import java.util.List;
 
 //게시글 이미지 저장, 피드 이미지 목록 조회
 public interface PostImageRepository extends JpaRepository<PostImage, Long> {
-    List<PostImage> findByPostIdOrderBySortOrderAsc(Long postId);
+    List<PostImage> findByPost_IdOrderBySortOrderAsc(Long postId);
 
     @Modifying
     @Query("delete from PostImage i where i.post.id = :postId")
