@@ -12,6 +12,8 @@ import java.util.Optional;
 public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByloginId(String loginId);
 
+    Optional<User> findByNickname(String nickname);
+
     Optional<User> findByProviderAndProviderId(Provider provider, String providerId);
 
     boolean existsByloginId(String loginId);
@@ -21,4 +23,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query("select count(u.id) from User u where u.nickname = :nickname")
     long countByNickname(@Param("nickname") String nickname);
+
+    @Query("select count(u.id) from User u where u.nickname = :nickname and u.id <> :userId")
+    long countByNicknameAndIdNot(@Param("nickname") String nickname, @Param("userId") Long userId);
 }

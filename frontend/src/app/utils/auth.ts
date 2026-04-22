@@ -6,10 +6,12 @@ const REFRESH_TOKEN_STORAGE_KEY = "pickxel:refreshToken";
 export type UserRole = "designer" | "client";
 
 export type CurrentUser = {
+  userId?: number;
   name: string;
   nickname: string;
   email: string;
   role: UserRole;
+  profileImage?: string | null;
 };
 
 export function isAuthenticated() {
@@ -90,10 +92,15 @@ export function getCurrentUser(): CurrentUser | null {
       (parsedUser?.role === "designer" || parsedUser?.role === "client")
     ) {
       return {
+        userId: typeof parsedUser?.userId === "number" ? parsedUser.userId : undefined,
         name: parsedUser.name,
         nickname: typeof parsedUser?.nickname === "string" ? parsedUser.nickname : parsedUser.name,
         email: parsedUser.email,
         role: parsedUser.role,
+        profileImage:
+          typeof parsedUser?.profileImage === "string" || parsedUser?.profileImage === null
+            ? parsedUser.profileImage
+            : undefined,
       };
     }
   } catch {
