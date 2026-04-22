@@ -110,6 +110,7 @@ public class ProfileServiceImpl implements ProfileService {
 
     private ProfileResponse toProfileResponse(User user, AuthenticatedUser currentUser) {
         Designer designer = user.getDesigner();
+        boolean owner = user.getId().equals(currentUser.id());
 
         return ProfileResponse.builder()
                 .userId(user.getId())
@@ -127,7 +128,8 @@ public class ProfileServiceImpl implements ProfileService {
                 .rating(designer == null ? null : designer.getRating())
                 .workStatus(designer == null || designer.getWorkStatus() == null ? null : designer.getWorkStatus().name())
                 .workType(designer == null || designer.getWorkType() == null ? null : designer.getWorkType().name())
-                .owner(user.getId().equals(currentUser.id()))
+                .owner(owner)
+                .following(!owner && followRepository.countRelation(currentUser.id(), user.getId()) > 0)
                 .build();
     }
 

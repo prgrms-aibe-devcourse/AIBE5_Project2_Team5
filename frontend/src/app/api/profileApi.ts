@@ -17,6 +17,7 @@ export type ProfileResponse = {
   workStatus: string | null;
   workType: string | null;
   owner: boolean;
+  following: boolean;
 };
 
 export type ProfileFeedResponse = {

@@ -19,6 +19,7 @@ public record ProfileResponse(
         Float rating,
         String workStatus,
         String workType,
-        boolean owner
+        boolean owner,
+        boolean following
 ) {
 }

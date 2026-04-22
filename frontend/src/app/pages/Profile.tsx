@@ -1,6 +1,6 @@
 import Navigation from "../components/Navigation";
 import Footer from "../components/Footer";
-import { Heart, MessageCircle, Bookmark, Calendar, MapPin, Star, ImagePlus, Upload, X, Figma, Sparkles, ExternalLink, CheckCircle, Pencil, Trash2 } from "lucide-react";
+import { Heart, MessageCircle, Bookmark, Calendar, MapPin, Star, ImagePlus, Upload, X, Figma, Sparkles, ExternalLink, CheckCircle, Pencil, Trash2, FolderPlus, FolderOpen } from "lucide-react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useParams, useNavigate, useSearchParams } from "react-router";
 import { useState, useEffect, useRef, type ChangeEvent } from "react";
@@ -18,6 +18,19 @@ import {
 } from "../api/profileApi";
 import { createFeedApi, deleteFeedApi, updateFeedApi } from "../api/feedApi";
 import { uploadFeedImagesApi, uploadProfileImageApi } from "../api/uploadApi";
+import { followUserApi, unfollowUserApi } from "../api/followApi";
+import {
+  createCollectionFolderApi,
+  deleteCollectionFolderApi,
+  getCollectionFolderApi,
+  getMyCollectionsApi,
+  getProfileCollectionsApi,
+  removeFeedFromCollectionApi,
+  renameCollectionFolderApi,
+  saveFeedToCollectionApi,
+  type CollectionFolderDetailResponse,
+  type CollectionFolderResponse,
+} from "../api/collectionApi";
 
 type FeedProjectAuthor = {
   name: string;
@@ -262,6 +275,7 @@ export default function Profile() {
   const [hasLoadedProfileFeeds, setHasLoadedProfileFeeds] = useState(false);
   const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isFollowSaving, setIsFollowSaving] = useState(false);
   const [profileEditError, setProfileEditError] = useState("");
   const [editName, setEditName] = useState("");
   const [editNickname, setEditNickname] = useState("");
@@ -272,6 +286,14 @@ export default function Profile() {
   const [editWorkType, setEditWorkType] = useState("");
   const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
   const [profileImagePreview, setProfileImagePreview] = useState("");
+  const [collectionFolders, setCollectionFolders] = useState<CollectionFolderResponse[]>([]);
+  const [selectedCollection, setSelectedCollection] = useState<CollectionFolderDetailResponse | null>(null);
+  const [isCollectionsLoading, setIsCollectionsLoading] = useState(false);
+  const [collectionError, setCollectionError] = useState("");
+  const [newCollectionName, setNewCollectionName] = useState("");
+  const [editingCollectionId, setEditingCollectionId] = useState<number | null>(null);
+  const [editingCollectionName, setEditingCollectionName] = useState("");
+  const [savingProjectIdToCollection, setSavingProjectIdToCollection] = useState<number | null>(null);
   const [uploadedProjects, setUploadedProjects] = useState<FeedProject[]>([]);
   const [isWorkComposerOpen, setIsWorkComposerOpen] = useState(false);
   const [workTitle, setWorkTitle] = useState("");
@@ -446,6 +468,39 @@ export default function Profile() {
   }, [apiProfile, profileLookupKey]);
 
   useEffect(() => {
+    if (!apiProfile || activeTab !== "collection") return;
+
+    let ignore = false;
+    setIsCollectionsLoading(true);
+    setCollectionError("");
+
+    const request =
+      profileLookupKey === "me" ? getMyCollectionsApi() : getProfileCollectionsApi(profileLookupKey);
+
+    request
+      .then((folders) => {
+        if (ignore) return;
+        setCollectionFolders(folders);
+        setSelectedCollection(null);
+      })
+      .catch((error) => {
+        if (ignore) return;
+        setCollectionFolders([]);
+        setSelectedCollection(null);
+        setCollectionError(error instanceof Error ? error.message : "컬렉션을 불러오지 못했습니다.");
+      })
+      .finally(() => {
+        if (!ignore) {
+          setIsCollectionsLoading(false);
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [activeTab, apiProfile, profileLookupKey]);
+
+  useEffect(() => {
     if (!apiProfile) return;
 
     setEditName(apiProfile.name ?? "");
@@ -524,6 +579,125 @@ export default function Profile() {
       setProfileEditError(error instanceof Error ? error.message : "프로필 수정에 실패했습니다.");
     } finally {
       setIsSavingProfile(false);
+    }
+  };
+
+  const handleToggleFollow = async () => {
+    if (!apiProfile || apiProfile.owner || isFollowSaving) return;
+
+    setIsFollowSaving(true);
+    setProfileError("");
+
+    try {
+      const response = apiProfile.following
+        ? await unfollowUserApi(apiProfile.userId)
+        : await followUserApi(apiProfile.userId);
+
+      setApiProfile((current) =>
+        current
+          ? {
+              ...current,
+              following: response.following,
+              followerCount: response.followerCount,
+            }
+          : current
+      );
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : "팔로우 상태를 변경하지 못했습니다.");
+    } finally {
+      setIsFollowSaving(false);
+    }
+  };
+
+  const refreshCollections = async () => {
+    if (!apiProfile) return;
+    const folders =
+      profileLookupKey === "me" ? await getMyCollectionsApi() : await getProfileCollectionsApi(profileLookupKey);
+    setCollectionFolders(folders);
+  };
+
+  const handleCreateCollection = async () => {
+    const folderName = newCollectionName.trim();
+    if (!folderName) return;
+
+    try {
+      const folder = await createCollectionFolderApi(folderName);
+      setCollectionFolders((current) => [folder, ...current]);
+      setNewCollectionName("");
+      setCollectionError("");
+    } catch (error) {
+      setCollectionError(error instanceof Error ? error.message : "컬렉션을 만들지 못했습니다.");
+    }
+  };
+
+  const handleOpenCollection = async (folderId: number) => {
+    setCollectionError("");
+    try {
+      const detail = await getCollectionFolderApi(folderId);
+      setSelectedCollection(detail);
+    } catch (error) {
+      setCollectionError(error instanceof Error ? error.message : "컬렉션을 불러오지 못했습니다.");
+    }
+  };
+
+  const handleRenameCollection = async (folderId: number) => {
+    const folderName = editingCollectionName.trim();
+    if (!folderName) return;
+
+    try {
+      const folder = await renameCollectionFolderApi(folderId, folderName);
+      setCollectionFolders((current) =>
+        current.map((item) => (item.folderId === folderId ? folder : item))
+      );
+      setSelectedCollection((current) =>
+        current && current.folderId === folderId
+          ? { ...current, folderName: folder.folderName }
+          : current
+      );
+      setEditingCollectionId(null);
+      setEditingCollectionName("");
+      setCollectionError("");
+    } catch (error) {
+      setCollectionError(error instanceof Error ? error.message : "컬렉션 이름을 바꾸지 못했습니다.");
+    }
+  };
+
+  const handleDeleteCollection = async (folderId: number) => {
+    if (!window.confirm("이 컬렉션 폴더를 삭제할까요?")) return;
+
+    try {
+      await deleteCollectionFolderApi(folderId);
+      setCollectionFolders((current) => current.filter((item) => item.folderId !== folderId));
+      setSelectedCollection((current) => (current?.folderId === folderId ? null : current));
+      setCollectionError("");
+    } catch (error) {
+      setCollectionError(error instanceof Error ? error.message : "컬렉션을 삭제하지 못했습니다.");
+    }
+  };
+
+  const handleSaveProjectToCollection = async (project: FeedProject, folderId: number) => {
+    setSavingProjectIdToCollection(project.id);
+    setCollectionError("");
+
+    try {
+      const detail = await saveFeedToCollectionApi(folderId, project.id);
+      await refreshCollections();
+      setSelectedCollection((current) => (current?.folderId === folderId ? detail : current));
+    } catch (error) {
+      setCollectionError(error instanceof Error ? error.message : "피드를 컬렉션에 저장하지 못했습니다.");
+    } finally {
+      setSavingProjectIdToCollection(null);
+    }
+  };
+
+  const handleRemoveProjectFromCollection = async (folderId: number, postId: number) => {
+    try {
+      const detail = await removeFeedFromCollectionApi(folderId, postId);
+      await refreshCollections();
+      setSelectedCollection(detail);
+      setCollectionError("");
+    } catch (error) {
+      setCollectionError(error instanceof Error ? error.message : "컬렉션에서 피드를 제거하지 못했습니다.");
     }
   };
 
@@ -925,6 +1099,20 @@ export default function Profile() {
                     프로필 수정
                   </button>
                 )}
+                {apiProfile && !apiProfile.owner && (
+                  <button
+                    type="button"
+                    onClick={handleToggleFollow}
+                    disabled={isFollowSaving}
+                    className={`inline-flex items-center gap-2 rounded-lg border px-5 py-2.5 text-sm font-bold transition-all focus:outline-none focus:ring-2 focus:ring-[#9EE7D0] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
+                      apiProfile.following
+                        ? "border-[#9EE7D0] bg-white text-[#007E68] hover:border-[#00C9A7]"
+                        : "border-[#00C9A7] bg-[#00C9A7] text-white shadow-[0_8px_18px_rgba(0,201,167,0.22)] hover:-translate-y-0.5 hover:bg-[#00A88C]"
+                    }`}
+                  >
+                    {isFollowSaving ? "저장 중..." : apiProfile.following ? "팔로잉" : "팔로우"}
+                  </button>
+                )}
                 <button
                   onClick={() => navigate('/messages')}
                   className="hidden"
@@ -945,11 +1133,11 @@ export default function Profile() {
             <div className="flex gap-8 mb-4">
               <div>
                 <div className="text-2xl font-bold">{displayProfile.followers}</div>
-                <div className="text-sm text-gray-600">Followers</div>
+                <div className="text-sm text-gray-600">팔로워</div>
               </div>
               <div>
                 <div className="text-2xl font-bold">{displayProfile.following}</div>
-                <div className="text-sm text-gray-600">Following</div>
+                <div className="text-sm text-gray-600">팔로잉</div>
               </div>
             </div>
 
@@ -1013,6 +1201,7 @@ export default function Profile() {
         {/* Tab Content */}
         {activeTab === "feed" && (
           <div className="space-y-8 mb-12">
+            {canEditProfile && (
             <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
               <button
                 type="button"
@@ -1033,6 +1222,7 @@ export default function Profile() {
                 </span>
               </button>
             </div>
+            )}
 
             {feedProjects.map((project) => (
               <div key={project.id} className="bg-white rounded-2xl overflow-hidden border border-gray-200">
@@ -1186,10 +1376,223 @@ export default function Profile() {
         )}
 
         {activeTab === "collection" && (
-          <div className="text-center py-20">
-            <div className="text-6xl mb-4">📚</div>
-            <h3 className="text-2xl font-bold mb-2">컬렉션이 비어있습니다</h3>
-            <p className="text-gray-600">마음에 드는 작품을 저장하여 컬렉션을 만들어보세요.</p>
+          <div className="space-y-8 mb-12">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-bold">컬렉션</h2>
+                <p className="mt-1 text-sm text-gray-500">저장한 작업을 폴더별로 모아볼 수 있어요.</p>
+              </div>
+              {canEditProfile && (
+                <div className="flex min-w-[280px] max-w-md flex-1 gap-2">
+                  <input
+                    value={newCollectionName}
+                    onChange={(event) => setNewCollectionName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        handleCreateCollection();
+                      }
+                    }}
+                    placeholder="새 컬렉션 이름"
+                    className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#9EE7D0]"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCreateCollection}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#00C9A7] px-4 py-2 text-sm font-bold text-white hover:bg-[#00A88C]"
+                  >
+                    <FolderPlus className="size-4" />
+                    추가
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {collectionError && (
+              <div className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-4 py-3 text-sm font-semibold text-[#B13A21]">
+                {collectionError}
+              </div>
+            )}
+
+            {isCollectionsLoading ? (
+              <div className="rounded-lg border border-[#BDEFD8] bg-[#F5FFFB] px-4 py-3 text-sm font-semibold text-[#007E68]">
+                컬렉션을 불러오는 중...
+              </div>
+            ) : collectionFolders.length === 0 ? (
+              <div className="rounded-lg border border-gray-200 bg-white py-16 text-center">
+                <div className="mb-4 text-5xl">[]</div>
+                <h3 className="mb-2 text-2xl font-bold">컬렉션이 비어있어요</h3>
+                <p className="text-gray-600">마음에 드는 작업을 저장할 폴더를 만들어보세요.</p>
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {collectionFolders.map((folder) => (
+                  <div
+                    key={folder.folderId}
+                    className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleOpenCollection(folder.folderId)}
+                      className="mb-4 grid h-36 w-full grid-cols-2 gap-1 overflow-hidden rounded-lg bg-[#F7F7F5]"
+                    >
+                      {folder.previewImageUrls.length > 0 ? (
+                        folder.previewImageUrls.slice(0, 4).map((url, index) => (
+                          <ImageWithFallback
+                            key={`${folder.folderId}-${url}-${index}`}
+                            src={url}
+                            alt={folder.folderName}
+                            className="h-full w-full object-cover"
+                          />
+                        ))
+                      ) : (
+                        <div className="col-span-2 flex items-center justify-center text-gray-400">
+                          <FolderOpen className="size-10" />
+                        </div>
+                      )}
+                    </button>
+
+                    {editingCollectionId === folder.folderId ? (
+                      <div className="flex gap-2">
+                        <input
+                          value={editingCollectionName}
+                          onChange={(event) => setEditingCollectionName(event.target.value)}
+                          className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#00C9A7]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRenameCollection(folder.folderId)}
+                          className="rounded-lg bg-[#00C9A7] px-3 py-2 text-xs font-bold text-white"
+                        >
+                          저장
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-bold">{folder.folderName}</h3>
+                          <p className="mt-1 text-sm text-gray-500">{folder.itemCount}개 피드</p>
+                        </div>
+                        {canEditProfile && (
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingCollectionId(folder.folderId);
+                                setEditingCollectionName(folder.folderName);
+                              }}
+                              className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:border-[#00C9A7] hover:text-[#007E68]"
+                              aria-label="컬렉션 이름 수정"
+                            >
+                              <Pencil className="size-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCollection(folder.folderId)}
+                              className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:border-[#FFB9AA] hover:text-[#B13A21]"
+                              aria-label="컬렉션 삭제"
+                            >
+                              <Trash2 className="size-4" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {selectedCollection && (
+              <div className="rounded-lg border border-gray-200 bg-white p-5">
+                <div className="mb-5 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-xl font-bold">{selectedCollection.folderName}</h3>
+                    <p className="text-sm text-gray-500">{selectedCollection.feeds.length}개 피드</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCollection(null)}
+                    className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:text-black"
+                    aria-label="닫기"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+
+                {selectedCollection.feeds.length === 0 ? (
+                  <div className="rounded-lg bg-[#F7F7F5] py-10 text-center text-sm text-gray-500">
+                    아직 저장된 피드가 없어요.
+                  </div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {selectedCollection.feeds.map((feed) => (
+                      <div key={feed.postId} className="rounded-lg border border-gray-200 p-4">
+                        {feed.thumbnailImageUrl && (
+                          <ImageWithFallback
+                            src={feed.thumbnailImageUrl}
+                            alt={feed.title}
+                            className="mb-3 aspect-video w-full rounded-lg object-cover"
+                          />
+                        )}
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <h4 className="font-bold">{feed.title}</h4>
+                            <p className="mt-1 line-clamp-2 text-sm text-gray-500">
+                              {feed.description}
+                            </p>
+                          </div>
+                          {canEditProfile && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveProjectFromCollection(selectedCollection.folderId, feed.postId)}
+                              className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:border-[#FFB9AA] hover:text-[#B13A21]"
+                              aria-label="저장 피드 제거"
+                            >
+                              <Trash2 className="size-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {canEditProfile && collectionFolders.length > 0 && feedProjects.length > 0 && (
+              <div className="rounded-lg border border-[#BDEFD8] bg-[#F5FFFB] p-5">
+                <h3 className="mb-3 text-lg font-bold text-[#007E68]">내 피드 저장하기</h3>
+                <div className="space-y-3">
+                  {feedProjects
+                    .filter((project) => project.persisted)
+                    .map((project) => (
+                      <div
+                        key={`save-${project.id}`}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white p-3"
+                      >
+                        <div>
+                          <p className="font-semibold">{project.title}</p>
+                          <p className="text-xs text-gray-500">저장할 컬렉션을 선택하세요.</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {collectionFolders.map((folder) => (
+                            <button
+                              key={`${project.id}-${folder.folderId}`}
+                              type="button"
+                              onClick={() => handleSaveProjectToCollection(project, folder.folderId)}
+                              disabled={savingProjectIdToCollection === project.id}
+                              className="rounded-lg border border-[#9EE7D0] px-3 py-1.5 text-xs font-bold text-[#007E68] hover:bg-[#E8FFF7] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {savingProjectIdToCollection === project.id ? "저장 중" : folder.folderName}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
