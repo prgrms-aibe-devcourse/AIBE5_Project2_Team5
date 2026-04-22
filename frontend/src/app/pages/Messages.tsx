@@ -8,11 +8,14 @@ import {
   markConversationRead,
 } from "../utils/notificationState";
 import {
+  createMessageConversationApi,
   getConversationMessagesApi,
   getMessageConversationsApi,
+  getMessageUsersApi,
   sendConversationMessageApi,
   type ChatMessageResponse as ApiChatMessageResponse,
   type MessageConversationResponse as ApiMessageConversationResponse,
+  type MessageUserResponse as ApiMessageUserResponse,
 } from "../api/messageApi";
 import { createMessageSocket, type IncomingChatSocketMessage } from "../api/messageSocket";
 import { getCurrentUser } from "../utils/auth";
@@ -361,6 +364,16 @@ type Conversation = {
   }>;
 };
 
+type MessageUser = {
+  userId: number;
+  loginId: string;
+  name: string;
+  title: string;
+  roleLabel: string;
+  avatar: string;
+  bio: string;
+};
+
 const conversations: Conversation[] = [];
 
 const getRoleLabel = (role: ApiMessageConversationResponse["partnerRole"]) =>
@@ -407,6 +420,23 @@ const mapConversationResponse = (
       `https://i.pravatar.cc/150?u=message-${conversation.partnerUserId}`,
     bio: conversation.partnerIntroduction || "프로젝트 대화를 진행 중입니다.",
     sharedMedia: [],
+  };
+};
+
+const mapMessageUserResponse = (user: ApiMessageUserResponse): MessageUser => {
+  const displayName = user.nickname || user.name || "사용자";
+  const roleLabel = user.job || getRoleLabel(user.role);
+
+  return {
+    userId: user.userId,
+    loginId: user.loginId || displayName,
+    name: displayName,
+    title: roleLabel,
+    roleLabel,
+    avatar:
+      user.profileImage ||
+      `https://i.pravatar.cc/150?u=message-user-${user.userId}`,
+    bio: user.introduction || "대화를 시작할 수 있습니다.",
   };
 };
 
@@ -560,6 +590,10 @@ export default function Messages() {
   const [isConversationsLoading, setIsConversationsLoading] = useState(true);
   const [conversationError, setConversationError] = useState<string | null>(null);
   const [conversationReloadKey, setConversationReloadKey] = useState(0);
+  const [messageUsers, setMessageUsers] = useState<MessageUser[]>([]);
+  const [isMessageUsersLoading, setIsMessageUsersLoading] = useState(true);
+  const [messageUsersError, setMessageUsersError] = useState<string | null>(null);
+  const [creatingConversationUserId, setCreatingConversationUserId] = useState<number | null>(null);
   const [leftConversationIds, setLeftConversationIds] = useState<number[]>(
     readLeftConversationIds
   );
@@ -632,6 +666,37 @@ export default function Messages() {
   const activeMessages = activeConversation
     ? chatMessages.filter((message) => message.conversationId === activeConversation.id)
     : [];
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadMessageUsers() {
+      try {
+        setIsMessageUsersLoading(true);
+        setMessageUsersError(null);
+        const userResponses = await getMessageUsersApi();
+
+        if (!mounted) return;
+
+        setMessageUsers(userResponses.map(mapMessageUserResponse));
+      } catch (error) {
+        if (!mounted) return;
+        setMessageUsersError(
+          error instanceof Error ? error.message : "회원 목록을 불러오지 못했습니다."
+        );
+      } finally {
+        if (mounted) {
+          setIsMessageUsersLoading(false);
+        }
+      }
+    }
+
+    loadMessageUsers();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -903,6 +968,17 @@ export default function Messages() {
       conversation.role,
       conversation.message,
       preview,
+    ].some((value) => value.toLowerCase().includes(normalizedConversationSearch));
+  });
+  const filteredMessageUsers = messageUsers.filter((user) => {
+    if (!normalizedConversationSearch) return true;
+
+    return [
+      user.name,
+      user.loginId,
+      user.title,
+      user.roleLabel,
+      user.bio,
     ].some((value) => value.toLowerCase().includes(normalizedConversationSearch));
   });
 
@@ -1300,6 +1376,47 @@ export default function Messages() {
       setMobileView("chat");
     } else {
       setMobileView("list");
+    }
+  };
+
+  const handleStartConversationWithUser = async (user: MessageUser) => {
+    const existingConversation = serverConversations.find(
+      (conversation) => conversation.partnerId === String(user.userId)
+    );
+
+    if (existingConversation) {
+      setLeftConversationIds((prev) =>
+        prev.filter((conversationId) => conversationId !== existingConversation.id)
+      );
+      setActiveConversationId(existingConversation.id);
+      setMobileView("chat");
+      navigate(`/messages?conversationId=${existingConversation.id}`, { replace: true });
+      return;
+    }
+
+    try {
+      setCreatingConversationUserId(user.userId);
+      const createdConversation = await createMessageConversationApi(user.userId);
+      const nextConversation = mapConversationResponse(createdConversation);
+
+      setServerConversations((prev) => {
+        const withoutDuplicate = prev.filter(
+          (conversation) => conversation.id !== nextConversation.id
+        );
+        return [nextConversation, ...withoutDuplicate];
+      });
+      setLeftConversationIds((prev) =>
+        prev.filter((conversationId) => conversationId !== nextConversation.id)
+      );
+      setActiveConversationId(nextConversation.id);
+      setMobileView("chat");
+      navigate(`/messages?conversationId=${nextConversation.id}`, { replace: true });
+    } catch (error) {
+      setMessageUsersError(
+        error instanceof Error ? error.message : "대화를 시작하지 못했습니다."
+      );
+    } finally {
+      setCreatingConversationUserId(null);
     }
   };
 
@@ -1895,6 +2012,66 @@ export default function Messages() {
     }
   };
 
+  const messageUserList = (
+    <section className="border-t border-gray-100 bg-white px-4 py-4 text-left">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-bold text-[#12382D]">회원 목록</h3>
+        <span className="text-xs font-semibold text-gray-400">
+          {filteredMessageUsers.length}명
+        </span>
+      </div>
+
+      {isMessageUsersLoading && (
+        <p className="rounded-lg bg-[#F7F7F5] px-3 py-4 text-center text-xs font-semibold text-gray-500">
+          회원 목록을 불러오는 중입니다.
+        </p>
+      )}
+
+      {!isMessageUsersLoading && messageUsersError && (
+        <p className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-4 text-center text-xs font-semibold text-[#B13A21]">
+          {messageUsersError}
+        </p>
+      )}
+
+      {!isMessageUsersLoading && !messageUsersError && filteredMessageUsers.length === 0 && (
+        <p className="rounded-lg bg-[#F7F7F5] px-3 py-4 text-center text-xs font-semibold text-gray-500">
+          표시할 회원이 없습니다.
+        </p>
+      )}
+
+      {!isMessageUsersLoading && !messageUsersError && filteredMessageUsers.length > 0 && (
+        <div className="space-y-2">
+          {filteredMessageUsers.map((user) => {
+            const isCreating = creatingConversationUserId === user.userId;
+
+            return (
+              <button
+                key={user.userId}
+                type="button"
+                disabled={isCreating}
+                onClick={() => handleStartConversationWithUser(user)}
+                className="flex w-full items-center gap-3 rounded-lg border border-gray-100 bg-white p-3 text-left shadow-sm transition-all hover:border-[#A8F0E4] hover:bg-[#F0FBF7] disabled:cursor-wait disabled:opacity-70"
+              >
+                <ImageWithFallback
+                  src={user.avatar}
+                  alt={user.name}
+                  className="size-10 shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-[#12382D]">{user.name}</p>
+                  <p className="truncate text-xs font-semibold text-gray-500">{user.title}</p>
+                </div>
+                <span className="shrink-0 rounded-lg bg-[#E8FBF7] px-2.5 py-1 text-xs font-bold text-[#007E68]">
+                  {isCreating ? "생성 중" : "메시지"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+
   if (!activeConversation) {
     return (
       <div className="min-h-screen bg-[#F7F7F5]">
@@ -1911,6 +2088,9 @@ export default function Messages() {
               {conversationError ??
                 "피드나 프로젝트에서 제안을 시작하면 이곳에 대화가 생성됩니다."}
             </p>
+            <div className="mt-6 max-h-[420px] overflow-y-auto rounded-lg border border-gray-100">
+              {messageUserList}
+            </div>
             <button
               type="button"
               onClick={() => navigate("/feed")}
@@ -2228,6 +2408,7 @@ export default function Messages() {
                 </p>
               </div>
             )}
+            {messageUserList}
           </div>
         </div>
 

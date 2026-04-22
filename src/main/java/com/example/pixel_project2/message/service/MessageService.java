@@ -5,12 +5,15 @@ import com.example.pixel_project2.message.dto.ChatMessageResponse;
 import com.example.pixel_project2.message.dto.CreateConversationRequest;
 import com.example.pixel_project2.message.dto.MessageConversationResponse;
 import com.example.pixel_project2.message.dto.MessagePolicyResponse;
+import com.example.pixel_project2.message.dto.MessageUserResponse;
 import com.example.pixel_project2.message.dto.SendMessageRequest;
 
 import java.util.List;
 
 public interface MessageService {
     MessagePolicyResponse getMessagePolicy();
+
+    List<MessageUserResponse> getMessageUsers(AuthenticatedUser currentUser);
 
     List<MessageConversationResponse> getConversations(AuthenticatedUser currentUser);
 

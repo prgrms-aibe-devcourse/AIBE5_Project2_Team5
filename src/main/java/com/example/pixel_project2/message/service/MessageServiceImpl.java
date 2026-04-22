@@ -8,6 +8,7 @@ import com.example.pixel_project2.message.dto.ChatMessageResponse;
 import com.example.pixel_project2.message.dto.CreateConversationRequest;
 import com.example.pixel_project2.message.dto.MessageConversationResponse;
 import com.example.pixel_project2.message.dto.MessagePolicyResponse;
+import com.example.pixel_project2.message.dto.MessageUserResponse;
 import com.example.pixel_project2.message.dto.SendMessageRequest;
 import com.example.pixel_project2.message.entity.ChatMessage;
 import com.example.pixel_project2.message.entity.MessageConversation;
@@ -34,6 +35,15 @@ public class MessageServiceImpl implements MessageService {
     @Override
     public MessagePolicyResponse getMessagePolicy() {
         return new MessagePolicyResponse(true, true, true);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MessageUserResponse> getMessageUsers(AuthenticatedUser currentUser) {
+        return userRepository.findMessageUsers(currentUser.id())
+                .stream()
+                .map(this::toMessageUserResponse)
+                .toList();
     }
 
     @Override
@@ -158,6 +168,22 @@ public class MessageServiceImpl implements MessageService {
                 conversation.getLastMessagePreview(),
                 conversation.getLastMessageAt(),
                 0
+        );
+    }
+
+    private MessageUserResponse toMessageUserResponse(User user) {
+        Designer designer = user.getDesigner();
+
+        return new MessageUserResponse(
+                user.getId(),
+                user.getLoginId(),
+                user.getName(),
+                user.getNickname(),
+                user.getProfileImage(),
+                user.getRole(),
+                designer == null ? null : designer.getJob(),
+                designer == null ? null : designer.getIntroduction(),
+                user.getUrl()
         );
     }
 

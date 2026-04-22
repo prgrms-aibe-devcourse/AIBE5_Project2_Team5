@@ -6,6 +6,7 @@ import com.example.pixel_project2.message.dto.ChatMessageResponse;
 import com.example.pixel_project2.message.dto.CreateConversationRequest;
 import com.example.pixel_project2.message.dto.MessageConversationResponse;
 import com.example.pixel_project2.message.dto.MessagePolicyResponse;
+import com.example.pixel_project2.message.dto.MessageUserResponse;
 import com.example.pixel_project2.message.dto.SendMessageRequest;
 import com.example.pixel_project2.message.service.MessageService;
 import jakarta.validation.Valid;
@@ -29,6 +30,13 @@ public class MessageController {
     @GetMapping
     public ApiResponse<MessagePolicyResponse> getMessages() {
         return ApiResponse.ok("Message policy loaded.", messageService.getMessagePolicy());
+    }
+
+    @GetMapping("/users")
+    public ApiResponse<List<MessageUserResponse>> getMessageUsers(
+            @AuthenticationPrincipal AuthenticatedUser currentUser
+    ) {
+        return ApiResponse.ok("Message users loaded.", messageService.getMessageUsers(currentUser));
     }
 
     @GetMapping("/conversations")

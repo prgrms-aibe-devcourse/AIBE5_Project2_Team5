@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 //유저 조회 로그인 id 중복 확인 닉네임 중복 확인
@@ -26,4 +27,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query("select count(u.id) from User u where u.nickname = :nickname and u.id <> :userId")
     long countByNicknameAndIdNot(@Param("nickname") String nickname, @Param("userId") Long userId);
+
+    @Query("select u from User u " +
+            "left join fetch u.designer d " +
+            "where u.id <> :currentUserId " +
+            "order by u.nickname asc")
+    List<User> findMessageUsers(@Param("currentUserId") Long currentUserId);
 }

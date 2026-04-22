@@ -28,6 +28,26 @@ export type ChatMessageResponse = {
   createdAt: string;
 };
 
+export type MessageUserResponse = {
+  userId: number;
+  loginId: string;
+  name: string | null;
+  nickname: string;
+  profileImage: string | null;
+  role: "CLIENT" | "DESIGNER";
+  job: string | null;
+  introduction: string | null;
+  url: string | null;
+};
+
+export async function getMessageUsersApi() {
+  return apiRequest<MessageUserResponse[]>(
+    "/api/messages/users",
+    {},
+    "Failed to load message users.",
+  );
+}
+
 export async function getMessageConversationsApi() {
   return apiRequest<MessageConversationResponse[]>(
     "/api/messages/conversations",
