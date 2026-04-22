@@ -49,6 +49,10 @@ type BaseFeedItem = {
   category?: string;
   integrations?: FeedIntegration[];
   createdAt?: string;
+  userId?: number;
+  portfolioUrl?: string | null;
+  isMine?: boolean;
+  isApiFeed?: boolean;
 };
 
 type FeedApiItem = {
@@ -64,6 +68,24 @@ type FeedApiItem = {
 
 type FeedListApiData = {
   feeds: FeedApiItem[];
+};
+
+type FeedDetailApiData = {
+  postId: number;
+  userId: number;
+  title: string;
+  description: string;
+  nickname: string;
+  profileImageUrl: string | null;
+  role: string;
+  postType: string;
+  category: string;
+  pickCount: number;
+  commentCount: number;
+  portfolioUrl: string | null;
+  createdAt: string;
+  imageUrls: string[];
+  mine: boolean;
 };
 
 type CreateCommentApiData = {
@@ -524,6 +546,8 @@ export default function Feed() {
   const [apiFeedItems, setApiFeedItems] = useState<BaseFeedItem[]>([]);
   const [isFeedLoading, setIsFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
+  const [isFeedDetailLoading, setIsFeedDetailLoading] = useState(false);
+  const [feedDetailError, setFeedDetailError] = useState<string | null>(null);
   const [commentSubmitError, setCommentSubmitError] = useState<string | null>(null);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isCommentsLoading, setIsCommentsLoading] = useState(false);
@@ -587,6 +611,12 @@ export default function Feed() {
     return role;
   };
 
+  const toFeedAuthorRole = (role: string, postType?: string) => {
+    if (role === "CLIENT") return "프로젝트 클라이언트";
+    if (role === "DESIGNER") return postType ?? "디자이너";
+    return role || postType || "";
+  };
+
   const toFeedComment = (comment: CommentApiItem): FeedComment => ({
     id: String(comment.commentId),
     author: {
@@ -629,7 +659,7 @@ export default function Feed() {
             id: feedItem.postId,
             author: {
               name: feedItem.nickname,
-              role: feedItem.postType,
+              role: toFeedAuthorRole("", feedItem.postType),
               avatar: `https://i.pravatar.cc/150?u=feed-${feedItem.postId}`,
             },
             title: feedItem.title,
@@ -641,6 +671,7 @@ export default function Feed() {
             comments: feedItem.commentCount,
             tags: [feedItem.category, feedItem.postType],
             category: feedItem.category,
+            isApiFeed: true,
           }))
         );
       } catch (error) {
@@ -660,6 +691,97 @@ export default function Feed() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadFeedDetail(feedId: number) {
+      try {
+        setIsFeedDetailLoading(true);
+        setFeedDetailError(null);
+
+        const detail = await apiRequest<FeedDetailApiData>(
+          `/api/feeds/${feedId}`,
+          {},
+          "피드 상세를 불러오지 못했습니다."
+        );
+
+        if (!mounted) return;
+
+        const detailImages =
+          detail.imageUrls?.filter(Boolean).length > 0
+            ? detail.imageUrls.filter(Boolean)
+            : [
+                selectedFeed?.image ??
+                  "https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&w=1200&q=80",
+              ];
+
+        const updatedFeed: Partial<BaseFeedItem> = {
+          id: detail.postId,
+          author: {
+            name: detail.nickname,
+            role: toFeedAuthorRole(detail.role, detail.postType),
+            avatar:
+              detail.profileImageUrl ||
+              `https://i.pravatar.cc/150?u=feed-${detail.postId}`,
+          },
+          title: detail.title,
+          description: detail.description || "",
+          image: detailImages[0],
+          images: detailImages,
+          likes: detail.pickCount,
+          comments: detail.commentCount,
+          tags: [detail.category, detail.postType].filter(Boolean),
+          category: detail.category,
+          createdAt: detail.createdAt,
+          userId: detail.userId,
+          portfolioUrl: detail.portfolioUrl,
+          isMine: detail.mine,
+          isApiFeed: true,
+        };
+
+        setApiFeedItems((prev) =>
+          prev.map((item) =>
+            item.id === feedId ? { ...item, ...updatedFeed } : item
+          )
+        );
+        setSelectedFeed((prev) =>
+          prev && prev.id === feedId ? { ...prev, ...updatedFeed } : prev
+        );
+      } catch (error) {
+        if (!mounted) return;
+        setFeedDetailError(
+          error instanceof Error ? error.message : "피드 상세를 불러오지 못했습니다."
+        );
+      } finally {
+        if (mounted) {
+          setIsFeedDetailLoading(false);
+        }
+      }
+    }
+
+    if (!selectedFeed) {
+      setFeedDetailError(null);
+      setIsFeedDetailLoading(false);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    if (!selectedFeed.isApiFeed) {
+      setFeedDetailError(null);
+      setIsFeedDetailLoading(false);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    void loadFeedDetail(selectedFeed.id);
+
+    return () => {
+      mounted = false;
+    };
+  }, [selectedFeed?.id]);
 
   useEffect(() => {
     if (!selectedFeed || !shouldFocusCommentRef.current) return;
@@ -1503,6 +1625,18 @@ export default function Feed() {
                   {/* Title & Description */}
                   <h2 className="font-bold text-xl mb-2">{selectedFeed.title}</h2>
                   <p className="text-sm text-gray-600 mb-3">{selectedFeed.description}</p>
+                  {selectedFeed.portfolioUrl && (
+                    <a
+                      href={selectedFeed.portfolioUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(event) => event.stopPropagation()}
+                      className="mb-3 inline-flex items-center gap-2 rounded-lg border border-[#BDEFD8] bg-[#F5FFFB] px-3 py-2 text-xs font-semibold text-[#007E68] transition-colors hover:bg-[#E7FAF6]"
+                    >
+                      <ExternalLink className="size-3.5" />
+                      포트폴리오 보기
+                    </a>
+                  )}
 
                   {/* Tags */}
                   {selectedFeed.category && (
@@ -1600,6 +1734,16 @@ export default function Feed() {
 
                 {/* Comments Section */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {isFeedDetailLoading && (
+                    <div className="rounded-lg bg-[#F7F7F5] px-3 py-2 text-sm text-gray-500">
+                      피드 상세를 불러오는 중입니다...
+                    </div>
+                  )}
+                  {feedDetailError && (
+                    <div className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-2 text-sm text-[#B13A21]">
+                      {feedDetailError}
+                    </div>
+                  )}
                   {commentSubmitError && (
                     <div className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-2 text-sm text-[#B13A21]">
                       {commentSubmitError}

@@ -24,14 +24,15 @@ import com.example.pixel_project2.feed.dto.CreateFeedRequest;
 import com.example.pixel_project2.feed.dto.CreateFeedResponse;
 import com.example.pixel_project2.feed.dto.DeleteCommentResponse;
 import com.example.pixel_project2.feed.dto.DeleteFeedResponse;
+import com.example.pixel_project2.feed.dto.FeedDetailResponse;
 import com.example.pixel_project2.feed.dto.FeedItemResponse;
 import com.example.pixel_project2.feed.dto.FeedListResponse;
-import com.example.pixel_project2.feed.dto.FeedPolicyResponse;
 import com.example.pixel_project2.feed.dto.UpdateCommentResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -57,8 +58,34 @@ public class FeedServiceImpl implements FeedService {
     }
 
     @Override
-    public FeedPolicyResponse getFeedDetailPolicy() {
-        return new FeedPolicyResponse(true, true, true);
+    @Transactional(readOnly = true)
+    public FeedDetailResponse getFeedDetail(Long feedId, Long userId) {
+        Post post = postRepository.findByIdWithDetails(feedId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 피드입니다."));
+
+        Feed feed = post.getFeed();
+        List<String> imageUrls = post.getImages().stream()
+                .sorted(Comparator.comparing(image -> image.getSortOrder() == null ? Integer.MAX_VALUE : image.getSortOrder()))
+                .map(PostImage::getImageUrl)
+                .toList();
+
+        return new FeedDetailResponse(
+                post.getId(),
+                post.getUser().getId(),
+                post.getTitle(),
+                feed != null && feed.getDescription() != null ? feed.getDescription() : "",
+                post.getUser().getNickname(),
+                post.getUser().getProfileImage(),
+                post.getUser().getRole().name(),
+                post.getPostType().name(),
+                post.getCategory().name(),
+                post.getPickCount(),
+                commentRepository.countByPostId(post.getId()),
+                feed != null ? feed.getPortfolioUrl() : null,
+                post.getCreatedAt(),
+                imageUrls,
+                post.getUser().getId().equals(userId)
+        );
     }
 
     @Override
@@ -280,7 +307,7 @@ public class FeedServiceImpl implements FeedService {
                 post.getUser().getNickname(),
                 thumbnailUrl,
                 post.getPickCount(),
-                Math.toIntExact(commentRepository.countByPost_Id(post.getId())),
+                Math.toIntExact(commentRepository.countByPostId(post.getId())),
                 post.getPostType().name(),
                 post.getCategory().name()
         );

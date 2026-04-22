@@ -9,14 +9,14 @@ import com.example.pixel_project2.feed.dto.CreateFeedRequest;
 import com.example.pixel_project2.feed.dto.CreateFeedResponse;
 import com.example.pixel_project2.feed.dto.DeleteCommentResponse;
 import com.example.pixel_project2.feed.dto.DeleteFeedResponse;
+import com.example.pixel_project2.feed.dto.FeedDetailResponse;
 import com.example.pixel_project2.feed.dto.FeedListResponse;
-import com.example.pixel_project2.feed.dto.FeedPolicyResponse;
 import com.example.pixel_project2.feed.dto.UpdateCommentResponse;
 
 public interface FeedService {
     FeedListResponse getFeeds(PostType postType);
 
-    FeedPolicyResponse getFeedDetailPolicy();
+    FeedDetailResponse getFeedDetail(Long feedId, Long userId);
 
     CommentListResponse getComments(Long postId, Long userId);
 

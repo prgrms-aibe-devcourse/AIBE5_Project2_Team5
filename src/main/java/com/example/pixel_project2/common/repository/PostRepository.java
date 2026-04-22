@@ -43,4 +43,12 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     List<Post> findByUserIdAndTypeWithDetails(
             @org.springframework.data.repository.query.Param("userId") Long userId,
             @org.springframework.data.repository.query.Param("postType") PostType postType);
+
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT p FROM Post p " +
+            "JOIN FETCH p.user u " +
+            "LEFT JOIN FETCH u.designer d " +
+            "LEFT JOIN FETCH p.feed f " +
+            "LEFT JOIN FETCH p.images i " +
+            "WHERE p.id = :postId")
+    Optional<Post> findByIdWithDetails(@org.springframework.data.repository.query.Param("postId") Long postId);
 }
