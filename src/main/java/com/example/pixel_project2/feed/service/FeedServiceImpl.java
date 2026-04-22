@@ -1,5 +1,6 @@
 package com.example.pixel_project2.feed.service;
 
+import com.example.pixel_project2.common.entity.Comment;
 import com.example.pixel_project2.common.entity.Feed;
 import com.example.pixel_project2.common.entity.Post;
 import com.example.pixel_project2.common.entity.PostImage;
@@ -15,6 +16,8 @@ import com.example.pixel_project2.common.repository.PostImageRepository;
 import com.example.pixel_project2.common.repository.PostRepository;
 import com.example.pixel_project2.common.repository.UserRepository;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
+import com.example.pixel_project2.feed.dto.CreateCommentRequest;
+import com.example.pixel_project2.feed.dto.CreateCommentResponse;
 import com.example.pixel_project2.feed.dto.CreateFeedRequest;
 import com.example.pixel_project2.feed.dto.CreateFeedResponse;
 import com.example.pixel_project2.feed.dto.DeleteFeedResponse;
@@ -52,6 +55,31 @@ public class FeedServiceImpl implements FeedService {
     @Override
     public FeedPolicyResponse getFeedDetailPolicy() {
         return new FeedPolicyResponse(true, true, true);
+    }
+
+    @Override
+    public CreateCommentResponse createComment(Long postId, Long userId, CreateCommentRequest request) {
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 게시글입니다."));
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
+
+        Comment comment = Comment.builder()
+                .post(post)
+                .user(user)
+                .description(request.description().trim())
+                .build();
+
+        Comment savedComment = commentRepository.save(comment);
+
+        return new CreateCommentResponse(
+                savedComment.getCommentId(),
+                post.getId(),
+                user.getId(),
+                user.getNickname(),
+                savedComment.getDescription()
+        );
     }
 
     @Override
