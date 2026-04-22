@@ -16,14 +16,18 @@ import com.example.pixel_project2.common.repository.PostImageRepository;
 import com.example.pixel_project2.common.repository.PostRepository;
 import com.example.pixel_project2.common.repository.UserRepository;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
+import com.example.pixel_project2.feed.dto.CommentItemResponse;
+import com.example.pixel_project2.feed.dto.CommentListResponse;
 import com.example.pixel_project2.feed.dto.CreateCommentRequest;
 import com.example.pixel_project2.feed.dto.CreateCommentResponse;
 import com.example.pixel_project2.feed.dto.CreateFeedRequest;
 import com.example.pixel_project2.feed.dto.CreateFeedResponse;
+import com.example.pixel_project2.feed.dto.DeleteCommentResponse;
 import com.example.pixel_project2.feed.dto.DeleteFeedResponse;
 import com.example.pixel_project2.feed.dto.FeedItemResponse;
 import com.example.pixel_project2.feed.dto.FeedListResponse;
 import com.example.pixel_project2.feed.dto.FeedPolicyResponse;
+import com.example.pixel_project2.feed.dto.UpdateCommentResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,6 +62,29 @@ public class FeedServiceImpl implements FeedService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public CommentListResponse getComments(Long postId, Long userId) {
+        if (!postRepository.existsById(postId)) {
+            throw new IllegalArgumentException("존재하지 않는 게시글입니다.");
+        }
+
+        List<CommentItemResponse> comments = commentRepository.findAllByPostId(postId).stream()
+                .map(comment -> new CommentItemResponse(
+                        comment.getCommentId(),
+                        comment.getUser().getId(),
+                        comment.getUser().getNickname(),
+                        comment.getUser().getProfileImage(),
+                        comment.getUser().getRole().name(),
+                        comment.getDescription(),
+                        "작성됨",
+                        comment.getUser().getId().equals(userId)
+                ))
+                .toList();
+
+        return new CommentListResponse(comments);
+    }
+
+    @Override
     public CreateCommentResponse createComment(Long postId, Long userId, CreateCommentRequest request) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 게시글입니다."));
@@ -80,6 +107,28 @@ public class FeedServiceImpl implements FeedService {
                 user.getNickname(),
                 savedComment.getDescription()
         );
+    }
+
+    @Override
+    @Transactional
+    public UpdateCommentResponse updateComment(Long postId, Long commentId, Long userId, CreateCommentRequest request) {
+        Comment comment = getOwnedComment(postId, commentId, userId);
+        comment.setDescription(request.description().trim());
+
+        return new UpdateCommentResponse(
+                comment.getCommentId(),
+                comment.getPost().getId(),
+                comment.getDescription()
+        );
+    }
+
+    @Override
+    @Transactional
+    public DeleteCommentResponse deleteComment(Long postId, Long commentId, Long userId) {
+        Comment comment = getOwnedComment(postId, commentId, userId);
+        commentRepository.delete(comment);
+
+        return new DeleteCommentResponse(commentId, postId);
     }
 
     @Override
@@ -157,6 +206,17 @@ public class FeedServiceImpl implements FeedService {
         postRepository.delete(post);
 
         return new DeleteFeedResponse(postId);
+    }
+
+    private Comment getOwnedComment(Long postId, Long commentId, Long userId) {
+        Comment comment = commentRepository.findByIdWithUserAndPost(commentId, postId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 댓글입니다."));
+
+        if (!comment.getUser().getId().equals(userId)) {
+            throw new IllegalArgumentException("본인이 작성한 댓글만 수정 또는 삭제할 수 있습니다.");
+        }
+
+        return comment;
     }
 
     private Post findOwnedPortfolioPost(AuthenticatedUser currentUser, Long postId) {

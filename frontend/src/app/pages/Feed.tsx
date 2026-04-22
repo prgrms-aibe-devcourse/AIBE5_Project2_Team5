@@ -74,6 +74,21 @@ type CreateCommentApiData = {
   description: string;
 };
 
+type CommentApiItem = {
+  commentId: number;
+  userId: number;
+  nickname: string;
+  profileImageUrl: string | null;
+  role: string;
+  description: string;
+  timeText: string;
+  mine: boolean;
+};
+
+type CommentListApiData = {
+  comments: CommentApiItem[];
+};
+
 const feedItems: BaseFeedItem[] = [
   {
     id: 1,
@@ -499,17 +514,7 @@ const mockComments = [
   },
 ];
 
-const createInitialFeedComments = (): Record<number, FeedComment[]> =>
-  Object.fromEntries(
-    feedItems.map((item) => [
-      item.id,
-      mockComments.map((comment) => ({
-        ...comment,
-        id: `${item.id}-${comment.id}`,
-        likedByMe: false,
-      })),
-    ])
-  );
+const createInitialFeedComments = (): Record<number, FeedComment[]> => ({});
 
 export default function Feed() {
   const navigate = useNavigate();
@@ -521,6 +526,12 @@ export default function Feed() {
   const [feedError, setFeedError] = useState<string | null>(null);
   const [commentSubmitError, setCommentSubmitError] = useState<string | null>(null);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [isCommentsLoading, setIsCommentsLoading] = useState(false);
+  const [commentLoadError, setCommentLoadError] = useState<string | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState("");
+  const [isUpdatingComment, setIsUpdatingComment] = useState(false);
+  const [isDeletingCommentId, setIsDeletingCommentId] = useState<string | null>(null);
   const [feedComments, setFeedComments] = useState<Record<number, FeedComment[]>>(
     createInitialFeedComments
   );
@@ -563,10 +574,34 @@ export default function Feed() {
 
   const visibleFollowingProfiles = showAllFollowing ? followingProfiles : followingProfiles.slice(0, 3);
   const hiddenFollowingCount = Math.max(followingProfiles.length - 3, 0);
+  const currentUser = getCurrentUser();
+  const currentUserId = currentUser?.userId ?? null;
 
   const selectedFeedImages = selectedFeed ? getFeedImages(selectedFeed) : [];
   const activeModalImage = selectedFeedImages[modalImageIndex] ?? selectedFeed?.image ?? "";
   const selectedFeedComments = selectedFeed ? feedComments[selectedFeed.id] ?? [] : [];
+
+  const toCommentAuthorRole = (role: string) => {
+    if (role === "CLIENT") return "프로젝트 클라이언트";
+    if (role === "DESIGNER") return "디자이너";
+    return role;
+  };
+
+  const toFeedComment = (comment: CommentApiItem): FeedComment => ({
+    id: String(comment.commentId),
+    author: {
+      name: comment.nickname,
+      avatar:
+        comment.profileImageUrl ||
+        `https://i.pravatar.cc/150?u=comment-${comment.userId}`,
+      role: toCommentAuthorRole(comment.role),
+    },
+    content: comment.description,
+    time: comment.timeText || "작성됨",
+    likes: 0,
+    likedByMe: false,
+    isMine: comment.mine,
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -635,6 +670,80 @@ export default function Feed() {
     }, 80);
   }, [selectedFeed]);
 
+  useEffect(() => {
+    setFeedComments({});
+    setEditingCommentId(null);
+    setEditingCommentText("");
+    setCommentLoadError(null);
+    setCommentSubmitError(null);
+  }, [currentUserId]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadComments(postId: number) {
+      try {
+        setIsCommentsLoading(true);
+        setCommentLoadError(null);
+
+        const commentData = await apiRequest<CommentListApiData>(
+          `/api/posts/${postId}/comments`,
+          {},
+          "댓글 목록을 불러오지 못했습니다."
+        );
+
+        if (!mounted) return;
+
+        const comments = (commentData?.comments ?? []).map(toFeedComment);
+
+        setFeedComments((prev) => ({
+          ...prev,
+          [postId]: comments,
+        }));
+        setApiFeedItems((prev) =>
+          prev.map((item) =>
+            item.id === postId ? { ...item, comments: comments.length } : item
+          )
+        );
+        setSelectedFeed((prev) =>
+          prev && prev.id === postId ? { ...prev, comments: comments.length } : prev
+        );
+      } catch (error) {
+        if (!mounted) return;
+        setCommentLoadError(
+          error instanceof Error ? error.message : "댓글 목록을 불러오지 못했습니다."
+        );
+      } finally {
+        if (mounted) {
+          setIsCommentsLoading(false);
+        }
+      }
+    }
+
+    if (!selectedFeed) {
+      setCommentLoadError(null);
+      setCommentSubmitError(null);
+      setEditingCommentId(null);
+      setEditingCommentText("");
+      return () => {
+        mounted = false;
+      };
+    }
+
+    if (!apiFeedItems.some((item) => item.id === selectedFeed.id)) {
+      setCommentLoadError(null);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    void loadComments(selectedFeed.id);
+
+    return () => {
+      mounted = false;
+    };
+  }, [selectedFeed?.id, currentUserId]);
+
   const getCompactName = (name: string) => {
     if (name.length <= 7) return name;
     return `${name.slice(0, 7)}...`;
@@ -657,12 +766,8 @@ export default function Feed() {
     item.likes + (likedItems.has(item.id) ? 1 : 0);
 
   const getCommentCount = (item: BaseFeedItem) => {
-    const comments = feedComments[item.id] ?? [];
-    const isSeedItem = feedItems.some((feedItem) => feedItem.id === item.id);
-    const addedCommentCount = isSeedItem
-      ? Math.max(0, comments.length - mockComments.length)
-      : comments.length;
-    return item.comments + addedCommentCount;
+    const comments = feedComments[item.id];
+    return comments ? comments.length : item.comments;
   };
 
   const toggleCommentLike = (feedId: number, commentId: string) => {
@@ -703,7 +808,6 @@ export default function Feed() {
         "댓글 등록에 실패했습니다."
       );
 
-      const currentUser = getCurrentUser();
       const newComment: FeedComment = {
         id: String(savedComment.commentId),
         author: {
@@ -722,6 +826,14 @@ export default function Feed() {
         ...prev,
         [selectedFeed.id]: [...(prev[selectedFeed.id] ?? []), newComment],
       }));
+      setApiFeedItems((prev) =>
+        prev.map((item) =>
+          item.id === selectedFeed.id ? { ...item, comments: item.comments + 1 } : item
+        )
+      );
+      setSelectedFeed((prev) =>
+        prev ? { ...prev, comments: prev.comments + 1 } : prev
+      );
       setCommentText("");
     } catch (error) {
       const message =
@@ -737,6 +849,108 @@ export default function Feed() {
 
     event.preventDefault();
     handleSubmitComment();
+  };
+
+  const startEditingComment = (comment: FeedComment) => {
+    setCommentSubmitError(null);
+    setEditingCommentId(comment.id);
+    setEditingCommentText(comment.content);
+  };
+
+  const cancelEditingComment = () => {
+    setEditingCommentId(null);
+    setEditingCommentText("");
+  };
+
+  const handleUpdateComment = async () => {
+    if (!selectedFeed || !editingCommentId) return;
+
+    const trimmedComment = editingCommentText.trim();
+    if (!trimmedComment) return;
+
+    try {
+      setIsUpdatingComment(true);
+      setCommentSubmitError(null);
+
+      const updatedComment = await apiRequest<{
+        commentId: number;
+        postId: number;
+        description: string;
+      }>(
+        `/api/posts/${selectedFeed.id}/comments/${editingCommentId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            description: trimmedComment,
+          }),
+        },
+        "댓글 수정에 실패했습니다."
+      );
+
+      setFeedComments((prev) => ({
+        ...prev,
+        [selectedFeed.id]: (prev[selectedFeed.id] ?? []).map((comment) =>
+          comment.id === String(updatedComment.commentId)
+            ? {
+                ...comment,
+                content: updatedComment.description,
+                time: "방금 수정됨",
+              }
+            : comment
+        ),
+      }));
+      cancelEditingComment();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "댓글 수정 중 오류가 발생했습니다.";
+      setCommentSubmitError(message);
+    } finally {
+      setIsUpdatingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!selectedFeed) return;
+
+    try {
+      setIsDeletingCommentId(commentId);
+      setCommentSubmitError(null);
+
+      await apiRequest<{ commentId: number; postId: number }>(
+        `/api/posts/${selectedFeed.id}/comments/${commentId}`,
+        {
+          method: "DELETE",
+        },
+        "댓글 삭제에 실패했습니다."
+      );
+
+      setFeedComments((prev) => ({
+        ...prev,
+        [selectedFeed.id]: (prev[selectedFeed.id] ?? []).filter(
+          (comment) => comment.id !== commentId
+        ),
+      }));
+      setApiFeedItems((prev) =>
+        prev.map((item) =>
+          item.id === selectedFeed.id
+            ? { ...item, comments: Math.max(0, item.comments - 1) }
+            : item
+        )
+      );
+      setSelectedFeed((prev) =>
+        prev ? { ...prev, comments: Math.max(0, prev.comments - 1) } : prev
+      );
+
+      if (editingCommentId === commentId) {
+        cancelEditingComment();
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "댓글 삭제 중 오류가 발생했습니다.";
+      setCommentSubmitError(message);
+    } finally {
+      setIsDeletingCommentId(null);
+    }
   };
 
   const moveCarousel = (item: FeedCardItem, direction: -1 | 1, e?: React.MouseEvent) => {
@@ -1391,6 +1605,21 @@ export default function Feed() {
                       {commentSubmitError}
                     </div>
                   )}
+                  {commentLoadError && (
+                    <div className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-2 text-sm text-[#B13A21]">
+                      {commentLoadError}
+                    </div>
+                  )}
+                  {isCommentsLoading && (
+                    <div className="rounded-lg bg-[#F7F7F5] px-3 py-2 text-sm text-gray-500">
+                      댓글 목록을 불러오는 중입니다...
+                    </div>
+                  )}
+                  {!isCommentsLoading && !commentLoadError && selectedFeedComments.length === 0 && (
+                    <div className="rounded-lg bg-[#F7F7F5] px-3 py-2 text-sm text-gray-500">
+                      첫 댓글을 남겨보세요.
+                    </div>
+                  )}
                   {selectedFeedComments.map((comment) => (
                     <div key={comment.id} className="flex gap-3">
                       <ImageWithFallback
@@ -1405,20 +1634,69 @@ export default function Feed() {
                             <span className="text-[10px] text-gray-500">{comment.time}</span>
                           </div>
                           <p className="text-xs text-gray-500 mb-2">{comment.author.role}</p>
-                          <p className="text-sm text-gray-800">{comment.content}</p>
+                          {editingCommentId === comment.id ? (
+                            <div className="space-y-2">
+                              <input
+                                type="text"
+                                value={editingCommentText}
+                                onChange={(e) => setEditingCommentText(e.target.value)}
+                                className="w-full rounded-lg border border-[#BDEFD8] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7]"
+                              />
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={handleUpdateComment}
+                                  disabled={!editingCommentText.trim() || isUpdatingComment}
+                                  className="rounded-md bg-[#00C9A7] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                                >
+                                  저장
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={cancelEditingComment}
+                                  className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600"
+                                >
+                                  취소
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-gray-800">{comment.content}</p>
+                          )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => toggleCommentLike(selectedFeed.id, comment.id)}
-                          className={`text-xs mt-1 ml-3 transition-colors ${
-                            comment.likedByMe
-                              ? "text-[#FF5C3A] font-semibold"
-                              : "text-gray-500 hover:text-[#00C9A7]"
-                          }`}
-                          aria-pressed={Boolean(comment.likedByMe)}
-                        >
-                          좋아요 {comment.likes}개
-                        </button>
+                        <div className="mt-1 ml-3 flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleCommentLike(selectedFeed.id, comment.id)}
+                            className={`text-xs transition-colors ${
+                              comment.likedByMe
+                                ? "text-[#FF5C3A] font-semibold"
+                                : "text-gray-500 hover:text-[#00C9A7]"
+                            }`}
+                            aria-pressed={Boolean(comment.likedByMe)}
+                          >
+                            좋아요 {comment.likes}개
+                          </button>
+                          {comment.isMine && editingCommentId !== comment.id && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => startEditingComment(comment)}
+                                className="text-xs text-gray-500 hover:text-[#00A88C]"
+                              >
+                                수정
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteComment(comment.id)}
+                                disabled={isDeletingCommentId === comment.id}
+                                className="text-xs text-gray-500 hover:text-[#FF5C3A] disabled:opacity-50"
+                              >
+                                삭제
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
