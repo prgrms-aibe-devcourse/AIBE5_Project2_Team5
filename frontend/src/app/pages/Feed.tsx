@@ -21,6 +21,7 @@ import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { apiRequest } from "../api/apiClient";
+import { getCurrentUser } from "../utils/auth";
 import { saveFeedProposalMessage } from "../utils/feedProposalMessages";
 
 type FeedAuthor = {
@@ -63,6 +64,14 @@ type FeedApiItem = {
 
 type FeedListApiData = {
   feeds: FeedApiItem[];
+};
+
+type CreateCommentApiData = {
+  commentId: number;
+  postId: number;
+  userId: number;
+  nickname: string;
+  description: string;
 };
 
 const feedItems: BaseFeedItem[] = [
@@ -510,6 +519,8 @@ export default function Feed() {
   const [apiFeedItems, setApiFeedItems] = useState<BaseFeedItem[]>([]);
   const [isFeedLoading, setIsFeedLoading] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
+  const [commentSubmitError, setCommentSubmitError] = useState<string | null>(null);
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [feedComments, setFeedComments] = useState<Record<number, FeedComment[]>>(
     createInitialFeedComments
   );
@@ -671,31 +682,54 @@ export default function Feed() {
     }));
   };
 
-  const handleSubmitComment = () => {
+  const handleSubmitComment = async () => {
     if (!selectedFeed) return;
 
     const trimmedComment = commentText.trim();
     if (!trimmedComment) return;
 
-    const newComment: FeedComment = {
-      id: `my-comment-${selectedFeed.id}-${Date.now()}`,
-      author: {
-        name: "나",
-        avatar: "https://i.pravatar.cc/150?img=20",
-        role: "프로젝트 클라이언트",
-      },
-      content: trimmedComment,
-      time: "방금 전",
-      likes: 0,
-      likedByMe: false,
-      isMine: true,
-    };
+    try {
+      setIsSubmittingComment(true);
+      setCommentSubmitError(null);
 
-    setFeedComments((prev) => ({
-      ...prev,
-      [selectedFeed.id]: [...(prev[selectedFeed.id] ?? []), newComment],
-    }));
-    setCommentText("");
+      const savedComment = await apiRequest<CreateCommentApiData>(
+        `/api/posts/${selectedFeed.id}/comments`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            description: trimmedComment,
+          }),
+        },
+        "댓글 등록에 실패했습니다."
+      );
+
+      const currentUser = getCurrentUser();
+      const newComment: FeedComment = {
+        id: String(savedComment.commentId),
+        author: {
+          name: savedComment.nickname || currentUser?.nickname || "나",
+          avatar: "https://i.pravatar.cc/150?img=20",
+          role: currentUser?.role === "client" ? "프로젝트 클라이언트" : "디자이너",
+        },
+        content: savedComment.description,
+        time: "방금 전",
+        likes: 0,
+        likedByMe: false,
+        isMine: true,
+      };
+
+      setFeedComments((prev) => ({
+        ...prev,
+        [selectedFeed.id]: [...(prev[selectedFeed.id] ?? []), newComment],
+      }));
+      setCommentText("");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "댓글 등록 중 오류가 발생했습니다.";
+      setCommentSubmitError(message);
+    } finally {
+      setIsSubmittingComment(false);
+    }
   };
 
   const handleCommentKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1352,6 +1386,11 @@ export default function Feed() {
 
                 {/* Comments Section */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {commentSubmitError && (
+                    <div className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-2 text-sm text-[#B13A21]">
+                      {commentSubmitError}
+                    </div>
+                  )}
                   {selectedFeedComments.map((comment) => (
                     <div key={comment.id} className="flex gap-3">
                       <ImageWithFallback
@@ -1407,7 +1446,7 @@ export default function Feed() {
                         type="button"
                         onClick={handleSubmitComment}
                         className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-gradient-to-r from-[#00C9A7]/90 to-[#00A88C]/90 backdrop-blur-md text-white rounded-full hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-white/30"
-                        disabled={!commentText.trim()}
+                        disabled={!commentText.trim() || isSubmittingComment}
                       >
                         <Send className="size-4" />
                       </button>
