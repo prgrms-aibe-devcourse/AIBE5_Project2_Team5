@@ -43,4 +43,20 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     List<Post> findByUserIdAndTypeWithDetails(
             @org.springframework.data.repository.query.Param("userId") Long userId,
             @org.springframework.data.repository.query.Param("postType") PostType postType);
+
+    // [NEW] 탐색 페이지 검색 및 페이징 조회
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT p FROM Post p " +
+            "JOIN FETCH p.user u " +
+            "LEFT JOIN FETCH u.designer d " +
+            "LEFT JOIN FETCH p.feed f " +
+            "LEFT JOIN FETCH p.images i " +
+            "WHERE p.postType = :postType " +
+            "AND (:category IS NULL OR p.category = :category) " +
+            "AND (:keyword IS NULL OR p.title LIKE %:keyword% OR u.nickname LIKE %:keyword%) " +
+            "ORDER BY p.id DESC")
+    List<Post> findExploreFeeds(
+            @org.springframework.data.repository.query.Param("postType") PostType postType,
+            @org.springframework.data.repository.query.Param("category") Category category,
+            @org.springframework.data.repository.query.Param("keyword") String keyword,
+            Pageable pageable);
 }

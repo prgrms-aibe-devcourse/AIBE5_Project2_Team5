@@ -29,3 +29,4 @@ public interface CollectionService {
 
     CollectionFolderDetailResponse removeFeed(AuthenticatedUser currentUser, Long folderId, Long postId);
 }
+
