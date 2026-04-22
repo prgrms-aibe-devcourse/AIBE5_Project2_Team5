@@ -6,8 +6,8 @@ import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.feed.dto.CreateFeedRequest;
 import com.example.pixel_project2.feed.dto.CreateFeedResponse;
 import com.example.pixel_project2.feed.dto.DeleteFeedResponse;
+import com.example.pixel_project2.feed.dto.FeedDetailResponse;
 import com.example.pixel_project2.feed.dto.FeedListResponse;
-import com.example.pixel_project2.feed.dto.FeedPolicyResponse;
 import com.example.pixel_project2.feed.service.FeedService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -36,8 +36,14 @@ public class FeedController {
     }
 
     @GetMapping("/{feedId}")
-    public ApiResponse<FeedPolicyResponse> getFeedDetail(@PathVariable Long feedId) {
-        return ApiResponse.ok("피드 상세 정책을 조회했습니다. feedId=" + feedId, feedService.getFeedDetailPolicy());
+    public ApiResponse<FeedDetailResponse> getFeedDetail(
+            @PathVariable Long feedId,
+            @AuthenticationPrincipal AuthenticatedUser currentUser
+    ) {
+        return ApiResponse.ok(
+                "피드 상세를 조회했습니다.",
+                feedService.getFeedDetail(feedId, currentUser.id())
+        );
     }
 
     @PostMapping
