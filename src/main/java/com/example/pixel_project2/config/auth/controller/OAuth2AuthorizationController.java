@@ -20,32 +20,35 @@ public class OAuth2AuthorizationController {
     public void startGoogleLogin(
             @RequestParam(required = false) String mode,
             @RequestParam(required = false) String role,
+            @RequestParam(required = false) String name,
             @RequestParam(required = false) String nickname,
             @RequestParam(required = false) String email,
             @RequestParam(required = false) String redirectTo,
             HttpServletRequest request,
             HttpServletResponse response
     ) throws IOException {
-        startSocialLogin("google", mode, role, nickname, email, redirectTo, request, response);
+        startSocialLogin("google", mode, role, name, nickname, email, redirectTo, request, response);
     }
 
     @GetMapping("/kakao")
     public void startKakaoLogin(
             @RequestParam(required = false) String mode,
             @RequestParam(required = false) String role,
+            @RequestParam(required = false) String name,
             @RequestParam(required = false) String nickname,
             @RequestParam(required = false) String email,
             @RequestParam(required = false) String redirectTo,
             HttpServletRequest request,
             HttpServletResponse response
     ) throws IOException {
-        startSocialLogin("kakao", mode, role, nickname, email, redirectTo, request, response);
+        startSocialLogin("kakao", mode, role, name, nickname, email, redirectTo, request, response);
     }
 
     private void startSocialLogin(
             String provider,
             String mode,
             String role,
+            String name,
             String nickname,
             String email,
             String redirectTo,
@@ -56,6 +59,7 @@ public class OAuth2AuthorizationController {
         session.setAttribute(OAuth2SessionKeys.MODE, normalizeMode(mode));
         session.setAttribute(OAuth2SessionKeys.ROLE, normalizeRole(role).name());
         session.setAttribute(OAuth2SessionKeys.REDIRECT_TO, normalizeRedirectTo(redirectTo));
+        session.setAttribute(OAuth2SessionKeys.NAME, normalizeName(name));
         session.setAttribute(OAuth2SessionKeys.NICKNAME, normalizeNickname(nickname));
         session.setAttribute(OAuth2SessionKeys.EMAIL, normalizeEmail(email));
         response.sendRedirect("/oauth2/authorization/" + provider);
@@ -102,6 +106,13 @@ public class OAuth2AuthorizationController {
             return trimmed.substring(0, 10);
         }
         return trimmed;
+    }
+
+    private String normalizeName(String name) {
+        if (name == null) {
+            return "";
+        }
+        return name.trim();
     }
 
     private String normalizeEmail(String email) {

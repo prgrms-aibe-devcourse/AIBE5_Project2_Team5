@@ -45,7 +45,7 @@ class GoogleOAuth2LoginServiceTest {
         given(oauth2User.getAttribute("email_verified")).willReturn(true);
         given(oauth2User.getAttribute("name")).willReturn("Google User");
         given(oauth2User.getAttribute("picture")).willReturn("https://example.com/profile.png");
-        given(userRepository.findByLoginId("google-user@example.com")).willReturn(Optional.empty());
+        given(userRepository.findByloginId("google-user@example.com")).willReturn(Optional.empty());
         given(userRepository.countByNickname("픽셀닉")).willReturn(0L);
         given(passwordEncoder.encode(anyString())).willReturn("encoded-random-password");
         given(userRepository.save(any(User.class))).willAnswer(invocation -> {
@@ -59,6 +59,7 @@ class GoogleOAuth2LoginServiceTest {
                 oauth2User,
                 "signup",
                 UserRole.CLIENT,
+                "구글사용자",
                 "픽셀닉"
         );
 
@@ -67,7 +68,7 @@ class GoogleOAuth2LoginServiceTest {
         User savedUser = userCaptor.getValue();
 
         assertThat(savedUser.getLoginId()).isEqualTo("google-user@example.com");
-        assertThat(savedUser.getName()).isEqualTo("Google User");
+        assertThat(savedUser.getName()).isEqualTo("구글사용자");
         assertThat(savedUser.getNickname()).isEqualTo("픽셀닉");
         assertThat(savedUser.getRole()).isEqualTo(UserRole.CLIENT);
         assertThat(savedUser.getProvider()).isEqualTo(Provider.GOOGLE);
@@ -77,7 +78,7 @@ class GoogleOAuth2LoginServiceTest {
 
         assertThat(response.accessToken()).isEqualTo("access-token");
         assertThat(response.loginId()).isEqualTo("google-user@example.com");
-        assertThat(response.name()).isEqualTo("Google User");
+        assertThat(response.name()).isEqualTo("구글사용자");
         assertThat(response.nickname()).isEqualTo("픽셀닉");
         assertThat(response.role()).isEqualTo("CLIENT");
         assertThat(response.profileImage()).isEqualTo("https://example.com/profile.png");

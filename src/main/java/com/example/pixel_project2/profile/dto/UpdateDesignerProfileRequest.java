@@ -10,6 +10,15 @@ public record UpdateDesignerProfileRequest(
 
         String workStatus,
 
-        String workType
+        String workType,
+
+        @Size(max = 255, message = "Figma URL must be 255 characters or less.")
+        String figmaUrl,
+
+        @Size(max = 255, message = "Photoshop URL must be 255 characters or less.")
+        String photoshopUrl,
+
+        @Size(max = 255, message = "Adobe URL must be 255 characters or less.")
+        String adobeUrl
 ) {
 }
