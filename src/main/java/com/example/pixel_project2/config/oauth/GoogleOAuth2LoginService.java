@@ -17,6 +17,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class GoogleOAuth2LoginService {
+    private static final int NAME_MIN_LENGTH = 2;
     private static final int NAME_MAX_LENGTH = 30;
     private static final int NICKNAME_MAX_LENGTH = 10;
 
@@ -29,6 +30,7 @@ public class GoogleOAuth2LoginService {
             OAuth2User oauth2User,
             String requestedMode,
             UserRole requestedRole,
+            String requestedName,
             String requestedNickname
     ) {
         String email = stringAttribute(oauth2User, "email");
@@ -40,13 +42,13 @@ public class GoogleOAuth2LoginService {
             throw new IllegalArgumentException("Google email must be verified.");
         }
 
-        String name = normalizeName(stringAttribute(oauth2User, "name"), email);
+        String oauthName = normalizeOAuthName(stringAttribute(oauth2User, "name"), email);
         String picture = stringAttribute(oauth2User, "picture");
         boolean signupMode = "signup".equals(requestedMode);
 
         User user = userRepository.findByloginId(email)
-                .map(existingUser -> loginExistingUser(existingUser, picture, signupMode))
-                .orElseGet(() -> createGoogleUser(email, name, picture, requestedRole, requestedNickname, signupMode));
+                .map(existingUser -> loginExistingUser(existingUser, oauthName, picture, signupMode))
+                .orElseGet(() -> createGoogleUser(email, requestedName, picture, requestedRole, requestedNickname, signupMode));
 
         return new LoginResponse(
                 jwtTokenProvider.createAccessToken(user),
@@ -60,14 +62,17 @@ public class GoogleOAuth2LoginService {
         );
     }
 
-    private User loginExistingUser(User user, String picture, boolean signupMode) {
+    private User loginExistingUser(User user, String oauthName, String picture, boolean signupMode) {
         if (signupMode) {
             throw new IllegalArgumentException("이미 가입된 이메일입니다. 로그인해주세요.");
         }
-        return updateGoogleProfile(user, picture);
+        return updateGoogleProfile(user, oauthName, picture);
     }
 
-    private User updateGoogleProfile(User user, String picture) {
+    private User updateGoogleProfile(User user, String oauthName, String picture) {
+        if (!oauthName.isBlank() && (user.getName() == null || user.getName().isBlank())) {
+            user.setName(oauthName);
+        }
         if (!picture.isBlank() && (user.getProfileImage() == null || user.getProfileImage().isBlank())) {
             user.setProfileImage(picture);
         }
@@ -76,7 +81,7 @@ public class GoogleOAuth2LoginService {
 
     private User createGoogleUser(
             String email,
-            String name,
+            String requestedName,
             String picture,
             UserRole requestedRole,
             String requestedNickname,
@@ -86,6 +91,7 @@ public class GoogleOAuth2LoginService {
             throw new IllegalArgumentException("가입된 계정이 없습니다. Google 회원가입을 먼저 진행해주세요.");
         }
 
+        String name = normalizeRequestedName(requestedName);
         String nickname = normalizeRequestedNickname(requestedNickname, name);
 
         User user = User.builder()
@@ -101,6 +107,17 @@ public class GoogleOAuth2LoginService {
         return userRepository.save(user);
     }
 
+    private String normalizeRequestedName(String requestedName) {
+        String name = requestedName == null ? "" : requestedName.trim();
+        if (name.isBlank()) {
+            throw new IllegalArgumentException("이름을 입력해주세요.");
+        }
+        if (name.length() < NAME_MIN_LENGTH || name.length() > NAME_MAX_LENGTH) {
+            throw new IllegalArgumentException("이름은 2자 이상 30자 이하로 입력해주세요.");
+        }
+        return name;
+    }
+
     private String normalizeRequestedNickname(String requestedNickname, String name) {
         String nickname = requestedNickname == null ? "" : requestedNickname.trim();
         if (nickname.isBlank()) {
@@ -108,10 +125,10 @@ public class GoogleOAuth2LoginService {
         }
 
         if (nickname.length() > NICKNAME_MAX_LENGTH) {
-            throw new IllegalArgumentException("Nickname must be 10 characters or fewer.");
+            throw new IllegalArgumentException("닉네임은 10자 이하로 입력해주세요.");
         }
         if (userRepository.countByNickname(nickname) > 0) {
-            throw new IllegalArgumentException("Nickname is already in use.");
+            throw new IllegalArgumentException("이미 사용 중인 닉네임입니다.");
         }
 
         return nickname;
@@ -131,7 +148,7 @@ public class GoogleOAuth2LoginService {
         return candidate;
     }
 
-    private String normalizeName(String name, String email) {
+    private String normalizeOAuthName(String name, String email) {
         String value = name == null || name.isBlank() ? email.substring(0, email.indexOf("@")) : name.trim();
         return trimToLength(value, NAME_MAX_LENGTH);
     }

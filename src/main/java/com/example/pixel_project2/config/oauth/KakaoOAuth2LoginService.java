@@ -21,6 +21,7 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class KakaoOAuth2LoginService {
     private static final int EMAIL_MAX_LENGTH = 30;
+    private static final int NAME_MIN_LENGTH = 2;
     private static final int NAME_MAX_LENGTH = 30;
     private static final int NICKNAME_MAX_LENGTH = 10;
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^\\S+@\\S+$");
@@ -34,6 +35,7 @@ public class KakaoOAuth2LoginService {
             OAuth2User oauth2User,
             String requestedMode,
             UserRole requestedRole,
+            String requestedName,
             String requestedNickname,
             String requestedEmail
     ) {
@@ -53,7 +55,7 @@ public class KakaoOAuth2LoginService {
                 stringAttribute(profile, "nickname"),
                 stringAttribute(mapAttribute(oauth2User, "properties"), "nickname")
         );
-        String name = normalizeName(profileNickname, kakaoId);
+        String oauthName = normalizeOAuthName(profileNickname, kakaoId);
         String picture = firstNotBlank(
                 stringAttribute(profile, "profile_image_url"),
                 stringAttribute(mapAttribute(oauth2User, "properties"), "profile_image")
@@ -63,11 +65,11 @@ public class KakaoOAuth2LoginService {
         User user = userRepository.findByProviderAndProviderId(Provider.KAKAO, providerId)
                 .or(() -> userRepository.findByloginId(createLegacyKakaoLoginId(providerId))
                         .filter(existingUser -> existingUser.getProvider() == Provider.KAKAO))
-                .map(existingUser -> loginExistingUser(existingUser, providerId, picture, signupMode))
+                .map(existingUser -> loginExistingUser(existingUser, providerId, oauthName, picture, signupMode))
                 .orElseGet(() -> createKakaoUser(
                         providerId,
                         requestedEmail,
-                        name,
+                        requestedName,
                         picture,
                         requestedRole,
                         requestedNickname,
@@ -86,17 +88,20 @@ public class KakaoOAuth2LoginService {
         );
     }
 
-    private User loginExistingUser(User user, String providerId, String picture, boolean signupMode) {
+    private User loginExistingUser(User user, String providerId, String oauthName, String picture, boolean signupMode) {
         if (signupMode) {
             throw new IllegalArgumentException("이미 가입된 카카오 계정입니다. 로그인해주세요.");
         }
         if (user.getProvider() == null || user.getProviderId() == null || user.getProviderId().isBlank()) {
             user.setProviderId(providerId);
         }
-        return updateKakaoProfile(user, picture);
+        return updateKakaoProfile(user, oauthName, picture);
     }
 
-    private User updateKakaoProfile(User user, String picture) {
+    private User updateKakaoProfile(User user, String oauthName, String picture) {
+        if (!oauthName.isBlank() && (user.getName() == null || user.getName().isBlank())) {
+            user.setName(oauthName);
+        }
         if (!picture.isBlank() && (user.getProfileImage() == null || user.getProfileImage().isBlank())) {
             user.setProfileImage(picture);
         }
@@ -106,7 +111,7 @@ public class KakaoOAuth2LoginService {
     private User createKakaoUser(
             String providerId,
             String requestedEmail,
-            String name,
+            String requestedName,
             String picture,
             UserRole requestedRole,
             String requestedNickname,
@@ -120,6 +125,7 @@ public class KakaoOAuth2LoginService {
         if (userRepository.countByLoginId(email) > 0) {
             throw new IllegalArgumentException("이미 가입된 이메일입니다. 다른 이메일을 입력하거나 로그인해주세요.");
         }
+        String name = normalizeRequestedName(requestedName);
         String nickname = normalizeRequestedNickname(requestedNickname, name);
 
         User user = User.builder()
@@ -149,6 +155,17 @@ public class KakaoOAuth2LoginService {
             throw new IllegalArgumentException("이메일에 @를 포함해서 입력해주세요.");
         }
         return email;
+    }
+
+    private String normalizeRequestedName(String requestedName) {
+        String name = requestedName == null ? "" : requestedName.trim();
+        if (name.isBlank()) {
+            throw new IllegalArgumentException("이름을 입력해주세요.");
+        }
+        if (name.length() < NAME_MIN_LENGTH || name.length() > NAME_MAX_LENGTH) {
+            throw new IllegalArgumentException("이름은 2자 이상 30자 이하로 입력해주세요.");
+        }
+        return name;
     }
 
     private String normalizeRequestedNickname(String requestedNickname, String name) {
@@ -181,7 +198,7 @@ public class KakaoOAuth2LoginService {
         return candidate;
     }
 
-    private String normalizeName(String name, String kakaoId) {
+    private String normalizeOAuthName(String name, String kakaoId) {
         String value = name == null || name.isBlank() ? "KakaoUser" + kakaoId : name.trim();
         return trimToLength(value, NAME_MAX_LENGTH);
     }

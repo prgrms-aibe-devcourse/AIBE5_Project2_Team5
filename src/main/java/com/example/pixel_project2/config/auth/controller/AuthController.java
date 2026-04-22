@@ -13,8 +13,12 @@ import com.example.pixel_project2.config.auth.dto.SignUpRequest;
 import com.example.pixel_project2.config.auth.dto.SignUpResponse;
 import com.example.pixel_project2.config.auth.service.AuthService;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -37,6 +41,18 @@ public class AuthController {
     @PostMapping("/signup")
     public ApiResponse<SignUpResponse> signUp(@Valid @RequestBody SignUpRequest request) {
         return ApiResponse.ok("회원가입 요청을 처리했습니다.", authService.signUp(request));
+    }
+
+    @PostMapping("/logout")
+    public ApiResponse<Void> logout(HttpServletRequest request, HttpServletResponse response) {
+        if (request.getSession(false) != null) {
+            request.getSession(false).invalidate();
+        }
+
+        SecurityContextHolder.clearContext();
+        expireCookie(response, "JSESSIONID");
+
+        return ApiResponse.ok("로그아웃되었습니다.", null);
     }
 
     @GetMapping("/nickname/check")
@@ -66,5 +82,13 @@ public class AuthController {
                 user.role().name()
         );
         return ApiResponse.ok("현재 로그인 사용자를 조회했습니다.", response);
+    }
+
+    private void expireCookie(HttpServletResponse response, String name) {
+        Cookie cookie = new Cookie(name, null);
+        cookie.setPath("/");
+        cookie.setHttpOnly(true);
+        cookie.setMaxAge(0);
+        response.addCookie(cookie);
     }
 }

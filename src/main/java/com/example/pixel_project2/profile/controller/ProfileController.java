@@ -4,6 +4,7 @@ import com.example.pixel_project2.common.dto.ApiResponse;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.profile.dto.ProfileFeedResponse;
 import com.example.pixel_project2.profile.dto.ProfileResponse;
+import com.example.pixel_project2.profile.dto.ProfileReviewResponse;
 import com.example.pixel_project2.profile.dto.UpdateDesignerProfileRequest;
 import com.example.pixel_project2.profile.dto.UpdateProfileRequest;
 import com.example.pixel_project2.profile.service.ProfileService;
@@ -36,6 +37,11 @@ public class ProfileController {
         return ApiResponse.ok("Profile feeds loaded.", profileService.getMyProfileFeeds(currentUser));
     }
 
+    @GetMapping("/me/reviews")
+    public ApiResponse<List<ProfileReviewResponse>> getMyProfileReviews(@AuthenticationPrincipal AuthenticatedUser currentUser) {
+        return ApiResponse.ok("Profile reviews loaded.", profileService.getMyProfileReviews(currentUser));
+    }
+
     @PatchMapping("/me")
     public ApiResponse<ProfileResponse> updateMyProfile(
             @AuthenticationPrincipal AuthenticatedUser currentUser,
@@ -66,5 +72,13 @@ public class ProfileController {
             @AuthenticationPrincipal AuthenticatedUser currentUser
     ) {
         return ApiResponse.ok("Profile feeds loaded.", profileService.getProfileFeeds(profileKey, currentUser));
+    }
+
+    @GetMapping("/{profileKey}/reviews")
+    public ApiResponse<List<ProfileReviewResponse>> getProfileReviews(
+            @PathVariable String profileKey,
+            @AuthenticationPrincipal AuthenticatedUser currentUser
+    ) {
+        return ApiResponse.ok("Profile reviews loaded.", profileService.getProfileReviews(profileKey, currentUser));
     }
 }

@@ -8,6 +8,7 @@ export type ProfileResponse = {
   role: "CLIENT" | "DESIGNER";
   profileImage: string | null;
   url: string | null;
+  location: string | null;
   followCount: number | null;
   followerCount: number;
   followingCount: number;
@@ -16,6 +17,9 @@ export type ProfileResponse = {
   rating: number | null;
   workStatus: string | null;
   workType: string | null;
+  figmaUrl: string | null;
+  photoshopUrl: string | null;
+  adobeUrl: string | null;
   owner: boolean;
   following: boolean;
 };
@@ -32,6 +36,21 @@ export type ProfileFeedResponse = {
   imageUrls: string[];
   thumbnailImageUrl: string | null;
   tags: string[];
+  createdAt: string | null;
+};
+
+export type ProfileReviewResponse = {
+  reviewId: number;
+  projectId: number | null;
+  projectTitle: string;
+  reviewerId: number | null;
+  reviewerName: string | null;
+  reviewerNickname: string;
+  reviewerProfileImage: string | null;
+  rating: number;
+  content: string;
+  workCategories: string[];
+  complimentTags: string[];
   createdAt: string | null;
 };
 
@@ -63,10 +82,27 @@ export async function getProfileFeedsApi(profileKey: string) {
   );
 }
 
+export async function getMyProfileReviewsApi() {
+  return apiRequest<ProfileReviewResponse[]>(
+    "/api/profiles/me/reviews",
+    {},
+    "Failed to load profile reviews.",
+  );
+}
+
+export async function getProfileReviewsApi(profileKey: string) {
+  return apiRequest<ProfileReviewResponse[]>(
+    `/api/profiles/${encodeURIComponent(profileKey)}/reviews`,
+    {},
+    "Failed to load profile reviews.",
+  );
+}
+
 export async function updateMyProfileApi(params: {
   name: string;
   nickname: string;
   url?: string;
+  location?: string;
 }) {
   return apiRequest<ProfileResponse>(
     "/api/profiles/me",
@@ -83,6 +119,9 @@ export async function updateMyDesignerProfileApi(params: {
   introduction?: string;
   workStatus?: string;
   workType?: string;
+  figmaUrl?: string;
+  photoshopUrl?: string;
+  adobeUrl?: string;
 }) {
   return apiRequest<ProfileResponse>(
     "/api/profiles/me/designer",

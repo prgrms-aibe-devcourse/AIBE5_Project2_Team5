@@ -49,22 +49,16 @@ public class UploadServiceImpl implements UploadService {
         if (postId == null) {
             throw new IllegalArgumentException("Feed id is required.");
         }
-        if (files == null || files.isEmpty()) {
+        List<MultipartFile> imageFiles = normalizeImageFiles(files);
+        if (imageFiles.isEmpty()) {
             throw new IllegalArgumentException("At least one image file is required.");
         }
 
-        Post post = postRepository.findById(postId)
-                .orElseThrow(() -> new IllegalArgumentException("Feed not found."));
-        if (post.getPostType() != PostType.PORTFOLIO) {
-            throw new IllegalArgumentException("Only portfolio feeds can have feed images.");
-        }
-        if (!post.getUser().getId().equals(currentUser.id())) {
-            throw new IllegalArgumentException("You can only upload images to your own feeds.");
-        }
+        Post post = getOwnedPortfolioPost(currentUser, postId);
 
         List<PostImage> existingImages = postImageRepository.findByPost_IdOrderBySortOrderAsc(post.getId());
-        if (existingImages.size() + files.size() > MAX_FEED_IMAGES) {
-            throw new IllegalArgumentException("Feed images can be up to 4 files.");
+        if (existingImages.size() + imageFiles.size() > MAX_FEED_IMAGES) {
+            throw new IllegalArgumentException("Feed images can be up to " + MAX_FEED_IMAGES + " files.");
         }
 
         int nextSortOrder = existingImages.stream()
@@ -74,7 +68,7 @@ public class UploadServiceImpl implements UploadService {
                 .orElse(0) + 1;
 
         List<PostImage> savedImages = new ArrayList<>();
-        for (MultipartFile file : files) {
+        for (MultipartFile file : imageFiles) {
             StoredImage storedImage = r2StorageService.uploadImage(file, "feeds/" + post.getId());
             PostImage postImage = PostImage.builder()
                     .post(post)
@@ -94,5 +88,103 @@ public class UploadServiceImpl implements UploadService {
 
         String thumbnailImageUrl = imageUrls.isEmpty() ? null : imageUrls.get(0);
         return new FeedImagesUploadResponse(post.getId(), imageUrls, thumbnailImageUrl);
+    }
+
+    @Override
+    @Transactional
+    public FeedImagesUploadResponse replaceFeedImages(
+            AuthenticatedUser currentUser,
+            Long postId,
+            List<String> existingImageUrls,
+            List<MultipartFile> files
+    ) {
+        if (postId == null) {
+            throw new IllegalArgumentException("Feed id is required.");
+        }
+
+        Post post = getOwnedPortfolioPost(currentUser, postId);
+        List<PostImage> existingImages = postImageRepository.findByPost_IdOrderBySortOrderAsc(post.getId());
+        List<String> keptImageUrls = normalizeExistingImageUrls(existingImageUrls, existingImages);
+        List<MultipartFile> imageFiles = normalizeImageFiles(files);
+
+        if (keptImageUrls.size() + imageFiles.size() > MAX_FEED_IMAGES) {
+            throw new IllegalArgumentException("Feed images can be up to " + MAX_FEED_IMAGES + " files.");
+        }
+
+        postImageRepository.deleteByPostId(post.getId());
+        postImageRepository.flush();
+
+        List<String> imageUrls = new ArrayList<>();
+        int sortOrder = 1;
+        for (String imageUrl : keptImageUrls) {
+            PostImage postImage = PostImage.builder()
+                    .post(post)
+                    .imageUrl(imageUrl)
+                    .sortOrder(sortOrder++)
+                    .build();
+            imageUrls.add(postImageRepository.save(postImage).getImageUrl());
+        }
+
+        for (MultipartFile file : imageFiles) {
+            StoredImage storedImage = r2StorageService.uploadImage(file, "feeds/" + post.getId());
+            PostImage postImage = PostImage.builder()
+                    .post(post)
+                    .imageUrl(storedImage.url())
+                    .sortOrder(sortOrder++)
+                    .build();
+            imageUrls.add(postImageRepository.save(postImage).getImageUrl());
+        }
+
+        String thumbnailImageUrl = imageUrls.isEmpty() ? null : imageUrls.get(0);
+        return new FeedImagesUploadResponse(post.getId(), imageUrls, thumbnailImageUrl);
+    }
+
+    private Post getOwnedPortfolioPost(AuthenticatedUser currentUser, Long postId) {
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> new IllegalArgumentException("Feed not found."));
+        if (post.getPostType() != PostType.PORTFOLIO) {
+            throw new IllegalArgumentException("Only portfolio feeds can have feed images.");
+        }
+        if (!post.getUser().getId().equals(currentUser.id())) {
+            throw new IllegalArgumentException("You can only upload images to your own feeds.");
+        }
+
+        return post;
+    }
+
+    private List<MultipartFile> normalizeImageFiles(List<MultipartFile> files) {
+        if (files == null || files.isEmpty()) {
+            return List.of();
+        }
+
+        return files.stream()
+                .filter(file -> file != null && !file.isEmpty())
+                .toList();
+    }
+
+    private List<String> normalizeExistingImageUrls(List<String> existingImageUrls, List<PostImage> existingImages) {
+        if (existingImageUrls == null || existingImageUrls.isEmpty()) {
+            return List.of();
+        }
+
+        List<String> allowedUrls = existingImages.stream()
+                .map(PostImage::getImageUrl)
+                .toList();
+        List<String> imageUrls = new ArrayList<>();
+        for (String existingImageUrl : existingImageUrls) {
+            if (existingImageUrl == null || existingImageUrl.isBlank()) {
+                continue;
+            }
+
+            String imageUrl = existingImageUrl.trim();
+            if (!allowedUrls.contains(imageUrl)) {
+                throw new IllegalArgumentException("Unknown feed image.");
+            }
+            if (!imageUrls.contains(imageUrl)) {
+                imageUrls.add(imageUrl);
+            }
+        }
+
+        return imageUrls;
     }
 }

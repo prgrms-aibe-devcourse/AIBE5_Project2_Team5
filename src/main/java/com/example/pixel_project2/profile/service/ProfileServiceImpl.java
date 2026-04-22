@@ -17,6 +17,7 @@ import com.example.pixel_project2.common.repository.UserRepository;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.profile.dto.ProfileFeedResponse;
 import com.example.pixel_project2.profile.dto.ProfileResponse;
+import com.example.pixel_project2.profile.dto.ProfileReviewResponse;
 import com.example.pixel_project2.profile.dto.UpdateDesignerProfileRequest;
 import com.example.pixel_project2.profile.dto.UpdateProfileRequest;
 import lombok.RequiredArgsConstructor;
@@ -60,18 +61,29 @@ public class ProfileServiceImpl implements ProfileService {
     }
 
     @Override
+    public List<ProfileReviewResponse> getMyProfileReviews(AuthenticatedUser currentUser) {
+        return getProjectReviews(findUserById(currentUser.id()));
+    }
+
+    @Override
+    public List<ProfileReviewResponse> getProfileReviews(String profileKey, AuthenticatedUser currentUser) {
+        return getProjectReviews(resolveProfileUser(profileKey, currentUser));
+    }
+
+    @Override
     @Transactional
     public ProfileResponse updateMyProfile(AuthenticatedUser currentUser, UpdateProfileRequest request) {
         User user = findUserById(currentUser.id());
         String nickname = request.nickname().trim();
 
         if (userRepository.countByNicknameAndIdNot(nickname, user.getId()) > 0) {
-            throw new IllegalArgumentException("Nickname is already in use.");
+            throw new IllegalArgumentException("이미 사용 중인 닉네임입니다.");
         }
 
         user.setName(request.name().trim());
         user.setNickname(nickname);
         user.setUrl(normalizeOptionalValue(request.url()));
+        user.setLocation(normalizeOptionalValue(request.location()));
 
         return toProfileResponse(userRepository.save(user), currentUser);
     }
@@ -81,7 +93,7 @@ public class ProfileServiceImpl implements ProfileService {
     public ProfileResponse updateMyDesignerProfile(AuthenticatedUser currentUser, UpdateDesignerProfileRequest request) {
         User user = findUserById(currentUser.id());
         if (user.getRole() != UserRole.DESIGNER) {
-            throw new IllegalArgumentException("Only designers can update designer profile.");
+            throw new IllegalArgumentException("디자이너만 디자이너 프로필을 수정할 수 있습니다.");
         }
 
         Designer designer = designerRepository.findById(user.getId())
@@ -94,6 +106,9 @@ public class ProfileServiceImpl implements ProfileService {
         designer.setIntroduction(normalizeOptionalValue(request.introduction()));
         designer.setWorkStatus(resolveWorkStatus(request.workStatus()));
         designer.setWorkType(resolveWorkType(request.workType()));
+        designer.setFigmaUrl(normalizeOptionalValue(request.figmaUrl()));
+        designer.setPhotoshopUrl(normalizeOptionalValue(request.photoshopUrl()));
+        designer.setAdobeUrl(normalizeOptionalValue(request.adobeUrl()));
 
         Designer savedDesigner = designerRepository.save(designer);
         user.setDesigner(savedDesigner);
@@ -108,6 +123,10 @@ public class ProfileServiceImpl implements ProfileService {
                 .toList();
     }
 
+    private List<ProfileReviewResponse> getProjectReviews(User user) {
+        return List.of();
+    }
+
     private ProfileResponse toProfileResponse(User user, AuthenticatedUser currentUser) {
         Designer designer = user.getDesigner();
         boolean owner = user.getId().equals(currentUser.id());
@@ -120,6 +139,7 @@ public class ProfileServiceImpl implements ProfileService {
                 .role(user.getRole().name())
                 .profileImage(user.getProfileImage())
                 .url(user.getUrl())
+                .location(user.getLocation())
                 .followCount(user.getFollowCount())
                 .followerCount(followRepository.countFollowers(user.getId()))
                 .followingCount(followRepository.countFollowing(user.getId()))
@@ -128,6 +148,9 @@ public class ProfileServiceImpl implements ProfileService {
                 .rating(designer == null ? null : designer.getRating())
                 .workStatus(designer == null || designer.getWorkStatus() == null ? null : designer.getWorkStatus().name())
                 .workType(designer == null || designer.getWorkType() == null ? null : designer.getWorkType().name())
+                .figmaUrl(designer == null ? null : designer.getFigmaUrl())
+                .photoshopUrl(designer == null ? null : designer.getPhotoshopUrl())
+                .adobeUrl(designer == null ? null : designer.getAdobeUrl())
                 .owner(owner)
                 .following(!owner && followRepository.countRelation(currentUser.id(), user.getId()) > 0)
                 .build();
@@ -174,7 +197,7 @@ public class ProfileServiceImpl implements ProfileService {
 
         return userRepository.findByNickname(trimmedProfileKey)
                 .or(() -> userRepository.findByloginId(trimmedProfileKey))
-                .orElseThrow(() -> new IllegalArgumentException("Profile user not found."));
+                .orElseThrow(() -> new IllegalArgumentException("프로필 사용자를 찾을 수 없습니다."));
     }
 
     private Optional<Long> parseUserId(String profileKey) {
@@ -187,7 +210,7 @@ public class ProfileServiceImpl implements ProfileService {
 
     private User findUserById(Long userId) {
         return userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("Profile user not found."));
+                .orElseThrow(() -> new IllegalArgumentException("프로필 사용자를 찾을 수 없습니다."));
     }
 
     private String normalizeOptionalValue(String value) {
@@ -205,7 +228,7 @@ public class ProfileServiceImpl implements ProfileService {
         try {
             return WorkStatus.valueOf(value.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Unknown work status.");
+            throw new IllegalArgumentException("알 수 없는 작업 상태입니다.");
         }
     }
 
@@ -217,7 +240,7 @@ public class ProfileServiceImpl implements ProfileService {
         try {
             return WorkType.valueOf(value.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Unknown work type.");
+            throw new IllegalArgumentException("알 수 없는 작업 형태입니다.");
         }
     }
 }

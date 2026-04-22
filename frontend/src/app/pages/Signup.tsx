@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import kakaoTalkLogo from "../assets/kakao-talk-logo.png";
 import { checkNicknameAvailabilityApi, getGoogleOAuthUrl, getKakaoOAuthUrl, signupApi } from "../api/authApi";
-import { isAuthenticated, setAuthenticated, setAuthTokens, setCurrentUser, type UserRole } from "../utils/auth";
+import { clearAuthenticated, isAuthenticated, type UserRole } from "../utils/auth";
 
 const showcaseItems = [
   {
@@ -89,12 +89,15 @@ export default function Signup() {
   const socialSignupPrompt = typeof locationState?.message === "string" ? locationState.message : "";
   const [activeShowcaseIndex, setActiveShowcaseIndex] = useState(0);
   const [pendingSocialProvider, setPendingSocialProvider] = useState<"Google" | "카카오" | null>(null);
+  const [socialName, setSocialName] = useState("");
   const [socialNickname, setSocialNickname] = useState("");
   const [socialEmail, setSocialEmail] = useState("");
   const [socialSignupError, setSocialSignupError] = useState("");
   const [socialNicknameCheckMessage, setSocialNicknameCheckMessage] = useState("");
   const [checkedSocialNickname, setCheckedSocialNickname] = useState("");
   const [isCheckingSocialNickname, setIsCheckingSocialNickname] = useState(false);
+  const [isSignupCompleteOpen, setIsSignupCompleteOpen] = useState(false);
+  const [completedSignupEmail, setCompletedSignupEmail] = useState("");
   const [signupErrors, setSignupErrors] = useState<SignupErrors>({});
   const [isPasswordConfirmed, setIsPasswordConfirmed] = useState(false);
   const [agreedTerms, setAgreedTerms] = useState(false);
@@ -125,13 +128,14 @@ export default function Signup() {
 
     openedSocialSignupRef.current = true;
     setSignupErrors({});
+    setSocialName(formData.name.trim());
     setSocialNickname(formData.nickname.trim());
     setSocialEmail(formData.email.trim());
     setSocialSignupError("");
     setSocialNicknameCheckMessage("");
     setCheckedSocialNickname("");
     setPendingSocialProvider("카카오");
-  }, [formData.email, formData.nickname, searchParams]);
+  }, [formData.email, formData.name, formData.nickname, searchParams]);
 
   if (isAuthenticated()) {
     return <Navigate to="/feed" replace />;
@@ -180,7 +184,7 @@ export default function Signup() {
 
     const selectedRole = formData.role as UserRole;
     try {
-      const user = await signupApi({
+      await signupApi({
         loginId: formData.email.trim(),
         password: formData.password,
         name: formData.name.trim(),
@@ -188,17 +192,9 @@ export default function Signup() {
         role: selectedRole.toUpperCase() as "CLIENT" | "DESIGNER",
       });
 
-      setAuthTokens(user.accessToken, user.refreshToken, true);
-      setCurrentUser({
-        userId: user.userId,
-        name: user.name,
-        nickname: user.nickname,
-        email: user.loginId,
-        role: user.role.toLowerCase() as UserRole,
-        profileImage: null,
-      });
-      setAuthenticated(true);
-      navigate("/feed", { replace: true });
+      clearAuthenticated();
+      setCompletedSignupEmail(formData.email.trim());
+      setIsSignupCompleteOpen(true);
     } catch (error) {
       const message = error instanceof Error ? error.message : "회원가입에 실패했습니다.";
       const apiErrors: SignupErrors = {};
@@ -231,6 +227,15 @@ export default function Signup() {
   const handleRoleChange = (role: string) => {
     setFormData((current) => ({ ...current, role }));
     setSignupErrors((errors) => ({ ...errors, role: undefined, form: undefined }));
+  };
+
+  const goToLoginAfterSignup = () => {
+    navigate("/login", {
+      replace: true,
+      state: {
+        message: "회원가입이 완료되었습니다. 로그인해주세요.",
+      },
+    });
   };
 
   const handleTermsChange = (checked: boolean) => {
@@ -276,6 +281,7 @@ export default function Signup() {
 
   const startSocialSignup = (provider: "Google" | "카카오") => {
     setSignupErrors({});
+    setSocialName(formData.name.trim());
     setSocialNickname(formData.nickname.trim());
     setSocialEmail(formData.email.trim());
     setSocialSignupError("");
@@ -322,6 +328,15 @@ export default function Signup() {
     }
 
     const nickname = socialNickname.trim();
+    const name = socialName.trim();
+    if (!name) {
+      setSocialSignupError("이름을 입력해주세요.");
+      return;
+    }
+    if (!isNameInRange(name)) {
+      setSocialSignupError("이름은 2자 이상 30자 이하로 입력해주세요.");
+      return;
+    }
     if (!nickname) {
       setSocialSignupError("닉네임을 입력해주세요.");
       return;
@@ -355,6 +370,7 @@ export default function Signup() {
     window.location.href = oauthUrl({
       mode: "signup",
       role: role.toUpperCase() as "CLIENT" | "DESIGNER",
+      name,
       nickname,
       email: pendingSocialProvider === "카카오" ? email : undefined,
       redirectTo: "/feed",
@@ -868,6 +884,36 @@ export default function Signup() {
           </motion.div>
         </motion.section>
       </main>
+      {isSignupCompleteOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, y: 18, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="w-full max-w-md rounded-lg bg-white p-7 text-center shadow-2xl"
+          >
+            <div className="mx-auto mb-5 grid size-14 place-items-center rounded-full bg-[#A8F0E4]/35 text-[#00A88C]">
+              <CheckCircle className="size-8" />
+            </div>
+            <p className="text-sm font-bold text-[#00A88C]">회원가입 완료</p>
+            <h2 className="mt-2 text-2xl font-bold text-[#0F0F0F]">
+              회원가입이 완료되었습니다
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-gray-600">
+              {completedSignupEmail ? `${completedSignupEmail} 계정으로 가입됐어요. ` : ""}
+              로그인 페이지에서 다시 로그인해주세요.
+            </p>
+            <button
+              type="button"
+              onClick={goToLoginAfterSignup}
+              className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#00C9A7] font-bold text-[#0F0F0F] shadow-lg shadow-[#00C9A7]/20 transition-colors hover:bg-[#00A88C]"
+            >
+              로그인하기
+              <ArrowRight className="size-5" />
+            </button>
+          </motion.div>
+        </div>
+      )}
       {pendingSocialProvider && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-2xl">
@@ -879,9 +925,9 @@ export default function Signup() {
                   )}
                   {pendingSocialProvider} 회원가입
                 </p>
-                <h2 className="text-2xl font-bold">역할을 선택해주세요</h2>
+                <h2 className="text-2xl font-bold">이름과 역할을 선택해주세요</h2>
                 <p className="mt-2 text-sm text-gray-600">
-                  최초 소셜 가입 시 선택한 역할이 저장됩니다. 기존 계정이면 저장된 역할로 로그인됩니다.
+                  최초 소셜 가입 시 입력한 이름과 선택한 역할이 저장됩니다.
                 </p>
                 {socialSignupPrompt && (
                   <p className="mt-3 rounded-lg bg-[#FFF7F4] px-3 py-2 text-sm font-medium text-[#C2412D]">
@@ -900,6 +946,28 @@ export default function Signup() {
             </div>
 
             <div className="mb-5">
+              <label htmlFor="social-name" className="mb-2 block text-sm font-medium text-gray-700">
+                이름
+              </label>
+              <div className="relative">
+                <User className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                <input
+                  id="social-name"
+                  type="text"
+                  maxLength={NAME_MAX_LENGTH}
+                  value={socialName}
+                  onChange={(event) => {
+                    setSocialName(event.target.value);
+                    setSocialSignupError("");
+                  }}
+                  className={`h-11 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                    socialSignupError ? "border-[#FF5C3A]" : "border-gray-200"
+                  }`}
+                  placeholder="2자 이상 30자 이하"
+                />
+              </div>
+              <p className="mb-4 mt-2 text-xs text-gray-500">프로필에 표시할 실제 이름을 입력해주세요.</p>
+
               <label htmlFor="social-nickname" className="mb-2 block text-sm font-medium text-gray-700">
                 닉네임
               </label>
@@ -934,8 +1002,8 @@ export default function Signup() {
               </div>
               <p className="mt-2 text-xs text-gray-500">
                 {pendingSocialProvider === "카카오"
-                  ? "이름은 카카오 프로필에서 가져오고, 이메일은 pickxel 계정용으로 직접 입력합니다."
-                  : "이름과 이메일은 소셜 계정 정보로 가져옵니다."}
+                  ? "이메일은 pickxel 계정용으로 직접 입력합니다."
+                  : "이메일은 Google 계정 정보로 가져옵니다."}
               </p>
               {socialNicknameCheckMessage && !socialSignupError && (
                 <p className="mt-2 text-xs font-medium text-[#00A88C]">{socialNicknameCheckMessage}</p>

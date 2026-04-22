@@ -11,6 +11,7 @@ public record ProfileResponse(
         String role,
         String profileImage,
         String url,
+        String location,
         Integer followCount,
         Long followerCount,
         Long followingCount,
@@ -19,6 +20,9 @@ public record ProfileResponse(
         Float rating,
         String workStatus,
         String workType,
+        String figmaUrl,
+        String photoshopUrl,
+        String adobeUrl,
         boolean owner,
         boolean following
 ) {
