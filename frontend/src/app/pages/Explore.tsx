@@ -3,10 +3,10 @@ import {
   Search, Sparkles, Heart, Eye, Users, UserSearch, ImageOff,
   LayoutGrid, Palette, Camera, PenTool, Box, Monitor, Building2,
   Shirt, Megaphone, Scissors, Brush, Package, Gamepad2, Music,
-  ArrowRight, X, Plus, ChevronLeft, ChevronRight, Bookmark, Check, FolderPlus, Share2, MessageCircle, Send, MoreVertical, ExternalLink, Figma
+  ArrowRight, X, Plus, ChevronLeft, ChevronRight, Bookmark, Check, FolderPlus, Share2, MessageCircle, Send, MoreVertical, ExternalLink, Figma, Sparkles as SparklesIcon
 } from "lucide-react";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { motion, AnimatePresence, LayoutGroup } from "motion/react";
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
@@ -280,12 +280,51 @@ const AI_MOCK_RESPONSES: Record<string, { summary: string; designers: typeof cre
   },
 };
 
-// ── 컬렉션 관련 ──
+// ── 컬렉션 및 댓글 타입 ──
 type SavedCollection = { id: string; name: string; itemIds: number[]; updatedAt: string };
+type FeedComment = {
+  id: string;
+  author: {
+    name: string;
+    avatar: string;
+    role: string;
+  };
+  content: string;
+  time: string;
+  likes: number;
+  likedByMe?: boolean;
+  isMine?: boolean;
+};
+
 const COLLECTION_KEY = "pickxel-explore-collections";
 const defaultCollections: SavedCollection[] = [
   { id: "col-inspiration", name: "영감 모음", itemIds: [], updatedAt: new Date().toISOString() },
   { id: "col-reference", name: "레퍼런스", itemIds: [], updatedAt: new Date().toISOString() },
+];
+
+const mockComments = [
+  {
+    id: 1,
+    author: {
+      name: "김태영",
+      avatar: "https://i.pravatar.cc/150?img=11",
+      role: "일러스트레이터"
+    },
+    content: "정말 멋진 작업이네요! 컬러 조합이 특히 인상적입니다 👍",
+    time: "2시간 전",
+    likes: 12,
+  },
+  {
+    id: 2,
+    author: {
+      name: "이수진",
+      avatar: "https://i.pravatar.cc/150?img=12",
+      role: "브랜드 디자이너"
+    },
+    content: "이런 스타일 정말 좋아요. 클라이언트 반응도 궁금하네요!",
+    time: "5시간 전",
+    likes: 8,
+  },
 ];
 const loadCollections = (): SavedCollection[] => {
   try {
@@ -297,6 +336,7 @@ const loadCollections = (): SavedCollection[] => {
 };
 
 export default function Explore() {
+  const navigate = useNavigate();
   const categories = matchingCategories;
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -308,9 +348,21 @@ export default function Explore() {
   const [designers, setDesigners] = useState<ExploreDesignerResponseDto[]>([]);
   const [isDesignersLoading, setIsDesignersLoading] = useState(false);
 
-  // 컬렉션
+  // 상호작용 상태 (Feed.tsx와 동일)
+  const [likedItems, setLikedItems] = useState<Set<number>>(new Set());
+  const [feedComments, setFeedComments] = useState<Record<number, FeedComment[]>>({});
+  const [commentText, setCommentText] = useState("");
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [commentSubmitError, setCommentSubmitError] = useState<string | null>(null);
+  const commentInputRef = useRef<HTMLInputElement | null>(null);
+
+  // 모달 상태
+  const [selectedProjectForModal, setSelectedProjectForModal] = useState<ExplorePostResponseDto | null>(null);
+  const [modalImageIndex, setModalImageIndex] = useState(0);
+
+  // 컬렉션 관리
   const [collections, setCollections] = useState<SavedCollection[]>(loadCollections);
-  const [collectionModalProject, setCollectionModalProject] = useState<typeof projects[0] | null>(null);
+  const [collectionModalProject, setCollectionModalProject] = useState<ExplorePostResponseDto | null>(null);
   const [newCollectionName, setNewCollectionName] = useState("");
   const [collectionNotice, setCollectionNotice] = useState("");
 
@@ -318,7 +370,71 @@ export default function Explore() {
 
   const savedProjectIds = useMemo(() => new Set(collections.flatMap(c => c.itemIds)), [collections]);
 
-  const openCollectionModal = (project: typeof projects[0], e: React.MouseEvent) => {
+  // AI 검색 상태
+  const [aiMode, setAiMode] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState<typeof AI_MOCK_RESPONSES["default"] | null>(null);
+  const [aiTypedText, setAiTypedText] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const catScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  // 초기 댓글 설정
+  useEffect(() => {
+    if (feeds.length > 0) {
+      setFeedComments(prev => {
+        const newComments = { ...prev };
+        feeds.forEach(f => {
+          if (!newComments[f.postId]) {
+            newComments[f.postId] = mockComments.map(c => ({
+              ...c,
+              id: `${f.postId}-${c.id}`,
+              likedByMe: false
+            }));
+          }
+        });
+        return newComments;
+      });
+    }
+  }, [feeds]);
+
+  // ── 도움 함수들 (Feed.tsx와 동일 로직) ──
+  const toggleLike = (id: number, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setLikedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) newSet.delete(id);
+      else newSet.add(id);
+      return newSet;
+    });
+  };
+
+  const toggleCommentLike = (feedId: number, commentId: string) => {
+    setFeedComments(prev => ({
+      ...prev,
+      [feedId]: (prev[feedId] ?? []).map(comment =>
+        comment.id === commentId
+          ? {
+              ...comment,
+              likedByMe: !comment.likedByMe,
+              likes: comment.likedByMe ? Math.max(0, comment.likes - 1) : comment.likes + 1
+            }
+          : comment
+      )
+    }));
+  };
+
+  const handleShare = (item: ExplorePostResponseDto, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (navigator.share) {
+      navigator.share({ title: item.title, text: item.description || "", url: window.location.href });
+    } else {
+      alert("공유 링크가 클립보드에 복사되었습니다!");
+    }
+  };
+
+  const openCollectionModal = (project: ExplorePostResponseDto, e: React.MouseEvent) => {
     e.stopPropagation();
     setCollectionModalProject(project);
     setCollectionNotice("");
@@ -329,8 +445,8 @@ export default function Explore() {
     if (!collectionModalProject) return;
     const col = collections.find(c => c.id === colId);
     setCollections(prev => prev.map(c => {
-      if (c.id !== colId || c.itemIds.includes(collectionModalProject.id)) return c;
-      return { ...c, itemIds: [collectionModalProject.id, ...c.itemIds], updatedAt: new Date().toISOString() };
+      if (c.id !== colId || c.itemIds.includes(collectionModalProject.postId)) return c;
+      return { ...c, itemIds: [collectionModalProject.postId, ...c.itemIds], updatedAt: new Date().toISOString() };
     }));
     setCollectionNotice(`${col?.name ?? "컬렉션"}에 저장했어요.`);
   };
@@ -339,24 +455,54 @@ export default function Explore() {
     if (!collectionModalProject) return;
     const name = newCollectionName.trim();
     if (!name) return;
-    const newCol: SavedCollection = { id: `col-${Date.now()}`, name, itemIds: [collectionModalProject.id], updatedAt: new Date().toISOString() };
+    const newCol: SavedCollection = { id: `col-${Date.now()}`, name, itemIds: [collectionModalProject.postId], updatedAt: new Date().toISOString() };
     setCollections(prev => [newCol, ...prev]);
     setCollectionNotice(`${name} 컬렉션을 만들고 저장했어요.`);
     setNewCollectionName("");
   };
 
-  // AI 검색
-  const [aiMode, setAiMode] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiResult, setAiResult] = useState<typeof AI_MOCK_RESPONSES["default"] | null>(null);
-  const [aiTypedText, setAiTypedText] = useState("");
-  const searchRef = useRef<HTMLInputElement>(null);
-  const catScrollRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-  
-  // 선택된 피드 모달 상태
-  const [selectedProjectForModal, setSelectedProjectForModal] = useState<any>(null);
+  const moveModalCarousel = (direction: -1 | 1, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const images = selectedProjectForModal?.imageUrl ? [selectedProjectForModal.imageUrl] : [];
+    if (images.length <= 1) return;
+    setModalImageIndex(prev => (prev + direction + images.length) % images.length);
+  };
+
+  const handleSubmitComment = async () => {
+    if (!selectedProjectForModal) return;
+    const trimmed = commentText.trim();
+    if (!trimmed) return;
+
+    try {
+      setIsSubmittingComment(true);
+      const newComment: FeedComment = {
+        id: String(Date.now()),
+        author: {
+          name: "나",
+          avatar: "https://i.pravatar.cc/150?img=20",
+          role: "디자이너"
+        },
+        content: trimmed,
+        time: "방금 전",
+        likes: 0,
+        likedByMe: false,
+        isMine: true
+      };
+      setFeedComments(prev => ({
+        ...prev,
+        [selectedProjectForModal.postId]: [...(prev[selectedProjectForModal.postId] ?? []), newComment]
+      }));
+      setCommentText("");
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
+
+  const handleProposalClick = (item: ExplorePostResponseDto, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    // Feed.tsx와 동일하게 메시지함으로 이동 (데이터 저장 로직은 Feed.tsx에서 사용하는 유틸 필요시 추가)
+    navigate("/messages");
+  };
 
   // ── lenis smooth scroll ──
   useEffect(() => {
@@ -857,298 +1003,258 @@ export default function Explore() {
         )}
       </div>
 
-      {/* ── 피드 상세 모달 ── */}
+      {/* 상세 모달 (Feed.tsx와 동일 UI) */}
       <AnimatePresence>
         {selectedProjectForModal && (
-          <div 
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
             onClick={() => setSelectedProjectForModal(null)}
           >
-            <div 
-              className="bg-white rounded-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="bg-white rounded-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden shadow-2xl flex flex-col md:flex-row"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex h-[90vh]">
-                {/* Left Side - Image */}
-                <div className="flex-1 bg-[#0F0F0F] flex items-center justify-center relative">
-                  <ImageWithFallback
-                    src={selectedProjectForModal.imageUrl}
-                    alt={selectedProjectForModal.title}
-                    className="max-w-full max-h-full object-contain"
-                  />
+              {/* 좌측: 이미지 영역 */}
+              <div className="flex-1 bg-[#0F0F0F] flex items-center justify-center relative min-h-[300px]">
+                <ImageWithFallback
+                  src={selectedProjectForModal.imageUrl || ""}
+                  alt={selectedProjectForModal.title}
+                  className="max-w-full max-h-[90vh] object-contain"
+                />
 
-                  {/* Close Button */}
-                  <button
-                    onClick={() => setSelectedProjectForModal(null)}
-                    className="absolute top-4 left-4 p-2 bg-black/50 hover:bg-black/70 backdrop-blur-md text-white rounded-full transition-all border border-white/20"
-                  >
-                    <X className="size-6" />
-                  </button>
+                {/* Close Button */}
+                <button
+                  onClick={() => setSelectedProjectForModal(null)}
+                  className="absolute top-4 left-4 p-2 bg-black/50 hover:bg-black/70 backdrop-blur-md text-white rounded-full transition-all border border-white/20"
+                >
+                  <X className="size-6" />
+                </button>
+              </div>
+
+              {/* 우측: 상세 정보 및 댓글 */}
+              <div className="w-full md:w-[400px] flex flex-col bg-white border-l border-gray-100">
+                {/* 작성자 헤더 */}
+                <div className="p-5 border-b border-gray-100">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <ImageWithFallback
+                        src={selectedProjectForModal.profileImage || `https://i.pravatar.cc/150?u=${selectedProjectForModal.postId}`}
+                        alt={selectedProjectForModal.nickname}
+                        className="size-11 rounded-full ring-2 ring-[#00C9A7]/30"
+                      />
+                      <div>
+                        <h4 className="font-bold text-sm text-[#0F0F0F]">{selectedProjectForModal.nickname}</h4>
+                        <p className="text-xs text-gray-500">{selectedProjectForModal.job || "디자이너"}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={(e) => handleProposalClick(selectedProjectForModal, e)}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#FF5C3A] px-4 text-xs font-bold text-white shadow-lg shadow-[#FF5C3A]/20 hover:bg-[#E94F2F] transition-all"
+                    >
+                      <Send className="size-3.5" />
+                      제안하기
+                    </button>
+                  </div>
+
+                  <h2 className="font-bold text-xl text-[#0F0F0F] mb-2">{selectedProjectForModal.title}</h2>
+                  <p className="text-sm text-gray-600 line-clamp-3">{selectedProjectForModal.description || "상세 설명이 없습니다."}</p>
+                  
+                  {selectedProjectForModal.category && (
+                    <div className="mt-3">
+                      <span className="px-3 py-1 bg-[#A8F0E4]/30 text-[#00A88C] rounded-full text-xs font-bold border border-[#00C9A7]/10">
+                        {selectedProjectForModal.category}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
-                {/* Right Side - Details & Comments */}
-                <div className="w-[400px] flex flex-col bg-white">
-                  {/* Author Header */}
-                  <div className="p-5 border-b border-gray-200">
-                    <div className="flex items-center justify-between mb-4">
-                      <Link 
-                        to={`/profile/${selectedProjectForModal.nickname}`}
-                        className="flex items-center gap-3 hover:opacity-80 transition-opacity"
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                {/* 액션 바 */}
+                <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={(e) => toggleLike(selectedProjectForModal.postId, e)}
+                      className={`flex items-center gap-2 transition-colors ${
+                        likedItems.has(selectedProjectForModal.postId) ? "text-[#FF5C3A]" : "text-gray-600 hover:text-[#FF5C3A]"
+                      }`}
+                    >
+                      <Heart className={`size-6 ${likedItems.has(selectedProjectForModal.postId) ? "fill-[#FF5C3A]" : ""}`} />
+                      <span className="font-bold">{selectedProjectForModal.pickCount + (likedItems.has(selectedProjectForModal.postId) ? 1 : 0)}</span>
+                    </button>
+                    <button className="flex items-center gap-2 text-gray-600 hover:text-[#00A88C] transition-colors">
+                      <MessageCircle className="size-6" />
+                      <span className="font-bold">{(feedComments[selectedProjectForModal.postId] || []).length}</span>
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => openCollectionModal(selectedProjectForModal, e)}
+                      className={`p-2 rounded-lg transition-all ${
+                        savedProjectIds.has(selectedProjectForModal.postId) ? "bg-[#00C9A7] text-white" : "hover:bg-[#E7FAF6] text-gray-600"
+                      }`}
+                    >
+                      <Bookmark className={`size-5 ${savedProjectIds.has(selectedProjectForModal.postId) ? "fill-white" : ""}`} />
+                    </button>
+                    <button 
+                      onClick={(e) => handleShare(selectedProjectForModal, e)}
+                      className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
+                    >
+                      <Share2 className="size-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* 댓글 영역 */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F9FAFB]">
+                  {(feedComments[selectedProjectForModal.postId] || []).length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center opacity-40">
+                      <MessageCircle className="size-8 mb-2" />
+                      <p className="text-xs">첫 댓글을 남겨보세요!</p>
+                    </div>
+                  ) : (
+                    (feedComments[selectedProjectForModal.postId] || []).map((comment) => (
+                      <div key={comment.id} className="flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <ImageWithFallback
-                          src={selectedProjectForModal.profileImage || ""}
-                          alt={selectedProjectForModal.nickname}
-                          className="size-12 rounded-full ring-2 ring-[#00C9A7]"
-                        />
-                        <div>
-                          <h4 className="font-bold text-sm">{selectedProjectForModal.nickname}</h4>
-                          <p className="text-xs text-gray-500">{selectedProjectForModal.job || "크리에이터"}</p>
-                        </div>
-                      </Link>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#FFB6A6] bg-[#FF5C3A] px-3.5 text-[0px] font-bold text-white shadow-[0_8px_18px_rgba(255,92,58,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#E94F2F] hover:shadow-[0_10px_22px_rgba(255,92,58,0.28)] focus:outline-none focus:ring-2 focus:ring-[#FFB6A6] focus:ring-offset-2 [&>span]:text-xs"
-                        >
-                          <Send className="size-3.5" />
-                          <span>프로젝트 제안</span>
-                          제안하기
-                        </button>
-                        <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                          <MoreVertical className="size-5 text-gray-600" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Title & Description */}
-                    <h2 className="font-bold text-xl mb-2">{selectedProjectForModal.title}</h2>
-                    <p className="text-sm text-gray-600 mb-3 leading-relaxed">{selectedProjectForModal.description || "상세 설명이 없는 게시글입니다."}</p>
-
-                    {/* Tags */}
-                      {selectedProjectForModal.category && (
-                        <div className="mb-3">
-                          <span className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-1.5 text-xs font-bold text-[#B13A21]">
-                            {selectedProjectForModal.category}
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex flex-wrap gap-2">
-                        {selectedProjectForModal.tags?.map((tag: string, index: number) => (
-                          <span
-                            key={index}
-                            className="px-3 py-1 bg-[#A8F0E4]/30 backdrop-blur-sm text-[#00A88C] rounded-full text-xs font-medium hover:bg-[#00C9A7]/90 hover:backdrop-blur-md hover:text-white cursor-pointer transition-all border border-[#00C9A7]/20"
-                          >
-                            {tag.startsWith("#") ? tag : `#${tag}`}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Actions Bar */}
-                    <div className="p-4 border-b border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <button
-                            type="button"
-                            className={`flex items-center gap-2 transition-colors text-gray-600 hover:text-[#FF5C3A]`}
-                          >
-                            <Heart className="size-6" />
-                            <span className="font-semibold">{selectedProjectForModal.likes}</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="flex items-center gap-2 text-gray-600 hover:text-[#00C9A7] transition-colors"
-                          >
-                            <MessageCircle className="size-6" />
-                            <span className="font-semibold">24</span>
-                          </button>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            className="p-2 hover:bg-[#A8F0E4]/20 rounded-lg text-gray-600 hover:text-[#00A88C] transition-colors"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCollectionModalProject(selectedProjectForModal);
-                              setSelectedProjectForModal(null);
-                            }}
-                          >
-                            <Bookmark className="size-5" />
-                          </button>
-                          <button
-                            className="p-2 hover:bg-[#A8F0E4]/20 rounded-lg text-gray-600 hover:text-[#00A88C] transition-colors"
-                          >
-                            <Share2 className="size-5" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Comments Section */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                      <div className="flex gap-3">
-                        <ImageWithFallback
-                          src="https://i.pravatar.cc/150?img=33"
-                          alt="Commenter"
-                          className="size-10 rounded-full ring-2 ring-[#A8F0E4]/30 flex-shrink-0"
+                          src={comment.author.avatar}
+                          alt={comment.author.name}
+                          className="size-9 rounded-full shrink-0"
                         />
                         <div className="flex-1">
-                          <div className="bg-[#F7F7F5] rounded-lg p-3">
+                          <div className="bg-white border border-gray-100 rounded-2xl p-3 shadow-sm">
                             <div className="flex items-center justify-between mb-1">
-                              <h5 className="font-semibold text-sm">김지호</h5>
-                              <span className="text-[10px] text-gray-500">2시간 전</span>
+                              <span className="font-bold text-xs text-[#0F0F0F]">{comment.author.name}</span>
+                              <span className="text-[10px] text-gray-400">{comment.time}</span>
                             </div>
-                            <p className="text-xs text-gray-500 mb-2">프론트엔드 개발자</p>
-                            <p className="text-sm text-gray-800">정말 놀라운 작업물이네요! 컬러 조합이 환상적입니다.</p>
+                            <p className="text-sm text-gray-700 leading-relaxed">{comment.content}</p>
                           </div>
                           <button
-                            type="button"
-                            className="text-xs mt-1 ml-3 transition-colors text-gray-500 hover:text-[#00C9A7]"
+                            onClick={() => toggleCommentLike(selectedProjectForModal.postId, comment.id)}
+                            className={`text-[11px] mt-1.5 ml-2 transition-colors ${comment.likedByMe ? "text-[#FF5C3A] font-bold" : "text-gray-400"}`}
                           >
-                            좋아요 5개
+                            좋아요 {comment.likes}개
                           </button>
                         </div>
                       </div>
-                    </div>
+                    ))
+                  )}
+                </div>
 
-                    {/* Comment Input */}
-                    <div className="p-4 border-t border-gray-200">
-                      <div className="flex items-center gap-3">
-                        <ImageWithFallback
-                          src="https://i.pravatar.cc/150?img=20"
-                          alt="My Avatar"
-                          className="size-10 rounded-full ring-2 ring-[#00C9A7]"
-                        />
-                        <div className="flex-1 relative">
-                          <input
-                            type="text"
-                            placeholder="댓글을 입력하세요..."
-                            className="w-full px-4 py-3 pr-12 bg-[#F7F7F5] rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7] transition-all"
-                          />
-                          <button 
-                            type="button"
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-gradient-to-r from-[#00C9A7]/90 to-[#00A88C]/90 backdrop-blur-md text-white rounded-full hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-white/30"
-                          >
-                            <Send className="size-4" />
-                          </button>
-                        </div>
-                      </div>
+                {/* 댓글 입력 */}
+                <div className="p-4 border-t border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 relative">
+                      <input
+                        ref={commentInputRef}
+                        type="text"
+                        value={commentText}
+                        onChange={(e) => setCommentText(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && handleSubmitComment()}
+                        placeholder="댓글을 입력하세요..."
+                        className="w-full pl-4 pr-10 py-2.5 bg-[#F3F4F6] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7]/50 transition-all"
+                      />
+                      <button
+                        onClick={handleSubmitComment}
+                        disabled={!commentText.trim() || isSubmittingComment}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-[#00C9A7] hover:text-[#00A88C] disabled:opacity-30 transition-colors"
+                      >
+                        <Send className="size-4" />
+                      </button>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-        </AnimatePresence>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Floating Add */}
-      <motion.div whileHover={{ scale: 1.1, rotate: 45 }} whileTap={{ scale: 0.9 }} className="fixed bottom-8 right-8 z-50">
+      {/* Floating Action Button */}
+      <motion.div whileHover={{ scale: 1.1, rotate: 45 }} whileTap={{ scale: 0.9 }} className="fixed bottom-8 right-8 z-40">
         <Link to="/projects/new" className="bg-gradient-to-br from-[#00C9A7] to-[#00A88C] text-white size-14 rounded-full shadow-xl flex items-center justify-center ring-4 ring-white">
           <Plus className="size-6" />
         </Link>
       </motion.div>
 
-      <Footer />
-
-      {/* ━━ 컬렉션 저장 모달 ━━ */}
+      {/* 컬렉션 저장 모달 */}
       <AnimatePresence>
         {collectionModalProject && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black/55 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
             onClick={() => setCollectionModalProject(null)}
           >
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-              className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-white/40 overflow-hidden"
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* 헤더 */}
-              <div className="p-5 border-b border-gray-100 flex items-start justify-between gap-4">
+              <div className="p-5 border-b border-gray-100 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-[#00A88C] mb-1">컬렉션 저장</p>
-                  <h3 className="font-bold text-xl text-[#0F0F0F]">어디에 저장할까요?</h3>
-                  <p className="text-sm text-gray-500 mt-1 line-clamp-1">{collectionModalProject.title}</p>
+                  <h3 className="font-bold text-lg text-[#0F0F0F]">컬렉션에 저장</h3>
+                  <p className="text-xs text-gray-500 mt-0.5 truncate max-w-[280px]">{collectionModalProject.title}</p>
                 </div>
-                <button
-                  onClick={() => setCollectionModalProject(null)}
-                  className="size-9 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500 hover:text-[#0F0F0F] transition-colors"
-                >
-                  <X className="size-5" />
+                <button onClick={() => setCollectionModalProject(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                  <X className="size-5 text-gray-400" />
                 </button>
               </div>
 
-              {/* 컬렉션 목록 */}
-              <div className="p-5 space-y-4">
-                <div className="space-y-2 max-h-[240px] overflow-y-auto">
-                  {collections.map((col) => {
-                    const isSaved = col.itemIds.includes(collectionModalProject.id);
-                    return (
-                      <button
-                        key={col.id}
-                        onClick={() => saveToCollection(col.id)}
-                        className={`w-full p-3 rounded-xl border flex items-center justify-between gap-3 text-left transition-all ${
-                          isSaved
-                            ? "bg-[#E7FAF6] border-[#00C9A7] text-[#007D69]"
-                            : "bg-white border-gray-200 hover:border-[#00C9A7] hover:bg-[#F2FFFC]"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className={`size-11 rounded-lg flex items-center justify-center shrink-0 ${
-                            isSaved ? "bg-[#00C9A7] text-white" : "bg-[#F7F7F5] text-[#00A88C]"
-                          }`}>
-                            {isSaved ? <Check className="size-5" /> : <Bookmark className="size-5" />}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-semibold text-sm truncate">{col.name}</p>
-                            <p className="text-xs text-gray-500">{col.itemIds.length}개 저장됨</p>
-                          </div>
-                        </div>
-                        {isSaved && <span className="text-xs font-bold text-[#00A88C] shrink-0">저장됨</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* 새 컬렉션 만들기 */}
-                <form
-                  onSubmit={(e) => { e.preventDefault(); createCollectionAndSave(); }}
-                  className="pt-4 border-t border-gray-100"
-                >
-                  <label className="text-sm font-bold text-[#0F0F0F] mb-2 block">새 컬렉션 만들기</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newCollectionName}
-                      onChange={(e) => setNewCollectionName(e.target.value)}
-                      placeholder="예: 메인페이지 레퍼런스"
-                      className="flex-1 px-3 py-2.5 rounded-lg bg-[#F7F7F5] border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7] focus:border-transparent"
-                    />
+              <div className="p-5 space-y-3 max-h-[400px] overflow-y-auto">
+                {collections.map((col) => {
+                  const isSaved = col.itemIds.includes(collectionModalProject.postId);
+                  return (
                     <button
-                      type="submit"
-                      disabled={!newCollectionName.trim()}
-                      className="px-4 py-2.5 rounded-lg bg-[#0F0F0F] text-white text-sm font-semibold hover:bg-[#00A88C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                      key={col.id}
+                      onClick={() => saveToCollection(col.id)}
+                      className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all ${
+                        isSaved ? "bg-[#E7FAF6] border-[#00C9A7] text-[#007D69]" : "bg-white border-gray-100 hover:border-[#00C9A7] hover:bg-[#F9FAFB]"
+                      }`}
                     >
-                      <FolderPlus className="size-4" />
-                      만들기
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`size-10 rounded-lg flex items-center justify-center ${isSaved ? "bg-[#00C9A7] text-white" : "bg-[#F3F4F6] text-gray-400"}`}>
+                          {isSaved ? <Check className="size-5" /> : <Bookmark className="size-5" />}
+                        </div>
+                        <div className="text-left">
+                          <p className="font-bold text-sm">{col.name}</p>
+                          <p className="text-[10px] opacity-60">{col.itemIds.length}개의 작품</p>
+                        </div>
+                      </div>
+                      {isSaved && <span className="text-[10px] font-bold">저장됨</span>}
                     </button>
-                  </div>
-                </form>
+                  );
+                })}
+              </div>
 
-                {/* 저장 완료 알림 */}
-                {collectionNotice && (
-                  <motion.p
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="px-3 py-2 rounded-lg bg-[#E7FAF6] text-[#007D69] text-sm font-semibold"
+              <div className="p-5 bg-gray-50 border-t border-gray-100">
+                <form 
+                  onSubmit={(e) => { e.preventDefault(); createCollectionAndSave(); }}
+                  className="flex gap-2"
+                >
+                  <input
+                    type="text"
+                    value={newCollectionName}
+                    onChange={(e) => setNewCollectionName(e.target.value)}
+                    placeholder="새 컬렉션 이름..."
+                    className="flex-1 px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7]/30"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newCollectionName.trim()}
+                    className="px-4 py-2 bg-[#0F0F0F] text-white rounded-xl text-sm font-bold hover:bg-[#00C9A7] disabled:opacity-30 transition-all"
                   >
+                    만들기
+                  </button>
+                </form>
+                {collectionNotice && (
+                  <motion.p initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="text-center text-xs font-bold text-[#00C9A7] mt-4">
                     {collectionNotice}
                   </motion.p>
                 )}
@@ -1157,6 +1263,8 @@ export default function Explore() {
           </motion.div>
         )}
       </AnimatePresence>
+      <Footer />
     </div>
   );
 }
+

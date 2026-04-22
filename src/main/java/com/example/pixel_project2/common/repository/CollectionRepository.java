@@ -10,4 +10,8 @@ public interface CollectionRepository extends JpaRepository<Collection, Long> {
     @Modifying
     @Query("delete from Collection c where c.post.id = :postId")
     void deleteByPostId(@Param("postId") Long postId);
+
+    boolean existsByFolder_Folder_idAndPost_Id(Long folderId, Long postId);
+
+    List<Collection> findByFolder_User_Id(Long userId);
 }
