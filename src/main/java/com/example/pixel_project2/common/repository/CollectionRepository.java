@@ -40,3 +40,4 @@ public interface CollectionRepository extends JpaRepository<Collection, Long> {
     @Query("delete from Collection c where c.folder.folder_id = :folderId and c.post.id = :postId")
     void deleteByFolderIdAndPostId(@Param("folderId") Long folderId, @Param("postId") Long postId);
 }
+
