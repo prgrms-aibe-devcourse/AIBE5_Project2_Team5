@@ -190,10 +190,12 @@ export default function Signup() {
 
       setAuthTokens(user.accessToken, user.refreshToken, true);
       setCurrentUser({
+        userId: user.userId,
         name: user.name,
         nickname: user.nickname,
         email: user.loginId,
         role: user.role.toLowerCase() as UserRole,
+        profileImage: null,
       });
       setAuthenticated(true);
       navigate("/feed", { replace: true });

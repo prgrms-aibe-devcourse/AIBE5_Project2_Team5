@@ -40,9 +40,11 @@ export default function OAuth2Redirect() {
     const accessToken = searchParams.get("accessToken");
     const refreshToken = searchParams.get("refreshToken") ?? "";
     const loginId = searchParams.get("loginId");
+    const userId = Number(searchParams.get("userId"));
     const name = searchParams.get("name");
     const nickname = searchParams.get("nickname");
     const role = normalizeRole(searchParams.get("role"));
+    const profileImage = searchParams.get("profileImage");
 
     if (!accessToken || !loginId || !name || !nickname) {
       setErrorMessage("소셜 로그인 정보를 확인할 수 없습니다.");
@@ -51,10 +53,12 @@ export default function OAuth2Redirect() {
 
     setAuthTokens(accessToken, refreshToken, true);
     setCurrentUser({
+      userId: Number.isFinite(userId) ? userId : undefined,
       name,
       nickname,
       email: loginId,
       role,
+      profileImage,
     });
     setAuthenticated(true);
     navigate(normalizeRedirectTo(searchParams.get("redirectTo")), { replace: true });

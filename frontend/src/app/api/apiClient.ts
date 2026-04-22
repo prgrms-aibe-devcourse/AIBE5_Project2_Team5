@@ -25,7 +25,7 @@ async function readJsonResponse<T>(response: Response, fallbackMessage: string) 
 function buildHeaders(options: RequestInit, withAuth: boolean) {
   const headers = new Headers(options.headers);
 
-  if (options.body && !headers.has("Content-Type")) {
+  if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 

@@ -249,10 +249,12 @@ export default function Login() {
       const user = await loginApi(email.trim(), password);
       setAuthTokens(user.accessToken, user.refreshToken, rememberMe);
       setCurrentUser({
+        userId: user.userId,
         name: user.name,
         nickname: user.nickname,
         email: user.loginId,
         role: user.role.toLowerCase() as UserRole,
+        profileImage: user.profileImage,
       });
       setAuthenticated(rememberMe);
       navigate(redirectTo, { replace: true });
