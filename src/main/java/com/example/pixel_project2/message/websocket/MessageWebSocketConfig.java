@@ -1,6 +1,7 @@
 package com.example.pixel_project2.message.websocket;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
@@ -25,6 +26,11 @@ public class MessageWebSocketConfig implements WebSocketConfigurer {
     }
 
     @Bean
+    @ConditionalOnProperty(
+            name = "app.websocket.container.enabled",
+            havingValue = "true",
+            matchIfMissing = true
+    )
     public ServletServerContainerFactoryBean messageWebSocketContainer() {
         ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
         container.setMaxTextMessageBufferSize(MAX_MESSAGE_BUFFER_SIZE);
