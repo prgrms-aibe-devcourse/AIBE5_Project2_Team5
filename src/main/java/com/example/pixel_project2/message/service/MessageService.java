@@ -8,6 +8,7 @@ import com.example.pixel_project2.message.dto.MessagePolicyResponse;
 import com.example.pixel_project2.message.dto.SendMessageRequest;
 
 import java.util.List;
+import java.util.Set;
 
 public interface MessageService {
     MessagePolicyResponse getMessagePolicy();
@@ -21,4 +22,6 @@ public interface MessageService {
     ChatMessageResponse sendMessage(AuthenticatedUser currentUser, Long conversationId, SendMessageRequest request);
 
     boolean canAccessConversation(AuthenticatedUser currentUser, Long conversationId);
+
+    Set<Long> getConversationParticipantIds(Long conversationId);
 }

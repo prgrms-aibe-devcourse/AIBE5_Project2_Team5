@@ -110,6 +110,9 @@ const PROCESS_STORAGE_KEY = "pickxel:message-processes:v2";
 const PROCESS_CREATED_STORAGE_KEY = "pickxel:message-processes-created:v2";
 const MESSAGE_DRAFTS_STORAGE_KEY = "pickxel:message-drafts";
 const LEFT_CONVERSATIONS_STORAGE_KEY = "pickxel:left-message-conversations";
+const CONNECTED_CONVERSATION_POLL_INTERVAL = 5000;
+const CONNECTED_MESSAGE_POLL_INTERVAL = 3000;
+const DISCONNECTED_POLL_INTERVAL = 1000;
 
 const createClientId = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -553,6 +556,7 @@ export default function Messages() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const currentUser = getCurrentUser();
+  const currentUserId = currentUser?.userId;
   const requestedConversationId = Number(searchParams.get("conversationId") ?? 0);
   const storedProcessesRef = useRef<ProjectProcess[] | null>(readStoredProcesses());
   const storedMessageDraftsRef = useRef<Record<string, string>>(readStoredMessageDrafts());
@@ -618,6 +622,7 @@ export default function Messages() {
     shouldBounceCount: boolean;
   } | null>(null);
   const [typingConversationId, setTypingConversationId] = useState<number | null>(null);
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ src: string; name: string } | null>(null);
   const [processToast, setProcessToast] = useState<ProcessToast | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -677,13 +682,13 @@ export default function Messages() {
     void loadConversations();
     const pollInterval = window.setInterval(() => {
       void loadConversations(true);
-    }, 1000);
+    }, isSocketConnected ? CONNECTED_CONVERSATION_POLL_INTERVAL : DISCONNECTED_POLL_INTERVAL);
 
     return () => {
       mounted = false;
       window.clearInterval(pollInterval);
     };
-  }, [requestedConversationId, conversationReloadKey]);
+  }, [requestedConversationId, conversationReloadKey, isSocketConnected]);
 
   useEffect(() => {
     if (!activeConversation) return;
@@ -698,7 +703,7 @@ export default function Messages() {
         if (!mounted || activeConversationIdRef.current !== conversationId) return;
 
         const nextMessages = messageResponses.map((message) =>
-          mapChatMessageResponse(message, currentUser?.userId)
+          mapChatMessageResponse(message, currentUserId)
         );
 
         setChatMessages((prev) => {
@@ -727,13 +732,13 @@ export default function Messages() {
     void loadConversationMessages();
     const pollInterval = window.setInterval(() => {
       void loadConversationMessages(true);
-    }, 1000);
+    }, isSocketConnected ? CONNECTED_MESSAGE_POLL_INTERVAL : DISCONNECTED_POLL_INTERVAL);
 
     return () => {
       mounted = false;
       window.clearInterval(pollInterval);
     };
-  }, [activeConversation?.id, currentUser?.userId]);
+  }, [activeConversation?.id, currentUserId, isSocketConnected]);
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
@@ -747,12 +752,14 @@ export default function Messages() {
 
     const socket = createMessageSocket({
       onOpen: () => {
+        setIsSocketConnected(true);
+        setConversationReloadKey((key) => key + 1);
         if (conversationIds.length > 0) {
           socket.subscribe(conversationIds);
         }
       },
       onMessage: (incomingMessage: IncomingChatSocketMessage) => {
-        const isSelfMessage = currentUser?.userId === incomingMessage.senderUserId;
+        const isSelfMessage = currentUserId === incomingMessage.senderUserId;
         const nextMessage: ChatMessage = {
           id: incomingMessage.serverId,
           clientId: incomingMessage.clientId || incomingMessage.serverId,
@@ -803,6 +810,9 @@ export default function Messages() {
           );
         }
       },
+      onClose: () => {
+        setIsSocketConnected(false);
+      },
     });
 
     messageSocketRef.current = socket;
@@ -814,7 +824,7 @@ export default function Messages() {
       }
       socket.close();
     };
-  }, [currentUser?.userId, messageSocketConversationIds]);
+  }, [currentUserId, messageSocketConversationIds]);
 
   const isPartnerTyping = Boolean(activeConversation && typingConversationId === activeConversation.id);
   const draftValidationMessage = getProcessDraftValidation(draftProcesses);

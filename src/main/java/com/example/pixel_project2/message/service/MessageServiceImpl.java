@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -115,6 +116,17 @@ public class MessageServiceImpl implements MessageService {
         return conversationRepository.findByIdWithParticipants(conversationId)
                 .map(conversation -> conversation.hasParticipant(currentUser.id()))
                 .orElse(false);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Set<Long> getConversationParticipantIds(Long conversationId) {
+        return conversationRepository.findByIdWithParticipants(conversationId)
+                .map(conversation -> Set.of(
+                        conversation.getUserOne().getId(),
+                        conversation.getUserTwo().getId()
+                ))
+                .orElse(Set.of());
     }
 
     private MessageConversation findOrCreateConversation(Long currentUserId, Long partnerUserId) {

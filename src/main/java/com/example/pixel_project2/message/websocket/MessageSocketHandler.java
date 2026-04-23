@@ -148,10 +148,15 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         outbound.put("createdAt", savedMessage.createdAt().toString());
         outbound.set("attachments", savedMessage.attachments());
 
-        broadcast(conversationId, session.getId(), outbound);
+        broadcast(conversationId, session.getId(), messageService.getConversationParticipantIds(conversationId), outbound);
     }
 
-    private void broadcast(long conversationId, String senderSessionId, ObjectNode outbound) {
+    private void broadcast(
+            long conversationId,
+            String senderSessionId,
+            Set<Long> participantUserIds,
+            ObjectNode outbound
+    ) {
         for (WebSocketSession targetSession : sessions.values()) {
             if (!targetSession.isOpen()) {
                 cleanupSession(targetSession);
@@ -164,7 +169,7 @@ public class MessageSocketHandler extends TextWebSocketHandler {
                     .contains(conversationId);
             AuthenticatedUser targetUser = authenticatedUser(targetSession);
             boolean participantSession = targetUser != null
-                    && messageService.canAccessConversation(targetUser, conversationId);
+                    && participantUserIds.contains(targetUser.id());
 
             if (senderSession || subscribed || participantSession) {
                 try {

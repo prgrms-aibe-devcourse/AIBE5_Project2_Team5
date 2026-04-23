@@ -14,6 +14,71 @@ export type CurrentUser = {
   profileImage?: string | null;
 };
 
+type JwtPayload = {
+  userId?: number | string;
+  loginId?: string;
+  name?: string;
+  nickname?: string;
+  role?: string;
+};
+
+function decodeJwtPayload(token: string): JwtPayload | null {
+  try {
+    const [, payload] = token.split(".");
+    if (!payload) {
+      return null;
+    }
+
+    const normalizedPayload = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const paddedPayload = normalizedPayload.padEnd(
+      normalizedPayload.length + ((4 - (normalizedPayload.length % 4)) % 4),
+      "="
+    );
+
+    return JSON.parse(window.atob(paddedPayload)) as JwtPayload;
+  } catch {
+    return null;
+  }
+}
+
+function getCurrentUserFromAccessToken(accessToken: string | null): CurrentUser | null {
+  if (!accessToken) {
+    return null;
+  }
+
+  const payload = decodeJwtPayload(accessToken);
+  if (!payload) {
+    return null;
+  }
+
+  const role =
+    payload.role === "DESIGNER"
+      ? "designer"
+      : payload.role === "CLIENT"
+        ? "client"
+        : null;
+
+  if (!role || typeof payload.name !== "string") {
+    return null;
+  }
+
+  const numericUserId =
+    typeof payload.userId === "number"
+      ? payload.userId
+      : typeof payload.userId === "string" && payload.userId.trim()
+        ? Number(payload.userId)
+        : undefined;
+
+  return {
+    userId: Number.isFinite(numericUserId) ? Number(numericUserId) : undefined,
+    name: payload.name,
+    nickname: typeof payload.nickname === "string" ? payload.nickname : payload.name,
+    email: typeof payload.loginId === "string" ? payload.loginId : "",
+    role,
+    profileImage: undefined,
+  };
+}
+
 function getActiveStorage() {
   if (typeof window === "undefined") {
     return null;
@@ -107,8 +172,11 @@ export function getCurrentUser(): CurrentUser | null {
   }
 
   const activeStorage = getActiveStorage();
+  const accessToken = activeStorage?.getItem(ACCESS_TOKEN_STORAGE_KEY) ?? null;
   const storedUser = activeStorage?.getItem(CURRENT_USER_STORAGE_KEY);
-  if (!storedUser) return null;
+  if (!storedUser) {
+    return getCurrentUserFromAccessToken(accessToken);
+  }
 
   try {
     const parsedUser = JSON.parse(storedUser);
@@ -127,13 +195,13 @@ export function getCurrentUser(): CurrentUser | null {
           typeof parsedUser?.profileImage === "string" || parsedUser?.profileImage === null
             ? parsedUser.profileImage
             : undefined,
-      };
-    }
+        };
+      }
   } catch {
-    return null;
+    return getCurrentUserFromAccessToken(accessToken);
   }
 
-  return null;
+  return getCurrentUserFromAccessToken(accessToken);
 }
 
 export function setCurrentUser(user: CurrentUser) {
