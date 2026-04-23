@@ -32,5 +32,4 @@ public class Comment {
     @Builder.Default
     @Column(columnDefinition = "CLOB")
     private String description = "";
-
 }

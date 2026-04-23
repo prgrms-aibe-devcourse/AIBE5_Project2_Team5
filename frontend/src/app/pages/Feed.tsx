@@ -603,7 +603,7 @@ export default function Feed() {
   );
 
   const savedItemIds = useMemo(() => {
-    // Note: Since server response doesn't have all itemIds, 
+    // Note: Since server response doesn't have all itemIds,
     // we use a simplified version or fetch details if needed.
     // For now, we rely on the modal fetch to show accurate saved status.
     return new Set<number>();
@@ -1953,7 +1953,7 @@ export default function Feed() {
                   // Note: In API mode, we don't know for sure if it's saved without details.
                   // But we can assume it's NOT saved unless the user just saved it in this session,
                   // or we can just show the list and handle it via API response.
-                  const isSavedInCollection = false; 
+                  const isSavedInCollection = false;
 
                   return (
                     <button
