@@ -16,6 +16,8 @@ import com.example.pixel_project2.message.dto.MessageProcessRequest;
 import com.example.pixel_project2.message.dto.MessageProcessResponse;
 import com.example.pixel_project2.message.dto.MessageProcessTaskRequest;
 import com.example.pixel_project2.message.dto.MessageProcessTaskResponse;
+import com.example.pixel_project2.message.dto.MessageReactionEventResponse;
+import com.example.pixel_project2.message.dto.MessageReactionResponse;
 import com.example.pixel_project2.message.dto.MessageReadReceiptResponse;
 import com.example.pixel_project2.message.dto.MessageUserResponse;
 import com.example.pixel_project2.message.dto.SaveMessageProcessesRequest;
@@ -26,6 +28,7 @@ import com.example.pixel_project2.message.entity.ChatMessage;
 import com.example.pixel_project2.message.entity.MessageConversation;
 import com.example.pixel_project2.message.entity.MessageProcess;
 import com.example.pixel_project2.message.entity.MessageProcessTask;
+import com.example.pixel_project2.message.entity.MessageReaction;
 import com.example.pixel_project2.message.entity.MessageReview;
 import com.example.pixel_project2.message.event.ChatMessageSentEvent;
 import com.example.pixel_project2.message.event.MessageReadReceiptEvent;
@@ -33,7 +36,10 @@ import com.example.pixel_project2.message.event.MessageProcessesUpdatedEvent;
 import com.example.pixel_project2.message.repository.ChatMessageRepository;
 import com.example.pixel_project2.message.repository.MessageConversationRepository;
 import com.example.pixel_project2.message.repository.MessageProcessRepository;
+import com.example.pixel_project2.message.repository.MessageReactionRepository;
 import com.example.pixel_project2.message.repository.MessageReviewRepository;
+import com.example.pixel_project2.message.util.MessageTextCodec;
+import com.fasterxml.jackson.core.json.JsonWriteFeature;
 import com.example.pixel_project2.profile.dto.ProfileReviewResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -45,7 +51,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -55,6 +65,7 @@ public class MessageServiceImpl implements MessageService {
     private final MessageConversationRepository conversationRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final MessageProcessRepository messageProcessRepository;
+    private final MessageReactionRepository messageReactionRepository;
     private final MessageReviewRepository messageReviewRepository;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
@@ -93,12 +104,36 @@ public class MessageServiceImpl implements MessageService {
     }
 
     @Override
+    @Transactional
+    public void deleteConversation(AuthenticatedUser currentUser, Long conversationId) {
+        MessageConversation conversation = findConversationForUser(conversationId, currentUser.id());
+
+        messageReactionRepository.deleteAllByConversationId(conversationId);
+        chatMessageRepository.deleteAllByConversationId(conversationId);
+
+        List<MessageProcess> processes = messageProcessRepository.findAllByConversationIdWithTasks(conversationId);
+        messageProcessRepository.deleteAll(processes);
+        messageProcessRepository.flush();
+
+        messageReviewRepository.deleteAllByConversationId(conversationId);
+        conversationRepository.delete(conversation);
+        conversationRepository.flush();
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<ChatMessageResponse> getMessages(AuthenticatedUser currentUser, Long conversationId) {
         findConversationForUser(conversationId, currentUser.id());
-        return chatMessageRepository.findAllByConversationId(conversationId)
+        List<ChatMessage> messages = chatMessageRepository.findAllByConversationId(conversationId);
+        Map<Long, List<MessageReactionResponse>> reactionsByMessageId =
+                findReactionsByMessageId(messages, currentUser.id());
+
+        return messages
                 .stream()
-                .map(this::toChatMessageResponse)
+                .map(message -> toChatMessageResponse(
+                        message,
+                        reactionsByMessageId.getOrDefault(message.getId(), List.of())
+                ))
                 .toList();
     }
 
@@ -123,7 +158,7 @@ public class MessageServiceImpl implements MessageService {
                 .conversation(conversation)
                 .sender(sender)
                 .clientId(normalizeClientId(request.clientId()))
-                .message(message)
+                .message(MessageTextCodec.encodeForStorage(message))
                 .attachmentsJson(writeAttachments(attachments))
                 .build();
         ChatMessage savedMessage = chatMessageRepository.save(chatMessage);
@@ -131,11 +166,61 @@ public class MessageServiceImpl implements MessageService {
         LocalDateTime messageCreatedAt = savedMessage.getCreatedAt() == null
                 ? LocalDateTime.now()
                 : savedMessage.getCreatedAt();
-        conversation.updateLastMessage(createPreview(message, attachments), messageCreatedAt);
+        conversation.updateLastMessage(
+                MessageTextCodec.encodeForStorage(createPreview(message, attachments)),
+                messageCreatedAt
+        );
 
-        ChatMessageResponse response = toChatMessageResponse(savedMessage);
+        ChatMessageResponse response = toChatMessageResponse(savedMessage, List.of());
         eventPublisher.publishEvent(new ChatMessageSentEvent(response));
         return response;
+    }
+
+    @Override
+    @Transactional
+    public MessageReactionEventResponse updateReaction(
+            AuthenticatedUser currentUser,
+            Long conversationId,
+            String messageClientId,
+            String emoji,
+            String action
+    ) {
+        findConversationForUser(conversationId, currentUser.id());
+        ChatMessage targetMessage = findMessageForReaction(conversationId, messageClientId);
+        User reactor = userRepository.findById(currentUser.id())
+                .orElseThrow(() -> new IllegalArgumentException("User not found."));
+        String normalizedEmoji = normalizeReactionEmoji(emoji);
+        String storedEmoji = MessageTextCodec.encodeForStorage(normalizedEmoji);
+
+        Optional<MessageReaction> previousReaction =
+                messageReactionRepository.findByMessageIdAndUserIdAndEmojiCode(
+                        targetMessage.getId(),
+                        currentUser.id(),
+                        storedEmoji
+                );
+
+        if ("add".equals(action)) {
+            previousReaction.orElseGet(() -> messageReactionRepository.save(
+                    MessageReaction.builder()
+                            .message(targetMessage)
+                            .user(reactor)
+                            .emojiCode(storedEmoji)
+                            .build()
+            ));
+        } else if ("remove".equals(action)) {
+            previousReaction.ifPresent(messageReactionRepository::delete);
+        } else {
+            throw new IllegalArgumentException("Unknown reaction action.");
+        }
+
+        return new MessageReactionEventResponse(
+                conversationId,
+                messageClientId(targetMessage),
+                normalizedEmoji,
+                action,
+                currentUser.id(),
+                currentUser.nickname()
+        );
     }
 
     @Override
@@ -208,7 +293,7 @@ public class MessageServiceImpl implements MessageService {
                 .stream()
                 .map(this::toProcessResponse)
                 .toList();
-        eventPublisher.publishEvent(new MessageProcessesUpdatedEvent(conversationId, response));
+        eventPublisher.publishEvent(new MessageProcessesUpdatedEvent(conversationId, currentUser.id(), response));
         return response;
     }
 
@@ -235,7 +320,7 @@ public class MessageServiceImpl implements MessageService {
         task.setCompleted(Boolean.TRUE.equals(request.completed()));
         refreshProcessStatus(process);
         MessageProcessResponse response = toProcessResponse(process);
-        publishProcessesUpdated(conversationId);
+        publishProcessesUpdated(conversationId, currentUser.id());
         return response;
     }
 
@@ -265,7 +350,7 @@ public class MessageServiceImpl implements MessageService {
 
         refreshProcessStatus(process);
         MessageProcessResponse response = toProcessResponse(process);
-        publishProcessesUpdated(conversationId);
+        publishProcessesUpdated(conversationId, currentUser.id());
         return response;
     }
 
@@ -353,12 +438,35 @@ public class MessageServiceImpl implements MessageService {
                 .orElseThrow(() -> new IllegalArgumentException("Process not found."));
     }
 
-    private void publishProcessesUpdated(Long conversationId) {
+    private ChatMessage findMessageForReaction(Long conversationId, String messageClientId) {
+        if (messageClientId == null || messageClientId.isBlank()) {
+            throw new IllegalArgumentException("Message id is required.");
+        }
+
+        String normalizedMessageClientId = messageClientId.trim();
+        Optional<ChatMessage> messageByClientId = chatMessageRepository.findByConversationIdAndClientId(
+                conversationId,
+                normalizedMessageClientId
+        );
+        if (messageByClientId.isPresent()) {
+            return messageByClientId.get();
+        }
+
+        try {
+            Long messageId = Long.valueOf(normalizedMessageClientId);
+            return chatMessageRepository.findByIdAndConversationId(messageId, conversationId)
+                    .orElseThrow(() -> new IllegalArgumentException("Message not found."));
+        } catch (NumberFormatException ignored) {
+            throw new IllegalArgumentException("Message not found.");
+        }
+    }
+
+    private void publishProcessesUpdated(Long conversationId, Long updaterUserId) {
         List<MessageProcessResponse> processes = messageProcessRepository.findAllByConversationIdWithTasks(conversationId)
                 .stream()
                 .map(this::toProcessResponse)
                 .toList();
-        eventPublisher.publishEvent(new MessageProcessesUpdatedEvent(conversationId, processes));
+        eventPublisher.publishEvent(new MessageProcessesUpdatedEvent(conversationId, updaterUserId, processes));
     }
 
     private MessageProcess toProcessEntity(
@@ -442,6 +550,18 @@ public class MessageServiceImpl implements MessageService {
         return normalized;
     }
 
+    private String normalizeReactionEmoji(String emoji) {
+        if (emoji == null || emoji.isBlank()) {
+            throw new IllegalArgumentException("Reaction emoji is required.");
+        }
+
+        String normalized = emoji.trim();
+        if (normalized.codePointCount(0, normalized.length()) > 8) {
+            throw new IllegalArgumentException("Reaction emoji is too long.");
+        }
+        return normalized;
+    }
+
     private Integer normalizeRating(Integer rating) {
         if (rating == null || rating < 1 || rating > 5) {
             throw new IllegalArgumentException("Review rating must be between 1 and 5.");
@@ -465,7 +585,7 @@ public class MessageServiceImpl implements MessageService {
 
     private String writeStringList(List<String> values) {
         try {
-            return objectMapper.writeValueAsString(values);
+            return writeJsonForStorage(values);
         } catch (JsonProcessingException e) {
             throw new IllegalArgumentException("Review tags could not be saved.");
         }
@@ -516,7 +636,7 @@ public class MessageServiceImpl implements MessageService {
                 designer == null ? null : designer.getJob(),
                 designer == null ? null : designer.getIntroduction(),
                 partner.getUrl(),
-                conversation.getLastMessagePreview(),
+                MessageTextCodec.decodeFromStorage(conversation.getLastMessagePreview()),
                 conversation.getLastMessageAt(),
                 chatMessageRepository.countUnreadByConversationIdForReader(conversation.getId(), currentUserId)
         );
@@ -576,18 +696,74 @@ public class MessageServiceImpl implements MessageService {
                 .build();
     }
 
-    private ChatMessageResponse toChatMessageResponse(ChatMessage message) {
+    private ChatMessageResponse toChatMessageResponse(
+            ChatMessage message,
+            List<MessageReactionResponse> reactions
+    ) {
         return new ChatMessageResponse(
                 message.getId(),
                 message.getClientId(),
                 message.getConversation().getId(),
                 message.getSender().getId(),
                 message.getSender().getNickname(),
-                message.getMessage() == null ? "" : message.getMessage(),
+                MessageTextCodec.decodeFromStorage(message.getMessage() == null ? "" : message.getMessage()),
                 readAttachments(message.getAttachmentsJson()),
+                reactions,
                 message.getCreatedAt() == null ? LocalDateTime.now() : message.getCreatedAt(),
                 message.getReadAt()
         );
+    }
+
+    private Map<Long, List<MessageReactionResponse>> findReactionsByMessageId(
+            List<ChatMessage> messages,
+            Long currentUserId
+    ) {
+        if (messages.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        List<Long> messageIds = messages.stream()
+                .map(ChatMessage::getId)
+                .toList();
+        List<MessageReaction> reactions = messageReactionRepository.findAllByMessageIds(messageIds);
+        Map<Long, LinkedHashMap<String, ReactionAggregate>> reactionsByMessageId = new LinkedHashMap<>();
+
+        for (MessageReaction reaction : reactions) {
+            Long messageId = reaction.getMessage().getId();
+            String emoji = MessageTextCodec.decodeFromStorage(reaction.getEmojiCode());
+            LinkedHashMap<String, ReactionAggregate> aggregates = reactionsByMessageId.computeIfAbsent(
+                    messageId,
+                    ignored -> new LinkedHashMap<>()
+            );
+            ReactionAggregate aggregate = aggregates.computeIfAbsent(emoji, ReactionAggregate::new);
+            aggregate.count += 1;
+            if (reaction.getUser().getId().equals(currentUserId)) {
+                aggregate.reactedByMe = true;
+            }
+        }
+
+        Map<Long, List<MessageReactionResponse>> response = new LinkedHashMap<>();
+        reactionsByMessageId.forEach((messageId, aggregates) ->
+                response.put(
+                        messageId,
+                        aggregates.values()
+                                .stream()
+                                .map(aggregate -> new MessageReactionResponse(
+                                        aggregate.emoji,
+                                        aggregate.count,
+                                        aggregate.reactedByMe
+                                ))
+                                .toList()
+                )
+        );
+        return response;
+    }
+
+    private String messageClientId(ChatMessage message) {
+        if (message.getClientId() != null && !message.getClientId().isBlank()) {
+            return message.getClientId();
+        }
+        return String.valueOf(message.getId());
     }
 
     private JsonNode normalizeAttachments(JsonNode attachments) {
@@ -611,10 +787,16 @@ public class MessageServiceImpl implements MessageService {
 
     private String writeAttachments(JsonNode attachments) {
         try {
-            return objectMapper.writeValueAsString(attachments);
+            return writeJsonForStorage(attachments);
         } catch (JsonProcessingException e) {
             throw new IllegalArgumentException("첨부파일 정보를 저장할 수 없습니다.");
         }
+    }
+
+    private String writeJsonForStorage(Object value) throws JsonProcessingException {
+        return objectMapper.writer()
+                .with(JsonWriteFeature.ESCAPE_NON_ASCII.mappedFeature())
+                .writeValueAsString(value);
     }
 
     private JsonNode readAttachments(String attachmentsJson) {
@@ -635,5 +817,15 @@ public class MessageServiceImpl implements MessageService {
             return preview;
         }
         return preview.substring(0, 500);
+    }
+
+    private static final class ReactionAggregate {
+        private final String emoji;
+        private long count;
+        private boolean reactedByMe;
+
+        private ReactionAggregate(String emoji) {
+            this.emoji = emoji;
+        }
     }
 }

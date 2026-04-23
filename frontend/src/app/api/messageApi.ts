@@ -1,5 +1,5 @@
 import { apiRequest } from "./apiClient";
-import type { MessageSocketAttachment } from "./messageSocket";
+import type { MessageSocketAttachment, MessageSocketReaction } from "./messageSocket";
 
 export type MessageConversationResponse = {
   id: number;
@@ -25,6 +25,7 @@ export type ChatMessageResponse = {
   senderName: string;
   message: string;
   attachments: MessageSocketAttachment[];
+  reactions: MessageSocketReaction[];
   createdAt: string;
   readAt: string | null;
 };
@@ -101,6 +102,16 @@ export async function createMessageConversationApi(partnerUserId: number) {
       body: JSON.stringify({ partnerUserId }),
     },
     "Failed to create conversation.",
+  );
+}
+
+export async function deleteMessageConversationApi(conversationId: number) {
+  return apiRequest<void>(
+    `/api/messages/conversations/${conversationId}`,
+    {
+      method: "DELETE",
+    },
+    "Failed to delete conversation.",
   );
 }
 

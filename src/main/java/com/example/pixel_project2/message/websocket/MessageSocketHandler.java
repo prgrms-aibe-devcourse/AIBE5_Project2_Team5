@@ -2,6 +2,7 @@ package com.example.pixel_project2.message.websocket;
 
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.message.dto.ChatMessageResponse;
+import com.example.pixel_project2.message.dto.MessageReactionEventResponse;
 import com.example.pixel_project2.message.dto.MessageReadReceiptResponse;
 import com.example.pixel_project2.message.dto.SendMessageRequest;
 import com.example.pixel_project2.message.event.ChatMessageSentEvent;
@@ -198,14 +199,22 @@ public class MessageSocketHandler extends TextWebSocketHandler {
             return;
         }
 
+        MessageReactionEventResponse reaction;
+        try {
+            reaction = messageService.updateReaction(sender, conversationId, messageClientId, emoji, action);
+        } catch (IllegalArgumentException e) {
+            sendError(session, e.getMessage());
+            return;
+        }
+
         ObjectNode outbound = objectMapper.createObjectNode();
         outbound.put("type", TYPE_MESSAGE_REACTION);
-        outbound.put("conversationId", conversationId);
-        outbound.put("messageClientId", messageClientId);
-        outbound.put("emoji", emoji);
-        outbound.put("action", action);
-        outbound.put("senderUserId", sender.id());
-        outbound.put("senderName", sender.nickname());
+        outbound.put("conversationId", reaction.conversationId());
+        outbound.put("messageClientId", reaction.messageClientId());
+        outbound.put("emoji", reaction.emoji());
+        outbound.put("action", reaction.action());
+        outbound.put("senderUserId", reaction.senderUserId());
+        outbound.put("senderName", reaction.senderName());
         broadcast(conversationId, outbound, session.getId());
     }
 
@@ -255,6 +264,7 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         ObjectNode outbound = objectMapper.createObjectNode();
         outbound.put("type", TYPE_PROCESS_UPDATED);
         outbound.put("conversationId", event.conversationId());
+        outbound.put("updaterUserId", event.updaterUserId());
         outbound.set("processes", objectMapper.valueToTree(event.processes()));
         broadcast(event.conversationId(), outbound, null);
     }
@@ -275,6 +285,7 @@ public class MessageSocketHandler extends TextWebSocketHandler {
             outbound.put("readAt", savedMessage.readAt().toString());
         }
         outbound.set("attachments", savedMessage.attachments());
+        outbound.set("reactions", objectMapper.valueToTree(savedMessage.reactions()));
         return outbound;
     }
 

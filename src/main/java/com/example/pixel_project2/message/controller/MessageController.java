@@ -19,6 +19,7 @@ import com.example.pixel_project2.profile.dto.ProfileReviewResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -61,6 +62,15 @@ public class MessageController {
             @Valid @RequestBody CreateConversationRequest request
     ) {
         return ApiResponse.ok("Message conversation created.", messageService.createConversation(currentUser, request));
+    }
+
+    @DeleteMapping("/conversations/{conversationId}")
+    public ApiResponse<Void> deleteConversation(
+            @AuthenticationPrincipal AuthenticatedUser currentUser,
+            @PathVariable Long conversationId
+    ) {
+        messageService.deleteConversation(currentUser, conversationId);
+        return ApiResponse.ok("Message conversation deleted.", null);
     }
 
     @GetMapping("/conversations/{conversationId}/messages")

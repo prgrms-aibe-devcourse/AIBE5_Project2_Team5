@@ -6,6 +6,7 @@ import java.util.List;
 
 public record MessageProcessesUpdatedEvent(
         Long conversationId,
+        Long updaterUserId,
         List<MessageProcessResponse> processes
 ) {
 }

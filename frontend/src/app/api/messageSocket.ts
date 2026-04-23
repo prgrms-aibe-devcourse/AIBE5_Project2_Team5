@@ -2,6 +2,12 @@ import { getAccessToken } from "../utils/auth";
 
 export type MessageSocketAttachment = unknown;
 
+export type MessageSocketReaction = {
+  emoji: string;
+  count: number;
+  reactedByMe?: boolean;
+};
+
 export type OutgoingChatSocketMessage = {
   clientId: string;
   conversationId: number;
@@ -19,6 +25,7 @@ export type IncomingChatSocketMessage = {
   senderName: string;
   message: string;
   attachments: MessageSocketAttachment[];
+  reactions: MessageSocketReaction[];
   createdAt: string;
   readAt: string | null;
 };
@@ -54,6 +61,7 @@ export type IncomingReadReceiptSocketMessage = {
 export type IncomingProcessSocketMessage = {
   type: "process.updated";
   conversationId: number;
+  updaterUserId?: number;
   processes: Array<{
     id: number;
     title: string;

@@ -2,6 +2,7 @@ package com.example.pixel_project2.message.repository;
 
 import com.example.pixel_project2.message.entity.MessageReview;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -26,4 +27,8 @@ public interface MessageReviewRepository extends JpaRepository<MessageReview, Lo
             @Param("conversationId") Long conversationId,
             @Param("reviewerId") Long reviewerId
     );
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from MessageReview r where r.conversation.id = :conversationId")
+    void deleteAllByConversationId(@Param("conversationId") Long conversationId);
 }

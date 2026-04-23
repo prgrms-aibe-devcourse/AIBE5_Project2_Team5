@@ -7,6 +7,7 @@ import com.example.pixel_project2.message.dto.CreateMessageReviewRequest;
 import com.example.pixel_project2.message.dto.MessageConversationResponse;
 import com.example.pixel_project2.message.dto.MessagePolicyResponse;
 import com.example.pixel_project2.message.dto.MessageProcessResponse;
+import com.example.pixel_project2.message.dto.MessageReactionEventResponse;
 import com.example.pixel_project2.message.dto.MessageReadReceiptResponse;
 import com.example.pixel_project2.message.dto.MessageUserResponse;
 import com.example.pixel_project2.message.dto.SaveMessageProcessesRequest;
@@ -26,9 +27,19 @@ public interface MessageService {
 
     MessageConversationResponse createConversation(AuthenticatedUser currentUser, CreateConversationRequest request);
 
+    void deleteConversation(AuthenticatedUser currentUser, Long conversationId);
+
     List<ChatMessageResponse> getMessages(AuthenticatedUser currentUser, Long conversationId);
 
     ChatMessageResponse sendMessage(AuthenticatedUser currentUser, Long conversationId, SendMessageRequest request);
+
+    MessageReactionEventResponse updateReaction(
+            AuthenticatedUser currentUser,
+            Long conversationId,
+            String messageClientId,
+            String emoji,
+            String action
+    );
 
     MessageReadReceiptResponse markConversationRead(AuthenticatedUser currentUser, Long conversationId);
 

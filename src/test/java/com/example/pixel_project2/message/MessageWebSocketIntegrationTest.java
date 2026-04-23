@@ -39,6 +39,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class MessageWebSocketIntegrationTest {
@@ -137,6 +138,33 @@ class MessageWebSocketIntegrationTest {
     }
 
     @Test
+    void emojiMessageTextIsStoredAndBroadcastWithoutQuestionMarkReplacement() throws Exception {
+        User sender = userRepository.saveAndFlush(testUser("emoji-sender@test.io", "Emoji Sender", "emoji-send"));
+        User receiver = userRepository.saveAndFlush(testUser("emoji-receiver@test.io", "Emoji Receiver", "emoji-recv"));
+
+        MessageConversationResponse conversation = messageService.createConversation(
+                principal(sender),
+                new CreateConversationRequest(receiver.getId())
+        );
+
+        CompletableFuture<JsonNode> receivedEvent = new CompletableFuture<>();
+        WebSocketSession receiverSession = connectSocket(receiver, conversation.id(), "chat.message", receivedEvent);
+
+        messageService.sendMessage(
+                principal(sender),
+                conversation.id(),
+                new SendMessageRequest("emoji-client-message", "좋아요 👍🔥", objectMapper.createArrayNode())
+        );
+
+        JsonNode event = receivedEvent.get(5, TimeUnit.SECONDS);
+        assertThat(event.path("message").asText()).isEqualTo("좋아요 👍🔥");
+        assertThat(messageService.getMessages(principal(receiver), conversation.id()).getFirst().message())
+                .isEqualTo("좋아요 👍🔥");
+
+        receiverSession.close();
+    }
+
+    @Test
     void socketMessageWithAttachmentsIsPersistedAndBroadcast() throws Exception {
         User sender = userRepository.saveAndFlush(testUser("ws-attach-sender@test.io", "Ws Attach Sender", "ws-att-s"));
         User receiver = userRepository.saveAndFlush(testUser("ws-attach-receiver@test.io", "Ws Attach Receiver", "ws-att-r"));
@@ -210,21 +238,29 @@ class MessageWebSocketIntegrationTest {
                 principal(sender),
                 new CreateConversationRequest(receiver.getId())
         );
+        messageService.sendMessage(
+                principal(sender),
+                conversation.id(),
+                new SendMessageRequest("reaction-client-message", "React to this", objectMapper.createArrayNode())
+        );
 
         CompletableFuture<JsonNode> receivedEvent = new CompletableFuture<>();
         WebSocketSession receiverSession = connectSocket(receiver, conversation.id(), "message.reaction", receivedEvent);
         WebSocketSession senderSession = connectSocket(sender, conversation.id(), "message.reaction", new CompletableFuture<>());
 
         senderSession.sendMessage(new TextMessage("""
-                {"type":"message.reaction","conversationId":%d,"messageClientId":"client-123","emoji":"thumb","action":"add"}
+                {"type":"message.reaction","conversationId":%d,"messageClientId":"reaction-client-message","emoji":"👍","action":"add"}
                 """.formatted(conversation.id())));
 
         JsonNode event = receivedEvent.get(5, TimeUnit.SECONDS);
         assertThat(event.path("conversationId").asLong()).isEqualTo(conversation.id());
-        assertThat(event.path("messageClientId").asText()).isEqualTo("client-123");
-        assertThat(event.path("emoji").asText()).isEqualTo("thumb");
+        assertThat(event.path("messageClientId").asText()).isEqualTo("reaction-client-message");
+        assertThat(event.path("emoji").asText()).isEqualTo("👍");
         assertThat(event.path("action").asText()).isEqualTo("add");
         assertThat(event.path("senderUserId").asLong()).isEqualTo(sender.getId());
+        assertThat(messageService.getMessages(principal(receiver), conversation.id()).getFirst().reactions())
+                .extracting("emoji", "count")
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("👍", 1L));
 
         senderSession.close();
         receiverSession.close();
@@ -427,6 +463,63 @@ class MessageWebSocketIntegrationTest {
         assertThat(profileReview.content()).contains("프로필 후기 탭");
         assertThat(profileReview.workCategories()).containsExactly("브랜드 디자인", "피그마 시안");
         assertThat(profileReview.complimentTags()).containsExactly("답장이 빨라요", "결과물이 예뻐요");
+    }
+
+    @Test
+    void deletingConversationRemovesMessagesProcessesAndReviewData() {
+        User sender = userRepository.saveAndFlush(testUser("delete-sender@test.io", "Delete Sender", "delete-s"));
+        User receiver = userRepository.saveAndFlush(testUser("delete-receiver@test.io", "Delete Receiver", "delete-r"));
+
+        MessageConversationResponse conversation = messageService.createConversation(
+                principal(sender),
+                new CreateConversationRequest(receiver.getId())
+        );
+        messageService.sendMessage(
+                principal(sender),
+                conversation.id(),
+                new SendMessageRequest("delete-client-message", "삭제될 메시지", objectMapper.createArrayNode())
+        );
+        messageService.saveProcesses(
+                principal(sender),
+                conversation.id(),
+                new SaveMessageProcessesRequest(List.of(
+                        new MessageProcessRequest(
+                                null,
+                                "삭제될 프로세스",
+                                new MessageProcessConfirmationsRequest(true, true),
+                                List.of(new MessageProcessTaskRequest(null, "삭제될 태스크", true))
+                        )
+                ))
+        );
+        ProfileReviewResponse savedReview = messageService.createConversationReview(
+                principal(sender),
+                conversation.id(),
+                new CreateMessageReviewRequest(
+                        "삭제될 후기 프로젝트",
+                        5,
+                        "대화방 삭제 시 함께 삭제되어야 하는 후기입니다.",
+                        List.of("메시지"),
+                        List.of("정리")
+                )
+        );
+
+        messageService.deleteConversation(principal(sender), conversation.id());
+
+        assertThat(messageService.getConversations(principal(receiver)))
+                .noneMatch(candidate -> candidate.id().equals(conversation.id()));
+        assertThatThrownBy(() -> messageService.getMessages(principal(receiver), conversation.id()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(profileService.getProfileReviews(receiver.getLoginId(), principal(sender)))
+                .extracting(ProfileReviewResponse::reviewId)
+                .doesNotContain(savedReview.reviewId());
+
+        MessageConversationResponse recreated = messageService.createConversation(
+                principal(receiver),
+                new CreateConversationRequest(sender.getId())
+        );
+        assertThat(recreated.id()).isNotEqualTo(conversation.id());
+        assertThat(messageService.getMessages(principal(sender), recreated.id())).isEmpty();
+        assertThat(messageService.getProcesses(principal(sender), recreated.id())).isEmpty();
     }
 
     private WebSocketSession connectReceiver(

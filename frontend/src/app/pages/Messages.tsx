@@ -9,6 +9,7 @@ import {
 } from "../utils/notificationState";
 import {
   createMessageConversationApi,
+  deleteMessageConversationApi,
   getConversationProcessesApi,
   getConversationMessagesApi,
   getMessageConversationsApi,
@@ -470,6 +471,7 @@ const mapChatMessageResponse = (
     isSelf,
     status: isSelf ? (message.readAt ? "read" : "unread") : "read",
     attachments: (message.attachments ?? []) as MessageAttachment[],
+    reactions: message.reactions ?? [],
   };
 };
 
@@ -760,6 +762,8 @@ export default function Messages() {
   const [typingConversationId, setTypingConversationId] = useState<number | null>(null);
   const [selectedImage, setSelectedImage] = useState<{ src: string; name: string } | null>(null);
   const [processToast, setProcessToast] = useState<ProcessToast | null>(null);
+  const [deleteConversationTarget, setDeleteConversationTarget] = useState<Conversation | null>(null);
+  const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
@@ -767,6 +771,8 @@ export default function Messages() {
   const messageSocketRef = useRef<ReturnType<typeof createMessageSocket> | null>(null);
   const messageSocketConversationIdsRef = useRef(messageSocketConversationIds);
   const activeConversationIdRef = useRef(activeConversationId);
+  const processesRef = useRef<ProjectProcess[]>(initialProcesses);
+  const processCreatedRef = useRef(false);
   const mobileViewRef = useRef(mobileView);
   const sentToUnreadTimeoutsRef = useRef<Record<string, number>>({});
   const ownTypingConversationIdRef = useRef<number | null>(null);
@@ -894,6 +900,36 @@ export default function Messages() {
 
       return [...otherMessages, ...messagesWithLocalState, ...pendingMessagesNotInHistory];
     });
+  };
+
+  const applySyncedProcesses = (
+    nextProcesses: ProjectProcess[],
+    options: { notify?: boolean; openTabWhenFirstCreated?: boolean } = {}
+  ) => {
+    const wasCreated = processCreatedRef.current;
+    const nextCreated = nextProcesses.length > 0;
+    const changed =
+      JSON.stringify(processesRef.current) !== JSON.stringify(nextProcesses);
+
+    processesRef.current = nextProcesses;
+    processCreatedRef.current = nextCreated;
+    setProcesses(nextProcesses);
+    setProcessCreated(nextCreated);
+    setExpandedProcess((currentProcessId) =>
+      nextProcesses.some((process) => process.id === currentProcessId)
+        ? currentProcessId
+        : nextProcesses[0]?.id ?? null
+    );
+    setProcessDraftSnapshot(cloneProcesses(nextProcesses));
+    setProcessError(null);
+
+    if (options.openTabWhenFirstCreated && !wasCreated && nextCreated) {
+      setActiveTab("process");
+    }
+
+    if (options.notify && changed && nextCreated) {
+      showProcessToast("상대방이 작업 프로세스를 업데이트했어요.");
+    }
   };
 
   useEffect(() => {
@@ -1045,6 +1081,14 @@ export default function Messages() {
   }, [activeConversationId]);
 
   useEffect(() => {
+    processesRef.current = processes;
+  }, [processes]);
+
+  useEffect(() => {
+    processCreatedRef.current = processCreated;
+  }, [processCreated]);
+
+  useEffect(() => {
     mobileViewRef.current = mobileView;
   }, [mobileView]);
 
@@ -1100,6 +1144,7 @@ export default function Messages() {
               : "sent"
             : "read",
           attachments: (incomingMessage.attachments ?? []) as MessageAttachment[],
+          reactions: incomingMessage.reactions ?? [],
         };
 
         setChatMessages((prev) => {
@@ -1124,6 +1169,7 @@ export default function Messages() {
                   createdAt: nextMessage.createdAt,
                   time: nextMessage.time,
                   readAt: nextMessage.readAt,
+                  reactions: message.reactions ?? nextMessage.reactions,
                 }
               : message
           );
@@ -1198,15 +1244,12 @@ export default function Messages() {
       onProcessUpdate: (processMessage: IncomingProcessSocketMessage) => {
         if (activeConversationIdRef.current !== processMessage.conversationId) return;
 
+        const isSelfUpdate = currentUser?.userId === processMessage.updaterUserId;
         const nextProcesses = processMessage.processes.map(mapApiProcess);
-        setProcesses(nextProcesses);
-        setProcessCreated(nextProcesses.length > 0);
-        setExpandedProcess((currentProcessId) =>
-          nextProcesses.some((process) => process.id === currentProcessId)
-            ? currentProcessId
-            : nextProcesses[0]?.id ?? null
-        );
-        setProcessError(null);
+        applySyncedProcesses(nextProcesses, {
+          notify: !isSelfUpdate,
+          openTabWhenFirstCreated: !isSelfUpdate,
+        });
       },
       onClose: () => {
         setSocketStatus("closed");
@@ -1398,6 +1441,8 @@ export default function Messages() {
 
   useEffect(() => {
     if (!activeConversation) {
+      processesRef.current = [];
+      processCreatedRef.current = false;
       setProcesses([]);
       setProcessCreated(false);
       setExpandedProcess(null);
@@ -1408,6 +1453,8 @@ export default function Messages() {
     let isCancelled = false;
     setIsProcessLoading(true);
     setProcessError(null);
+    processesRef.current = [];
+    processCreatedRef.current = false;
     setProcesses([]);
     setProcessCreated(false);
     setExpandedProcess(null);
@@ -1416,16 +1463,12 @@ export default function Messages() {
       .then((response) => {
         if (isCancelled) return;
         const nextProcesses = response.map(mapApiProcess);
-        setProcesses(nextProcesses);
-        setProcessCreated(nextProcesses.length > 0);
-        setExpandedProcess((currentProcessId) =>
-          nextProcesses.some((process) => process.id === currentProcessId)
-            ? currentProcessId
-            : nextProcesses[0]?.id ?? null
-        );
+        applySyncedProcesses(nextProcesses);
       })
       .catch((error) => {
         if (isCancelled) return;
+        processesRef.current = [];
+        processCreatedRef.current = false;
         setProcesses([]);
         setProcessCreated(false);
         setExpandedProcess(null);
@@ -1443,6 +1486,47 @@ export default function Messages() {
       isCancelled = true;
     };
   }, [activeConversation?.id]);
+
+  useEffect(() => {
+    if (!activeConversation) return;
+
+    let mounted = true;
+    let isSyncing = false;
+    const conversationId = activeConversation.id;
+    const intervalMs = 1000;
+
+    async function syncConversationProcesses() {
+      if (isSyncing || isSavingProcesses) return;
+
+      try {
+        isSyncing = true;
+        const response = await getConversationProcessesApi(conversationId);
+
+        if (!mounted || activeConversationIdRef.current !== conversationId) return;
+
+        const nextProcesses = response.map(mapApiProcess);
+        const changed =
+          JSON.stringify(processesRef.current) !== JSON.stringify(nextProcesses);
+        if (!changed) return;
+
+        applySyncedProcesses(nextProcesses, {
+          notify: nextProcesses.length > 0,
+          openTabWhenFirstCreated: true,
+        });
+      } catch {
+        // Socket is primary; polling only recovers missed process updates.
+      } finally {
+        isSyncing = false;
+      }
+    }
+
+    const intervalId = window.setInterval(syncConversationProcesses, intervalMs);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [activeConversation?.id, isSavingProcesses]);
 
   const toggleTask = async (processId: number, taskId: number) => {
     if (!activeConversation) return;
@@ -1713,11 +1797,9 @@ export default function Messages() {
         normalizedProcesses
       );
       const nextProcesses = savedProcesses.map(mapApiProcess);
-      setProcesses(nextProcesses);
-      setProcessCreated(true);
+      applySyncedProcesses(nextProcesses);
       setActiveTab("process");
       setExpandedProcess(nextProcesses[0]?.id ?? null);
-      setProcessDraftSnapshot(cloneProcesses(nextProcesses));
       setIsProcessModalOpen(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
@@ -1844,41 +1926,81 @@ export default function Messages() {
 
   const handleLeaveConversation = () => {
     if (!activeConversation) return;
-    stopOwnTyping(activeConversation.id);
-    const conversationId = activeConversation.id;
-    const shouldLeave = window.confirm(
-      `${activeConversation.name} 대화방에서 나갈까요? 메시지 목록에서 이 대화가 사라집니다.`
-    );
+    setDeleteConversationTarget(activeConversation);
+  };
 
-    if (!shouldLeave) return;
+  const closeDeleteConversationModal = () => {
+    if (isDeletingConversation) return;
+    setDeleteConversationTarget(null);
+  };
 
-    const nextLeftConversationIds = Array.from(
-      new Set([...leftConversationIds, conversationId])
-    );
-    const nextConversations = rawConversations.filter(
-      (conversation) => !nextLeftConversationIds.includes(conversation.id)
-    );
-    const nextConversation = nextConversations[0];
+  const handleConfirmDeleteConversation = async () => {
+    if (!deleteConversationTarget || isDeletingConversation) return;
 
-    setLeftConversationIds(nextLeftConversationIds);
-    setUnreadConversationIds(markConversationRead(conversationId));
-    setMessageDrafts((prev) => {
-      const nextDrafts = { ...prev };
-      delete nextDrafts[String(conversationId)];
-      return nextDrafts;
-    });
-    setPendingAttachments([]);
-    setIsAttachMenuOpen(false);
-    setIsIconPickerOpen(false);
-    setReactionPickerMessageId(null);
-    setTypingConversationId(null);
-    setActiveTab("profile");
+    const conversationId = deleteConversationTarget.id;
+    const wasActiveConversation = activeConversationIdRef.current === conversationId;
+    stopOwnTyping(conversationId);
+    setIsDeletingConversation(true);
+    setConversationError(null);
 
-    if (nextConversation) {
-      setActiveConversationId(nextConversation.id);
-      setMobileView("chat");
-    } else {
-      setMobileView("list");
+    try {
+      await deleteMessageConversationApi(conversationId);
+
+      const nextConversations = allConversations.filter(
+        (conversation) => conversation.id !== conversationId
+      );
+      const nextConversation = nextConversations[0] ?? null;
+
+      chatMessages
+        .filter((message) => message.conversationId === conversationId)
+        .forEach((message) => clearSentToUnreadTimer(message.clientId));
+      setServerConversations((prev) =>
+        prev.filter((conversation) => conversation.id !== conversationId)
+      );
+      setLeftConversationIds((prev) =>
+        prev.filter((hiddenConversationId) => hiddenConversationId !== conversationId)
+      );
+      setUnreadConversationIds(markConversationRead(conversationId));
+      setChatMessages((prev) =>
+        prev.filter((message) => message.conversationId !== conversationId)
+      );
+      setMessageDrafts((prev) => {
+        const nextDrafts = { ...prev };
+        delete nextDrafts[String(conversationId)];
+        return nextDrafts;
+      });
+      setDeleteConversationTarget(null);
+      setConversationReloadKey((key) => key + 1);
+
+      if (wasActiveConversation) {
+        setPendingAttachments([]);
+        setIsAttachMenuOpen(false);
+        setIsIconPickerOpen(false);
+        setReactionPickerMessageId(null);
+        setTypingConversationId(null);
+        setActiveTab("profile");
+        setProcesses([]);
+        setProcessCreated(false);
+        setExpandedProcess(null);
+        processesRef.current = [];
+        processCreatedRef.current = false;
+
+        if (nextConversation) {
+          setActiveConversationId(nextConversation.id);
+          setMobileView("chat");
+          navigate(`/messages?conversationId=${nextConversation.id}`, { replace: true });
+        } else {
+          setActiveConversationId(0);
+          setMobileView("list");
+          navigate("/messages", { replace: true });
+        }
+      }
+    } catch (error) {
+      setConversationError(
+        error instanceof Error ? error.message : "채팅창을 삭제하지 못했습니다."
+      );
+    } finally {
+      setIsDeletingConversation(false);
     }
   };
 
@@ -2912,6 +3034,52 @@ export default function Messages() {
         </div>
       )}
 
+      {deleteConversationTarget && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 px-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-conversation-title"
+            className="w-full max-w-sm rounded-lg border border-[#FFD4C8] bg-white p-5 shadow-2xl"
+          >
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#FFF1ED] text-[#D84325]">
+                <Trash2 className="size-5" />
+              </div>
+              <div>
+                <h3 id="delete-conversation-title" className="text-base font-bold text-[#12382D]">
+                  정말 채팅창을 삭제하시겠어요?
+                </h3>
+                <p className="mt-1 text-sm leading-relaxed text-gray-600">
+                  모든 데이터가 사라질 수 있습니다. 메시지, 작업 프로세스, 후기 기록이 함께 삭제됩니다.
+                </p>
+              </div>
+            </div>
+            <div className="mb-4 rounded-lg bg-[#FFF7F4] px-3 py-2 text-sm font-semibold text-[#B13A21]">
+              {deleteConversationTarget.name}님과의 채팅창
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeDeleteConversationModal}
+                disabled={isDeletingConversation}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteConversation}
+                disabled={isDeletingConversation}
+                className="rounded-lg bg-[#D84325] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#C3361B] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isDeletingConversation ? "삭제 중..." : "삭제"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto flex h-[calc(100vh-73px)] max-w-[1400px] overflow-hidden">
         {/* Conversations Sidebar */}
         <div
@@ -2947,16 +3115,19 @@ export default function Messages() {
               const lastMessagePreview = getConversationLastMessagePreview(conv.id);
 
               return (
-                <button
+                <div
                   key={conv.id}
-                  type="button"
-                  onClick={() => handleSelectConversation(conv.id)}
-                  className={`w-full border-b border-l-4 border-gray-100 p-4 text-left transition-colors hover:bg-[#A8F0E4]/10 ${
+                  className={`group relative w-full border-b border-l-4 border-gray-100 transition-colors hover:bg-[#A8F0E4]/10 ${
                     isSelected
                       ? "border-l-[#00A88C] bg-[#F0FBF7]"
                       : "border-l-transparent bg-white"
                   }`}
                 >
+                  <button
+                    type="button"
+                    onClick={() => handleSelectConversation(conv.id)}
+                    className="w-full p-4 pr-12 text-left"
+                  >
                   <div className="flex gap-3">
                     <div className="relative shrink-0">
                       <ImageWithFallback
@@ -3024,7 +3195,17 @@ export default function Messages() {
                       </div>
                     </div>
                   </div>
-                </button>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConversationTarget(conv)}
+                    className="absolute bottom-3 right-3 inline-flex size-8 items-center justify-center rounded-lg border border-transparent text-gray-400 opacity-0 transition-all hover:border-[#FFD4C8] hover:bg-[#FFF7F4] hover:text-[#D84325] group-hover:opacity-100 focus:opacity-100"
+                    aria-label={`${conv.name} 채팅창 삭제`}
+                    title="채팅창 삭제"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
               );
             })}
             {filteredConversations.length === 0 && (
@@ -3686,10 +3867,10 @@ export default function Messages() {
                       <button
                         type="button"
                         onClick={handleLeaveConversation}
-                        className="text-[0px] font-semibold text-[#FF5C3A] hover:text-[#FF5C3A]/80 transition-colors [&>span]:text-sm"
+                        className="inline-flex items-center gap-1 rounded-lg border border-[#FFD4C8] px-3 py-2 text-sm font-semibold text-[#D84325] transition-colors hover:bg-[#FFF7F4]"
                       >
-                        <span>대화방 나가기</span>
-                        대화방 나가기
+                        <Trash2 className="size-4" />
+                        채팅창 삭제
                       </button>
                     </div>
                   </div>
