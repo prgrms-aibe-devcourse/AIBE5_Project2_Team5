@@ -107,3 +107,14 @@ export async function removeFeedFromCollectionApi(folderId: number, postId: numb
     "컬렉션에서 피드를 제거하지 못했습니다.",
   );
 }
+
+export async function reorderCollectionFoldersApi(folderIds: number[]) {
+  return apiRequest<void>(
+    "/api/collections/reorder",
+    {
+      method: "POST",
+      body: JSON.stringify({ folderIds }),
+    },
+    "컬렉션 순서를 저장하지 못했습니다.",
+  );
+}
