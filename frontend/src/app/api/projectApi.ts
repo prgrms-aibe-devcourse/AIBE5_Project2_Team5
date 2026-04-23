@@ -16,7 +16,6 @@ export type CreateProjectPayload = {
   overview: string;
   fullDescription: string;
   skills: string[];
-  // 💡 수정됨: 백엔드의 List<String>에 맞춰 string[] 배열 타입으로 변경
   responsibilities: string[];
   qualifications: string[];
   state: string;
@@ -30,9 +29,10 @@ export type ProjectDetailResponse = {
   title: string;
   budget: number;
   overview: string;
-  // 💡 수정됨: 백엔드 응답 DTO도 List<String>을 반환하므로 string[] 배열 타입으로 변경
+  fullDescription: string;
   responsibilities: string[];
   qualifications: string[];
+  skills: string[];
   experienceLevel: string;
   jobState: string;
   deadline: string;
@@ -42,13 +42,17 @@ export function getProjectFilterOptionsApi() {
   return publicApiRequest<FilteringResponse>("/api/projects/filtering", {}, "Failed to load project filters.");
 }
 
+export function getProjectDetailApi(postId: number) {
+  return publicApiRequest<ProjectDetailResponse>(`/api/projects/${postId}`, {}, "Failed to load project details.");
+}
+
 export function createProjectApi(payload: CreateProjectPayload) {
   return apiRequest<ProjectDetailResponse>(
-      "http://localhost:8080/api/projects/create",
-      {
-        method: "POST",
-        body: JSON.stringify(payload),
-      },
-      "Failed to create project.",
+    "http://localhost:8080/api/projects/create",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    "Failed to create project.",
   );
 }
