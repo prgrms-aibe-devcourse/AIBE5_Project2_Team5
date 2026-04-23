@@ -126,24 +126,28 @@ export default function Collections() {
   };
 
   const deleteCollection = async (collectionId: number) => {
-    console.log("Attempting to delete collection:", collectionId);
-    if (!confirm("정말 이 컬렉션을 삭제하시겠습니까?")) {
-      console.log("Delete cancelled by user");
+    console.log("Delete attempt for ID:", collectionId);
+    
+    // 브라우저 충돌 방지를 위해 명시적으로 window.confirm 사용
+    const isConfirmed = window.confirm("정말 이 컬렉션을 삭제하시겠습니까?");
+    
+    if (!isConfirmed) {
+      console.log("Delete cancelled by user (confirm returned false)");
       return;
     }
     
     try {
+      console.log("Proceeding with API delete call...");
       await deleteCollectionFolderApi(collectionId);
-      console.log("Collection deleted successfully");
+      console.log("Delete API success");
       
-      // 모달 및 메뉴 닫기
       setSelectedCollectionId(null);
       setSelectedCollection(null);
       setOpenCollectionMenuId(null);
       
       void loadCollections();
     } catch (err) {
-      console.error("Failed to delete collection:", err);
+      console.error("Delete API failed:", err);
       alert("컬렉션 삭제에 실패했습니다.");
     }
   };
@@ -398,6 +402,7 @@ export default function Collections() {
                     </button>
                     <button
                       onClick={(event) => {
+                        event.preventDefault();
                         event.stopPropagation();
                         deleteCollection(collection.folderId);
                       }}
@@ -523,7 +528,11 @@ export default function Collections() {
                     이름 수정
                   </button>
                   <button
-                    onClick={() => deleteCollection(selectedCollection.folderId)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      deleteCollection(selectedCollection.folderId);
+                    }}
                     className="flex items-center gap-1 rounded-xl border border-red-200 px-3 py-2 text-sm text-red-500 hover:bg-red-50"
                   >
                     <Trash2 className="size-4" />
