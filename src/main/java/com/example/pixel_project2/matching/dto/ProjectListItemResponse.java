@@ -1,18 +1,15 @@
 package com.example.pixel_project2.matching.dto;
 
-import java.util.List;
-
 public record ProjectListItemResponse(
         Long id,
-        String title,
-        String description,
-        String fullDescription,
+        String nickname,
+        String companyName,
         String category,
-        List<String> skills,
+        String title,
+        String overview,
         String budget,
-        String deadline,
-        String imageUrl,
-        String projectType,
-        String experienceLevel
+        String experienceLevel,
+        String jobState,
+        String deadline
 ) {
 }

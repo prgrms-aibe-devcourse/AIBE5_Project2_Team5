@@ -17,7 +17,7 @@ public interface MatchingService {
 
     ProjectDetailResponse getProjectDetail(Long postId);
 
-    ProjectDetailResponse createProject(CreateProjectRequest request);
+    ProjectDetailResponse createProject(Long userId, CreateProjectRequest request);
 
     String applyProject(Long postId, ApplyProjectRequest request);
 
