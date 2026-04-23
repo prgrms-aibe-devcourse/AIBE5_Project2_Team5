@@ -1,5 +1,16 @@
 package com.example.pixel_project2.matching.service;
 
+import com.example.pixel_project2.common.entity.JobSkill;
+import com.example.pixel_project2.common.entity.Post;
+import com.example.pixel_project2.common.entity.Project;
+import com.example.pixel_project2.common.entity.User;
+import com.example.pixel_project2.common.entity.enums.Category;
+import com.example.pixel_project2.common.entity.enums.ExperienceLevel;
+import com.example.pixel_project2.common.entity.enums.JobState;
+import com.example.pixel_project2.common.entity.enums.PostType;
+import com.example.pixel_project2.common.entity.enums.ProjectState;
+import com.example.pixel_project2.common.repository.PostRepository;
+import com.example.pixel_project2.common.repository.UserRepository;
 import com.example.pixel_project2.matching.dto.ApplyProjectRequest;
 import com.example.pixel_project2.matching.dto.CreateProjectRequest;
 import com.example.pixel_project2.matching.dto.MyApplicationItemResponse;
@@ -9,174 +20,242 @@ import com.example.pixel_project2.matching.dto.ProjectDetailResponse;
 import com.example.pixel_project2.matching.dto.ProjectInquiryRequest;
 import com.example.pixel_project2.matching.dto.ProjectListItemResponse;
 import com.example.pixel_project2.matching.dto.UpdateProjectRequest;
+import com.example.pixel_project2.matching.repository.JobSkillRepository;
+import com.example.pixel_project2.matching.repository.ProjectRepository;
+import jakarta.persistence.EntityNotFoundException;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.text.NumberFormat;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 
 @Service
+@RequiredArgsConstructor
 public class MatchingServiceImpl implements MatchingService {
+    private final ProjectRepository projectRepository;
+    private final JobSkillRepository jobSkillRepository;
+    private final PostRepository postRepository;
+    private final UserRepository userRepository;
+
     @Override
+    @Transactional(readOnly = true)
     public List<ProjectListItemResponse> getProjects() {
-        return List.of(
-                new ProjectListItemResponse(
-                        1L,
-                        "핀테크 모바일 앱 UI/UX 고도화 프로젝트",
-                        "기존 금융 서비스의 사용자 경험을 개선할 UI/UX 디자이너를 찾고 있습니다.",
-                        "대시보드 UI 개선, 다크 모드 지원, 접근성 기준 반영까지 포함된 모바일 앱 UX 고도화 프로젝트입니다.",
-                        "UI/UX",
-                        List.of("Figma", "Prototyping", "User Research"),
-                        "1,200만 ~ 1,800만 원",
-                        "2026-04-20",
-                        "https://images.unsplash.com/photo-1772272935464-2e90d8218987?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-                        "단기",
-                        "3년 이상"
-                ),
-                new ProjectListItemResponse(
-                        2L,
-                        "글로벌 SaaS 브랜딩 리뉴얼",
-                        "B2B SaaS 브랜드 아이덴티티를 글로벌 시장에 맞게 리뉴얼합니다.",
-                        "로고, 컬러 시스템, 타이포그래피, 브랜드 가이드라인까지 포함하는 브랜딩 프로젝트입니다.",
-                        "그래픽 디자인",
-                        List.of("Brand Identity", "Illustrator", "Typography"),
-                        "800만 ~ 1,200만 원",
-                        "2026-05-10",
-                        "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-                        "단기",
-                        "시니어"
-                ),
-                new ProjectListItemResponse(
-                        3L,
-                        "제품 글로벌 런칭 3D 모션 영상 제작",
-                        "신제품 런칭 캠페인을 위한 3D 모션 그래픽 영상을 제작합니다.",
-                        "Cinema 4D와 After Effects 기반으로 4K 모션 그래픽 영상을 제작하는 프로젝트입니다.",
-                        "3D Art",
-                        List.of("Cinema 4D", "After Effects", "3D Modeling"),
-                        "1,500만 ~ 2,500만 원",
-                        "2026-06-30",
-                        "https://images.unsplash.com/photo-1740174459691-5b93c2fa0592?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-                        "중기",
-                        "시니어"
-                ),
-                new ProjectListItemResponse(
-                        4L,
-                        "이커머스 메인 배너 일러스트 시리즈",
-                        "시즌 캠페인용 감성 일러스트 배너 시리즈를 제작합니다.",
-                        "메인 배너 12종과 모바일 변형 시안을 포함한 일러스트 중심 캠페인 프로젝트입니다.",
-                        "일러스트레이션",
-                        List.of("Illustration", "Procreate", "Adobe Fresco"),
-                        "500만 ~ 700만 원",
-                        "2026-04-22",
-                        "https://images.unsplash.com/photo-1618004912476-29818d81ae2e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-                        "단기",
-                        "신입"
-                ),
-                new ProjectListItemResponse(
-                        5L,
-                        "엔터프라이즈 대시보드 UI 컴포넌트 라이브러리",
-                        "복잡한 데이터 시각화를 지원하는 디자인 시스템을 구축합니다.",
-                        "Figma와 Storybook 기반으로 대시보드용 디자인 시스템과 컴포넌트 라이브러리를 정리합니다.",
-                        "UI/UX",
-                        List.of("Design System", "Figma", "Storybook"),
-                        "2,000만 ~ 3,000만 원",
-                        "2026-05-25",
-                        "https://images.unsplash.com/photo-1551288049-bebda4e38f71?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-                        "장기",
-                        "시니어"
-                ),
-                new ProjectListItemResponse(
-                        6L,
-                        "패션 브랜드 룩북 포토그래피 리터칭",
-                        "시즌 룩북 촬영과 리터칭 작업을 진행할 포토그래퍼를 찾고 있습니다.",
-                        "스튜디오 촬영, 라이트룸 보정, 고급 리터칭까지 포함된 룩북 프로젝트입니다.",
-                        "포토그래피",
-                        List.of("Photography", "Lightroom", "Retouching"),
-                        "400만 ~ 600만 원",
-                        "2026-05-05",
-                        "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-                        "단기",
-                        "3년 이상"
-                )
-        );
+        List<Project> projects = projectRepository.findAllByPostTypeWithDetails(PostType.JOB_POST);
+
+        return projects.stream()
+                .map(project -> {
+                    // 1. Post와 User에 대한 안전한 Null Check
+                    Post post = project.getPost();
+                    User user = (post != null) ? post.getUser() : null;
+
+                    // 2. 안전하게 데이터 추출
+                    String nickname = (user != null) ? user.getNickname() : null;
+                    String companyName = (user != null && user.getClient() != null)
+                            ? user.getClient().getCompanyName() : null;
+                    String categoryLabel = (post != null && post.getCategory() != null)
+                            ? post.getCategory().getLabel() : null;
+                    String title = (post != null) ? post.getTitle() : null;
+
+                    // 3. DTO 반환
+                    return new ProjectListItemResponse(
+                            project.getPost_id(),
+                            nickname,
+                            companyName,
+                            categoryLabel,
+                            title,
+                            project.getOverview(),
+                            formatBudget(project.getBudget()),
+                            project.getExperienceLevel() != null ? project.getExperienceLevel().getLabel() : null,
+                            project.getJobState() != null ? project.getJobState().getLabel() : null,
+                            project.getDeadline() != null ? project.getDeadline().toString() : null
+                    );
+                })
+                .toList();
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ProjectDetailResponse getProjectDetail(Long postId) {
-        return new ProjectDetailResponse(
-                postId,
-                "PROJECT",
-                "UI_UX",
-                "핀테크 서비스 UX 디자이너 모집",
-                3000000,
-                "신규 금융 서비스 런칭을 위한 UX 개선 프로젝트입니다.",
-                "사용자 흐름 설계, 와이어프레임 제작, 협업 문서화",
-                "Figma 사용 경험, 모바일 앱 UX 경험",
-                "OPEN",
-                "2026-05-15T18:00:00"
-        );
+        Project project = projectRepository.findById(postId)
+                .orElseThrow(() -> new EntityNotFoundException("Project not found: " + postId));
+
+        return toProjectDetailResponse(project);
     }
 
     @Override
-    public ProjectDetailResponse createProject(CreateProjectRequest request) {
+    @Transactional
+    public ProjectDetailResponse createProject(Long userId, CreateProjectRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
+
+        Post post = postRepository.save(Post.builder()
+                .user(user)
+                .title(request.title())
+                .postType(parsePostType(request.postType()))
+                .category(parseCategory(request.category()))
+                .build());
+
+        // 수정 포인트 1: 별도의 반복문 삽입(addAll)을 제거하고 builder에 바로 String List를 넣어줍니다.
+        Project project = projectRepository.save(Project.builder()
+                .post(post)
+                .overview(request.overview())
+                .budget(request.budget())
+                .fullDescription(request.fullDescription())
+                .responsibilities(sanitizeStringList(request.responsibilities())) // CLOB 필드 매핑
+                .qualifications(sanitizeStringList(request.qualifications()))     // CLOB 필드 매핑
+                .projectState(parseProjectState(request.state()))
+                .jobState(parseJobState(request.jobState()))
+                .experienceLevel(parseExperienceLevel(request.experienceLevel()))
+                .deadline(request.deadline())
+                .build());
+
+        // 기존에 있던 Responsibilities, Qualifications 객체 생성 로직 완전 제거
+
+        List<String> sanitizedSkills = sanitizeStringList(request.skills());
+        if (!sanitizedSkills.isEmpty()) {
+            jobSkillRepository.saveAll(sanitizedSkills.stream()
+                    .map(skill -> JobSkill.builder()
+                            .project(project)
+                            .skillName(skill)
+                            .build())
+                    .toList());
+        }
+
+        return toProjectDetailResponse(project);
+    }
+
+    private ProjectDetailResponse toProjectDetailResponse(Project project) {
         return new ProjectDetailResponse(
-                999L,
-                request.postType(),
-                request.category(),
-                request.title(),
-                request.budget(),
-                request.overview(),
-                request.responsibilities(),
-                request.qualifications(),
-                request.state(),
-                request.deadline()
+                project.getPost_id(),
+                project.getPost().getPostType().name(),
+                project.getPost().getCategory().name(),
+                project.getPost().getTitle(),
+                project.getBudget(),
+                project.getOverview(),
+                // 수정 포인트 2: 엔티티 객체에서 꺼낼 필요 없이 바로 List<String>을 반환합니다.
+                project.getResponsibilities(),
+                project.getQualifications(),
+                project.getExperienceLevel() != null ? project.getExperienceLevel().getLabel() : null,
+                project.getJobState() != null ? project.getJobState().getLabel() : null,
+                project.getDeadline() != null ? project.getDeadline().toString() : null
         );
+    }
+
+    // 수정 포인트 3: Skill뿐만 아니라 Responsibilities, Qualifications에도 사용할 수 있도록 공통화 처리
+    private List<String> sanitizeStringList(List<String> list) {
+        if (list == null) {
+            return List.of();
+        }
+
+        return list.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .distinct() // 중복 방지
+                .toList();
+    }
+
+    private String formatBudget(Integer budget) {
+        if (budget == null) {
+            return null;
+        }
+        return NumberFormat.getNumberInstance(Locale.KOREA).format(budget) + "\uC6D0";
+    }
+
+    private PostType parsePostType(String value) {
+        if (value == null || value.isBlank()) {
+            return PostType.JOB_POST;
+        }
+        return PostType.valueOf(value.trim().toUpperCase(Locale.ROOT));
+    }
+
+    private Category parseCategory(String value) {
+        Category category = Category.fromLabel(value);
+        if (category != null) {
+            return category;
+        }
+        return Category.valueOf(value.trim().toUpperCase(Locale.ROOT));
+    }
+
+    private JobState parseJobState(String value) {
+        for (JobState jobState : JobState.values()) {
+            if (jobState.name().equalsIgnoreCase(value) || jobState.getLabel().equals(value)) {
+                return jobState;
+            }
+        }
+        throw new IllegalArgumentException("Unsupported jobState: " + value);
+    }
+
+    private ExperienceLevel parseExperienceLevel(String value) {
+        for (ExperienceLevel experienceLevel : ExperienceLevel.values()) {
+            if (experienceLevel.name().equalsIgnoreCase(value) || experienceLevel.getLabel().equals(value)) {
+                return experienceLevel;
+            }
+        }
+        throw new IllegalArgumentException("Unsupported experienceLevel: " + value);
+    }
+
+    private ProjectState parseProjectState(String value) {
+        if (value == null || value.isBlank()) {
+            return ProjectState.OPEN;
+        }
+        for (ProjectState projectState : ProjectState.values()) {
+            if (projectState.name().equalsIgnoreCase(value) || projectState.getLabel().equals(value)) {
+                return projectState;
+            }
+        }
+        throw new IllegalArgumentException("Unsupported projectState: " + value);
     }
 
     @Override
     public String applyProject(Long postId, ApplyProjectRequest request) {
-        return "postId=" + postId + " 지원이 접수되었습니다.";
+        return "postId=" + postId + " application submitted.";
     }
 
     @Override
     public List<MyApplicationItemResponse> getMyApplications() {
         return List.of(
-                new MyApplicationItemResponse(1L, 101L, "핀테크 서비스 UX 디자이너 모집", 2800000, "OPEN", "2026-05-15T18:00:00"),
-                new MyApplicationItemResponse(2L, 102L, "브랜드 리뉴얼 그래픽 디자이너 모집", 1800000, "CLOSED", "2026-04-30T18:00:00")
+                new MyApplicationItemResponse(1L, 101L, "Application 1", 2800000, "OPEN", "2026-05-15T18:00:00"),
+                new MyApplicationItemResponse(2L, 102L, "Application 2", 1800000, "CLOSED", "2026-04-30T18:00:00")
         );
     }
 
     @Override
     public List<MyPostItemResponse> getMyPosts() {
         return List.of(
-                new MyPostItemResponse(101L, "핀테크 서비스 UX 디자이너 모집", 3000000, "OPEN", "2026-05-15T18:00:00"),
-                new MyPostItemResponse(103L, "이커머스 상세페이지 디자이너 모집", 1500000, "OPEN", "2026-05-03T18:00:00")
+                new MyPostItemResponse(101L, "My Project 1", 3000000, "OPEN", "2026-05-15T18:00:00"),
+                new MyPostItemResponse(103L, "My Project 2", 1500000, "OPEN", "2026-05-03T18:00:00")
         );
     }
 
     @Override
     public String closeProject(Long postId) {
-        return "postId=" + postId + " 상태가 CLOSED로 변경되었습니다.";
+        return "postId=" + postId + " closed.";
     }
 
     @Override
     public String updateProject(Long postId, UpdateProjectRequest request) {
-        return "postId=" + postId + " 수정이 완료되었습니다.";
+        return "postId=" + postId + " updated.";
     }
 
     @Override
     public String deleteProject(Long postId) {
-        return "postId=" + postId + " 삭제가 완료되었습니다.";
+        return "postId=" + postId + " deleted.";
     }
 
     @Override
     public String createInquiry(Long postId, ProjectInquiryRequest request) {
-        return "postId=" + postId + " 문의가 등록되었습니다.";
+        return "postId=" + postId + " inquiry created.";
     }
 
     @Override
     public List<ProjectApplicationItemResponse> getProjectApplications(Long postId) {
         return List.of(
-                new ProjectApplicationItemResponse(1L, 210L, "디자이너A", 2500000, "포트폴리오 링크와 함께 제안드립니다."),
-                new ProjectApplicationItemResponse(2L, 211L, "디자이너B", 2700000, "금융 서비스 UX 경험이 있습니다.")
+                new ProjectApplicationItemResponse(1L, 210L, "ApplicantA", 2500000, "Portfolio submitted."),
+                new ProjectApplicationItemResponse(2L, 211L, "ApplicantB", 2700000, "Relevant experience included.")
         );
     }
 }

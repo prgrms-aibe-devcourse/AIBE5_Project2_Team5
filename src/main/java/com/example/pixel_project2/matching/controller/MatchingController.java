@@ -1,13 +1,30 @@
 package com.example.pixel_project2.matching.controller;
 
+import com.example.pixel_project2.common.dto.ApiResponse;
 import com.example.pixel_project2.common.entity.enums.Category;
 import com.example.pixel_project2.common.entity.enums.ExperienceLevel;
 import com.example.pixel_project2.common.entity.enums.JobState;
-import com.example.pixel_project2.common.dto.ApiResponse;
-import com.example.pixel_project2.matching.dto.*;
+import com.example.pixel_project2.config.jwt.AuthenticatedUser;
+import com.example.pixel_project2.matching.dto.ApplyProjectRequest;
+import com.example.pixel_project2.matching.dto.CreateProjectRequest;
+import com.example.pixel_project2.matching.dto.FilteringResponse;
+import com.example.pixel_project2.matching.dto.ProjectApplicationItemResponse;
+import com.example.pixel_project2.matching.dto.ProjectDetailResponse;
+import com.example.pixel_project2.matching.dto.ProjectInquiryRequest;
+import com.example.pixel_project2.matching.dto.ProjectListItemResponse;
+import com.example.pixel_project2.matching.dto.UpdateProjectRequest;
 import com.example.pixel_project2.matching.service.MatchingService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Arrays;
 import java.util.List;
@@ -20,13 +37,11 @@ import java.util.stream.Collectors;
 public class MatchingController {
     private final MatchingService matchingService;
 
-    // 매칭 페이지 조회(목록 All 조회)
     @GetMapping
     public ApiResponse<List<ProjectListItemResponse>> getProjects() {
         return ApiResponse.ok("프로젝트 목록을 조회했습니다.", matchingService.getProjects());
     }
 
-    // 프로젝트 공고 상세페이지
     @GetMapping("/{postId}")
     public ApiResponse<ProjectDetailResponse> getProjectDetail(@PathVariable Long postId) {
         return ApiResponse.ok("프로젝트 상세를 조회했습니다.", matchingService.getProjectDetail(postId));
@@ -38,14 +53,15 @@ public class MatchingController {
         List<String> experienceLevels = Arrays.stream(ExperienceLevel.values()).map(ExperienceLevel::getLabel).collect(Collectors.toList());
         List<String> categories = Arrays.stream(Category.values()).map(Category::getLabel).collect(Collectors.toList());
 
-        FilteringResponse response = new FilteringResponse(jobStates, experienceLevels, categories);
-        return ApiResponse.ok("필터 옵션을 조회했습니다.", response);
+        return ApiResponse.ok("필터 옵션을 조회했습니다.", new FilteringResponse(jobStates, experienceLevels, categories));
     }
 
-    // 프로젝트 새로 등록
-    @PostMapping("/new")
-    public ApiResponse<ProjectDetailResponse> createProject(@RequestBody CreateProjectRequest request) {
-        return ApiResponse.ok("프로젝트를 등록했습니다.", matchingService.createProject(request));
+    @PostMapping("/create")
+    public ApiResponse<ProjectDetailResponse> createProject(
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestBody CreateProjectRequest request
+    ) {
+        return ApiResponse.ok("프로젝트를 등록했습니다.", matchingService.createProject(user.id(), request));
     }
 
     @PostMapping("/{postId}/apply")
@@ -77,5 +93,4 @@ public class MatchingController {
     public ApiResponse<List<ProjectApplicationItemResponse>> getProjectApplications(@PathVariable Long postId) {
         return ApiResponse.ok("지원서 목록을 조회했습니다.", matchingService.getProjectApplications(postId));
     }
-
 }
