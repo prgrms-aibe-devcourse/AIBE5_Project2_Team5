@@ -211,7 +211,7 @@ export default function CreateProject() {
       });
 
       toast.success("Project created.");
-      navigate(`/projects/${response.postId}`);
+      navigate("/projects");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create project.");
     } finally {
