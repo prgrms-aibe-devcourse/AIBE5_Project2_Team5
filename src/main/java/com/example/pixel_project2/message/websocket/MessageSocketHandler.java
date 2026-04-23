@@ -3,12 +3,15 @@ package com.example.pixel_project2.message.websocket;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.message.dto.ChatMessageResponse;
 import com.example.pixel_project2.message.dto.SendMessageRequest;
+import com.example.pixel_project2.message.event.ChatMessageSentEvent;
 import com.example.pixel_project2.message.service.MessageService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -106,9 +109,8 @@ public class MessageSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        ChatMessageResponse savedMessage;
         try {
-            savedMessage = messageService.sendMessage(
+            messageService.sendMessage(
                     sender,
                     conversationId,
                     new SendMessageRequest(clientId, message, hasAttachments ? attachments : objectMapper.createArrayNode())
@@ -117,7 +119,16 @@ public class MessageSocketHandler extends TextWebSocketHandler {
             sendError(session, e.getMessage());
             return;
         }
+    }
 
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void handleChatMessageSent(ChatMessageSentEvent event) {
+        ChatMessageResponse savedMessage = event.message();
+        ObjectNode outbound = toOutboundMessage(savedMessage);
+        broadcast(savedMessage.conversationId(), outbound);
+    }
+
+    private ObjectNode toOutboundMessage(ChatMessageResponse savedMessage) {
         ObjectNode outbound = objectMapper.createObjectNode();
         outbound.put("type", TYPE_CHAT_MESSAGE);
         outbound.put("serverId", String.valueOf(savedMessage.id()));
@@ -128,18 +139,16 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         outbound.put("message", savedMessage.message());
         outbound.put("createdAt", savedMessage.createdAt().toString());
         outbound.set("attachments", savedMessage.attachments());
-
-        broadcast(conversationId, session.getId(), outbound);
+        return outbound;
     }
 
-    private void broadcast(long conversationId, String senderSessionId, ObjectNode outbound) throws IOException {
+    private void broadcast(long conversationId, ObjectNode outbound) {
         for (WebSocketSession targetSession : sessions.values()) {
             if (!targetSession.isOpen()) {
                 removeSession(targetSession);
                 continue;
             }
 
-            boolean senderSession = targetSession.getId().equals(senderSessionId);
             boolean subscribed = subscriptions
                     .getOrDefault(targetSession.getId(), Set.of())
                     .contains(conversationId);
@@ -147,7 +156,7 @@ public class MessageSocketHandler extends TextWebSocketHandler {
             boolean participantSession = targetUser != null
                     && messageService.canAccessConversation(targetUser, conversationId);
 
-            if (senderSession || subscribed || participantSession) {
+            if (subscribed || participantSession) {
                 try {
                     sendJson(targetSession, outbound);
                 } catch (IOException e) {

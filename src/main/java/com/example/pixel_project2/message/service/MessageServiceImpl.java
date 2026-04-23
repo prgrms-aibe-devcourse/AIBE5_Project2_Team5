@@ -12,12 +12,14 @@ import com.example.pixel_project2.message.dto.MessageUserResponse;
 import com.example.pixel_project2.message.dto.SendMessageRequest;
 import com.example.pixel_project2.message.entity.ChatMessage;
 import com.example.pixel_project2.message.entity.MessageConversation;
+import com.example.pixel_project2.message.event.ChatMessageSentEvent;
 import com.example.pixel_project2.message.repository.ChatMessageRepository;
 import com.example.pixel_project2.message.repository.MessageConversationRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,7 @@ public class MessageServiceImpl implements MessageService {
     private final MessageConversationRepository conversationRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public MessagePolicyResponse getMessagePolicy() {
@@ -106,7 +109,9 @@ public class MessageServiceImpl implements MessageService {
                 : savedMessage.getCreatedAt();
         conversation.updateLastMessage(createPreview(message, attachments), messageCreatedAt);
 
-        return toChatMessageResponse(savedMessage);
+        ChatMessageResponse response = toChatMessageResponse(savedMessage);
+        eventPublisher.publishEvent(new ChatMessageSentEvent(response));
+        return response;
     }
 
     @Override

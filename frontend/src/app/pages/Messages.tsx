@@ -600,6 +600,9 @@ export default function Messages() {
   const [isMessageUsersLoading, setIsMessageUsersLoading] = useState(true);
   const [messageUsersError, setMessageUsersError] = useState<string | null>(null);
   const [creatingConversationUserId, setCreatingConversationUserId] = useState<number | null>(null);
+  const [socketStatus, setSocketStatus] = useState<"connecting" | "open" | "closed" | "error">(
+    "connecting"
+  );
   const [leftConversationIds, setLeftConversationIds] = useState<number[]>(
     readLeftConversationIds
   );
@@ -673,6 +676,21 @@ export default function Messages() {
   const activeMessages = activeConversation
     ? chatMessages.filter((message) => message.conversationId === activeConversation.id)
     : [];
+
+  const mergeConversationMessages = (conversationId: number, nextMessages: ChatMessage[]) => {
+    setChatMessages((prev) => {
+      const pendingMessages = prev.filter(
+        (message) => message.conversationId === conversationId && message.status === "sending"
+      );
+      const otherMessages = prev.filter((message) => message.conversationId !== conversationId);
+      const pendingMessagesNotInHistory = pendingMessages.filter(
+        (pendingMessage) =>
+          !nextMessages.some((message) => message.clientId === pendingMessage.clientId)
+      );
+
+      return [...otherMessages, ...nextMessages, ...pendingMessagesNotInHistory];
+    });
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -767,21 +785,7 @@ export default function Messages() {
           mapChatMessageResponse(message, currentUser?.userId)
         );
 
-        setChatMessages((prev) => {
-          const pendingMessages = prev.filter(
-            (message) =>
-              message.conversationId === conversationId && message.status === "sending"
-          );
-          const otherMessages = prev.filter(
-            (message) => message.conversationId !== conversationId
-          );
-          const pendingMessagesNotInHistory = pendingMessages.filter(
-            (pendingMessage) =>
-              !nextMessages.some((message) => message.clientId === pendingMessage.clientId)
-          );
-
-          return [...otherMessages, ...nextMessages, ...pendingMessagesNotInHistory];
-        });
+        mergeConversationMessages(conversationId, nextMessages);
       } catch (error) {
         setConversationError(
           error instanceof Error ? error.message : "메시지 내역을 불러오지 못했습니다."
@@ -795,6 +799,36 @@ export default function Messages() {
       mounted = false;
     };
   }, [activeConversation?.id, currentUser?.userId]);
+
+  useEffect(() => {
+    if (!activeConversation) return;
+
+    let mounted = true;
+    const conversationId = activeConversation.id;
+    const intervalMs = socketStatus === "open" ? 3000 : 1500;
+
+    async function syncConversationMessages() {
+      try {
+        const messageResponses = await getConversationMessagesApi(conversationId);
+
+        if (!mounted) return;
+
+        const nextMessages = messageResponses.map((message) =>
+          mapChatMessageResponse(message, currentUser?.userId)
+        );
+        mergeConversationMessages(conversationId, nextMessages);
+      } catch {
+        // Keep the latest local view if background sync fails.
+      }
+    }
+
+    const intervalId = window.setInterval(syncConversationMessages, intervalMs);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [activeConversation?.id, currentUser?.userId, socketStatus]);
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
@@ -811,6 +845,7 @@ export default function Messages() {
   useEffect(() => {
     const socket = createMessageSocket({
       onOpen: () => {
+        setSocketStatus("open");
         const conversationIds = parseMessageSocketConversationIds(
           messageSocketConversationIdsRef.current
         );
@@ -873,9 +908,16 @@ export default function Messages() {
           );
         }
       },
+      onClose: () => {
+        setSocketStatus("closed");
+      },
+      onError: () => {
+        setSocketStatus("error");
+      },
     });
 
     messageSocketRef.current = socket;
+    setSocketStatus("connecting");
     socket.connect();
 
     return () => {

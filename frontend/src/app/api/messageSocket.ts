@@ -57,7 +57,29 @@ const buildMessageSocketUrl = () => {
 
 export function createMessageSocket(callbacks: MessageSocketCallbacks) {
   let socket: WebSocket | null = null;
+  let reconnectTimerId: number | null = null;
+  let shouldReconnect = true;
   const pendingAcks = new Map<string, PendingAck>();
+
+  const clearReconnectTimer = () => {
+    if (reconnectTimerId === null) {
+      return;
+    }
+
+    window.clearTimeout(reconnectTimerId);
+    reconnectTimerId = null;
+  };
+
+  const scheduleReconnect = () => {
+    if (!shouldReconnect || reconnectTimerId !== null) {
+      return;
+    }
+
+    reconnectTimerId = window.setTimeout(() => {
+      reconnectTimerId = null;
+      connect();
+    }, 1200);
+  };
 
   const rejectPendingAcks = () => {
     pendingAcks.forEach((pendingAck) => {
@@ -76,6 +98,9 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
   };
 
   const connect = () => {
+    shouldReconnect = true;
+    clearReconnectTimer();
+
     const url = buildMessageSocketUrl();
     if (!url || socket) {
       return;
@@ -118,10 +143,13 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
       socket = null;
       rejectPendingAcks();
       callbacks.onClose?.();
+      scheduleReconnect();
     };
   };
 
   const close = () => {
+    shouldReconnect = false;
+    clearReconnectTimer();
     const currentSocket = socket;
     socket = null;
     rejectPendingAcks();
