@@ -34,7 +34,7 @@ export interface ProjectData {
   client: ProjectClient;
   category: string;
   skills: string[];
-  budget: string;
+  budget: number | string;
   duration: string;
   deadline: string;
   applicants: number;
@@ -58,6 +58,15 @@ interface Props {
 
 function getDday(deadline: string) {
   return Math.ceil((new Date(deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function formatBudgetLabel(budget: number | string) {
+  if (typeof budget === "number") {
+    return `${budget}만원`;
+  }
+
+  const parsed = Number.parseInt(String(budget).replace(/\D/g, ""), 10);
+  return Number.isFinite(parsed) ? `${parsed}만원` : String(budget);
 }
 
 function DdayBadge({ deadline }: { deadline: string }) {
@@ -275,20 +284,29 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
             <div className="flex items-center gap-5 px-6 py-3.5 bg-[#FAFBFC] border-b border-gray-100 shrink-0 overflow-x-auto">
               <div className="shrink-0">
                 <p className="text-[10px] text-gray-400 mb-0.5">예산</p>
-                <p className="text-sm font-bold text-[#00A88C]">{project.budget}</p>
+                <p className="text-sm font-bold text-[#00A88C]">{formatBudgetLabel(project.budget)}</p>
               </div>
               <div className="w-px h-7 bg-gray-200 shrink-0" />
               <div className="shrink-0">
-                <p className="text-[10px] text-gray-400 mb-0.5">기간</p>
+                <p className="text-[10px] text-gray-400 mb-0.5">프로젝트 기간</p>
                 <p className="text-sm font-bold text-gray-700 flex items-center gap-1">
                   <Clock className="size-3 text-gray-400" />{project.duration}
+                  {/* 💡 기간 값에 따른 설명 추가 로직 */}
+                  <span className="text-[11px] font-medium text-gray-500 ml-1">
+                    {project.duration === "단기" && "(1~3개월)"}
+                    {project.duration === "중기" && "(3~6개월)"}
+                    {project.duration === "장기" && "(6개월 이상)"}
+                  </span>
                 </p>
               </div>
               <div className="w-px h-7 bg-gray-200 shrink-0" />
               <div className="shrink-0">
-                <p className="text-[10px] text-gray-400 mb-0.5">근무형태</p>
-                <p className="text-sm font-bold text-gray-700">{project.remote ? "🌐 원격" : "🏢 상주"}</p>
+                <p className="text-[10px] text-gray-400 mb-0.5">마감일</p>
+                <p className="text-sm font-bold text-gray-700 flex items-center gap-1">
+                  <Clock className="size-3 text-gray-400" />{project.deadline}
+                </p>
               </div>
+
               {project.experienceLevel && (
                 <>
                   <div className="w-px h-7 bg-gray-200 shrink-0" />
@@ -313,10 +331,13 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                 <section>
                   <SectionHeading color="mint">프로젝트 개요</SectionHeading>
                   <p className="text-sm text-gray-600 leading-relaxed">{project.description}</p>
-                  {project.fullDescription && (
-                    <p className="text-sm text-gray-600 leading-relaxed mt-2">{project.fullDescription}</p>
-                  )}
                 </section>
+                {project.fullDescription && (
+                  <section>
+                    <SectionHeading color="mint">상세내용</SectionHeading>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-600">{project.fullDescription}</p>
+                  </section>
+                )}
 
                 {/* 담당 업무 */}
                 {project.responsibilities && project.responsibilities.length > 0 && (
@@ -352,14 +373,18 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                 <section>
                   <SectionHeading color="mint">요구 스킬</SectionHeading>
                   <div className="flex flex-wrap gap-2">
-                    {project.skills.map((skill) => (
-                      <span
-                        key={skill}
-                        className="px-3 py-1.5 rounded-xl bg-[#A8F0E4]/20 text-[#00A88C] text-sm font-semibold border border-[#00C9A7]/20"
-                      >
-                        {skill}
-                      </span>
-                    ))}
+                    {project.skills && project.skills.length > 0 ? (
+                        project.skills.map((skill) => (
+                            <span
+                                key={skill}
+                                className="px-3 py-1.5 rounded-xl bg-[#A8F0E4]/20 text-[#00A88C] text-sm font-semibold border border-[#00C9A7]/20"
+                            >
+                                {skill}
+                            </span>
+                        ))
+                    ) : (
+                        <p className="text-xs text-gray-400 italic">요구 스킬 정보가 없습니다.</p>
+                    )}
                   </div>
                 </section>
 

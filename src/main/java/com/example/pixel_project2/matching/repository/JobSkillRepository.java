@@ -9,4 +9,7 @@ import java.util.List;
 public interface JobSkillRepository extends JpaRepository<JobSkill, Long> {
     @Query("SELECT js FROM JobSkill js WHERE js.project.post_id IN :postIds")
     List<JobSkill> findAllByProjectPostIds(List<Long> postIds);
+
+    @Query("SELECT js FROM JobSkill js WHERE js.project.post_id = :postId")
+    List<JobSkill> findAllByProjectPostId(Long postId);
 }

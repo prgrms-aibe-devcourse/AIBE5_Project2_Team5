@@ -9,8 +9,10 @@ public record ProjectDetailResponse(
         String title,
         Integer budget,
         String overview,
+        String fullDescription,
         List<String> responsibilities,
         List<String> qualifications,
+        List<String> skills,
         String experienceLevel,
         String jobState,
         String deadline
