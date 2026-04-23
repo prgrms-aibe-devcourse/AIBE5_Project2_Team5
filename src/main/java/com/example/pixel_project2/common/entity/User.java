@@ -59,4 +59,7 @@ public class User extends BaseTimeEntity {
 
     @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
     private Designer designer;
+
+    @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
+    private Client client;
 }
