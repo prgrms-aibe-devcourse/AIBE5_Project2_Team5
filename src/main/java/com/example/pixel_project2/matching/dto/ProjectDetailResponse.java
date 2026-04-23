@@ -1,5 +1,7 @@
 package com.example.pixel_project2.matching.dto;
 
+import java.util.List;
+
 public record ProjectDetailResponse(
         Long postId,
         String postType,
@@ -7,9 +9,10 @@ public record ProjectDetailResponse(
         String title,
         Integer budget,
         String overview,
-        String responsibilities,
-        String qualifications,
-        String state,
+        List<String> responsibilities,
+        List<String> qualifications,
+        String experienceLevel,
+        String jobState,
         String deadline
 ) {
 }

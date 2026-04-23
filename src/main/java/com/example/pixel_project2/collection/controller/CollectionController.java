@@ -38,7 +38,7 @@ public class CollectionController {
 
     @GetMapping("/policy")
     public ApiResponse<CollectionPolicyResponse> getCollectionPolicy() {
-        return ApiResponse.ok("而щ젆???뺤콉??議고쉶?덉뒿?덈떎.", collectionService.getCollectionPolicy());
+        return ApiResponse.ok("컬렉션 정책을 조회했습니다.", collectionService.getCollectionPolicy());
     }
 
     @GetMapping("/{folderId}")
@@ -92,3 +92,4 @@ public class CollectionController {
         return ApiResponse.ok("컬렉션에서 피드를 제거했습니다.", collectionService.removeFeed(currentUser, folderId, postId));
     }
 }
+

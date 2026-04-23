@@ -21,3 +21,4 @@ public interface CollectionFolderRepository extends JpaRepository<CollectionFold
             @Param("folderName") String folderName
     );
 }
+

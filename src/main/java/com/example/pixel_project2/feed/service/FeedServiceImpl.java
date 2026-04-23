@@ -16,18 +16,23 @@ import com.example.pixel_project2.common.repository.PostImageRepository;
 import com.example.pixel_project2.common.repository.PostRepository;
 import com.example.pixel_project2.common.repository.UserRepository;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
+import com.example.pixel_project2.feed.dto.CommentItemResponse;
+import com.example.pixel_project2.feed.dto.CommentListResponse;
 import com.example.pixel_project2.feed.dto.CreateCommentRequest;
 import com.example.pixel_project2.feed.dto.CreateCommentResponse;
 import com.example.pixel_project2.feed.dto.CreateFeedRequest;
 import com.example.pixel_project2.feed.dto.CreateFeedResponse;
+import com.example.pixel_project2.feed.dto.DeleteCommentResponse;
 import com.example.pixel_project2.feed.dto.DeleteFeedResponse;
+import com.example.pixel_project2.feed.dto.FeedDetailResponse;
 import com.example.pixel_project2.feed.dto.FeedItemResponse;
 import com.example.pixel_project2.feed.dto.FeedListResponse;
-import com.example.pixel_project2.feed.dto.FeedPolicyResponse;
+import com.example.pixel_project2.feed.dto.UpdateCommentResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -53,8 +58,57 @@ public class FeedServiceImpl implements FeedService {
     }
 
     @Override
-    public FeedPolicyResponse getFeedDetailPolicy() {
-        return new FeedPolicyResponse(true, true, true);
+    @Transactional(readOnly = true)
+    public FeedDetailResponse getFeedDetail(Long feedId, Long userId) {
+        Post post = postRepository.findByIdWithDetails(feedId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 피드입니다."));
+
+        Feed feed = post.getFeed();
+        List<String> imageUrls = post.getImages().stream()
+                .sorted(Comparator.comparing(image -> image.getSortOrder() == null ? Integer.MAX_VALUE : image.getSortOrder()))
+                .map(PostImage::getImageUrl)
+                .toList();
+
+        return new FeedDetailResponse(
+                post.getId(),
+                post.getUser().getId(),
+                post.getTitle(),
+                feed != null && feed.getDescription() != null ? feed.getDescription() : "",
+                post.getUser().getNickname(),
+                post.getUser().getProfileImage(),
+                post.getUser().getRole().name(),
+                post.getPostType().name(),
+                post.getCategory().name(),
+                post.getPickCount(),
+                commentRepository.countByPostId(post.getId()),
+                feed != null ? feed.getPortfolioUrl() : null,
+                post.getCreatedAt(),
+                imageUrls,
+                post.getUser().getId().equals(userId)
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public CommentListResponse getComments(Long postId, Long userId) {
+        if (!postRepository.existsById(postId)) {
+            throw new IllegalArgumentException("존재하지 않는 게시글입니다.");
+        }
+
+        List<CommentItemResponse> comments = commentRepository.findAllByPostId(postId).stream()
+                .map(comment -> new CommentItemResponse(
+                        comment.getCommentId(),
+                        comment.getUser().getId(),
+                        comment.getUser().getNickname(),
+                        comment.getUser().getProfileImage(),
+                        comment.getUser().getRole().name(),
+                        comment.getDescription(),
+                        "작성됨",
+                        comment.getUser().getId().equals(userId)
+                ))
+                .toList();
+
+        return new CommentListResponse(comments);
     }
 
     @Override
@@ -80,6 +134,28 @@ public class FeedServiceImpl implements FeedService {
                 user.getNickname(),
                 savedComment.getDescription()
         );
+    }
+
+    @Override
+    @Transactional
+    public UpdateCommentResponse updateComment(Long postId, Long commentId, Long userId, CreateCommentRequest request) {
+        Comment comment = getOwnedComment(postId, commentId, userId);
+        comment.setDescription(request.description().trim());
+
+        return new UpdateCommentResponse(
+                comment.getCommentId(),
+                comment.getPost().getId(),
+                comment.getDescription()
+        );
+    }
+
+    @Override
+    @Transactional
+    public DeleteCommentResponse deleteComment(Long postId, Long commentId, Long userId) {
+        Comment comment = getOwnedComment(postId, commentId, userId);
+        commentRepository.delete(comment);
+
+        return new DeleteCommentResponse(commentId, postId);
     }
 
     @Override
@@ -159,6 +235,17 @@ public class FeedServiceImpl implements FeedService {
         return new DeleteFeedResponse(postId);
     }
 
+    private Comment getOwnedComment(Long postId, Long commentId, Long userId) {
+        Comment comment = commentRepository.findByIdWithUserAndPost(commentId, postId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 댓글입니다."));
+
+        if (!comment.getUser().getId().equals(userId)) {
+            throw new IllegalArgumentException("본인이 작성한 댓글만 수정 또는 삭제할 수 있습니다.");
+        }
+
+        return comment;
+    }
+
     private Post findOwnedPortfolioPost(AuthenticatedUser currentUser, Long postId) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new IllegalArgumentException("Feed not found."));
@@ -221,7 +308,7 @@ public class FeedServiceImpl implements FeedService {
                 post.getUser().getNickname(),
                 thumbnailUrl,
                 post.getPickCount(),
-                Math.toIntExact(commentRepository.countByPost_Id(post.getId())),
+                Math.toIntExact(commentRepository.countByPostId(post.getId())),
                 post.getPostType().name(),
                 post.getCategory().name()
         );
