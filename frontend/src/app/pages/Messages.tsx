@@ -1398,7 +1398,6 @@ export default function Messages() {
           )
         );
         setConversationReloadKey((key) => key + 1);
-        setTypingConversationId(outgoingMessage.conversationId);
         window.setTimeout(() => {
           setChatMessages((prev) =>
             prev.map((message) =>
@@ -1408,11 +1407,6 @@ export default function Messages() {
             )
           );
         }, 900);
-        window.setTimeout(() => {
-          setTypingConversationId((currentId) =>
-            currentId === outgoingMessage.conversationId ? null : currentId
-          );
-        }, 1600);
       })
       .catch(() => {
         setChatMessages((prev) =>

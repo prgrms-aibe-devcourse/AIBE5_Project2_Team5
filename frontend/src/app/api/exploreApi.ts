@@ -2,6 +2,7 @@ import { apiRequest } from "./apiClient";
 
 export type ExplorePostResponseDto = {
   postId: number;
+  userId: number;
   title: string;
   nickname: string;
   pickCount: number;

@@ -35,6 +35,7 @@ import {
   type CollectionFolderDetailResponse,
   type CollectionFolderResponse,
 } from "../api/collectionApi";
+import { createMessageConversationApi } from "../api/messageApi";
 
 type FeedProjectAuthor = {
   name: string;
@@ -335,6 +336,7 @@ export default function Profile() {
   const [isSavingWorkStatus, setIsSavingWorkStatus] = useState(false);
   const [isCheckingProfileNickname, setIsCheckingProfileNickname] = useState(false);
   const [isFollowSaving, setIsFollowSaving] = useState(false);
+  const [isStartingConversation, setIsStartingConversation] = useState(false);
   const [profileEditError, setProfileEditError] = useState("");
   const [profileNicknameCheckMessage, setProfileNicknameCheckMessage] = useState("");
   const [checkedProfileNickname, setCheckedProfileNickname] = useState("");
@@ -896,6 +898,21 @@ export default function Profile() {
       setProfileError(error instanceof Error ? error.message : "팔로우 상태를 변경하지 못했습니다.");
     } finally {
       setIsFollowSaving(false);
+    }
+  };
+
+  const handleStartConversation = async () => {
+    if (!apiProfile || apiProfile.owner || isStartingConversation) return;
+
+    setProfileError("");
+    setIsStartingConversation(true);
+    try {
+      const conversation = await createMessageConversationApi(apiProfile.userId);
+      navigate(`/messages?conversationId=${conversation.id}`);
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : "대화를 시작하지 못했습니다.");
+    } finally {
+      setIsStartingConversation(false);
     }
   };
 
@@ -1659,11 +1676,12 @@ export default function Profile() {
                 {apiProfile && !apiProfile.owner && (
                   <button
                     type="button"
-                    onClick={() => navigate('/messages')}
-                    className="inline-flex items-center gap-2 rounded-lg border border-[#9EE7D0] bg-[#16A673] px-5 py-2.5 text-sm font-bold text-white shadow-[0_8px_18px_rgba(22,166,115,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#0E8F61] hover:shadow-[0_10px_22px_rgba(22,166,115,0.28)] focus:outline-none focus:ring-2 focus:ring-[#9EE7D0] focus:ring-offset-2"
+                    onClick={handleStartConversation}
+                    disabled={isStartingConversation}
+                    className="inline-flex items-center gap-2 rounded-lg border border-[#9EE7D0] bg-[#16A673] px-5 py-2.5 text-sm font-bold text-white shadow-[0_8px_18px_rgba(22,166,115,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#0E8F61] hover:shadow-[0_10px_22px_rgba(22,166,115,0.28)] focus:outline-none focus:ring-2 focus:ring-[#9EE7D0] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <MessageCircle className="size-4" />
-                    <span>메시지 보내기</span>
+                    <span>{isStartingConversation ? "연결 중..." : "메시지 보내기"}</span>
                   </button>
                 )}
               </div>

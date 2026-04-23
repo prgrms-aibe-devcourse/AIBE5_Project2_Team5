@@ -79,6 +79,7 @@ public class ExploreServiceImpl implements ExploreService {
 
         return ExplorePostResponseDto.builder()
                 .postId(post.getId())
+                .userId(post.getUser().getId())
                 .title(post.getTitle())
                 .nickname(post.getUser().getNickname())
                 .pickCount(post.getPickCount())
