@@ -126,16 +126,24 @@ export default function Collections() {
   };
 
   const deleteCollection = async (collectionId: number) => {
-    if (!confirm("정말 이 컬렉션을 삭제하시겠습니까?")) return;
+    console.log("Attempting to delete collection:", collectionId);
+    if (!confirm("정말 이 컬렉션을 삭제하시겠습니까?")) {
+      console.log("Delete cancelled by user");
+      return;
+    }
+    
     try {
       await deleteCollectionFolderApi(collectionId);
-      if (selectedCollectionId === collectionId) {
-        setSelectedCollectionId(null);
-        setSelectedCollection(null);
-      }
+      console.log("Collection deleted successfully");
+      
+      // 모달 및 메뉴 닫기
+      setSelectedCollectionId(null);
+      setSelectedCollection(null);
       setOpenCollectionMenuId(null);
+      
       void loadCollections();
     } catch (err) {
+      console.error("Failed to delete collection:", err);
       alert("컬렉션 삭제에 실패했습니다.");
     }
   };
@@ -191,14 +199,17 @@ export default function Collections() {
 
   const handleRenameSelectedCollection = async () => {
     if (!selectedCollectionId || !editingCollectionName.trim()) return;
+    console.log("Renaming collection:", selectedCollectionId, "to:", editingCollectionName.trim());
 
     try {
       await renameCollectionFolderApi(selectedCollectionId, editingCollectionName.trim());
+      console.log("Rename successful");
       void loadCollections();
       if (selectedCollection) {
         setSelectedCollection({ ...selectedCollection, folderName: editingCollectionName.trim() });
       }
     } catch (err) {
+      console.error("Rename failed:", err);
       alert("이름 수정에 실패했습니다.");
     }
   };
