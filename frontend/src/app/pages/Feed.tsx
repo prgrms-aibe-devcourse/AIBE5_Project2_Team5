@@ -742,6 +742,7 @@ export default function Feed() {
         const updatedFeed: Partial<BaseFeedItem> = {
           id: detail.postId,
           author: {
+            userId: detail.userId,
             name: detail.nickname,
             role: toFeedAuthorRole(detail.role, detail.postType),
             avatar:
