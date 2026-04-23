@@ -2,8 +2,11 @@ package com.example.pixel_project2.message.websocket;
 
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.message.dto.ChatMessageResponse;
+import com.example.pixel_project2.message.dto.MessageReadReceiptResponse;
 import com.example.pixel_project2.message.dto.SendMessageRequest;
 import com.example.pixel_project2.message.event.ChatMessageSentEvent;
+import com.example.pixel_project2.message.event.MessageReadReceiptEvent;
+import com.example.pixel_project2.message.event.MessageProcessesUpdatedEvent;
 import com.example.pixel_project2.message.service.MessageService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,6 +32,8 @@ public class MessageSocketHandler extends TextWebSocketHandler {
     private static final String TYPE_CHAT_MESSAGE = "chat.message";
     private static final String TYPE_TYPING = "typing";
     private static final String TYPE_MESSAGE_REACTION = "message.reaction";
+    private static final String TYPE_MESSAGE_READ = "message.read";
+    private static final String TYPE_PROCESS_UPDATED = "process.updated";
 
     private final ObjectMapper objectMapper;
     private final MessageService messageService;
@@ -65,6 +70,11 @@ public class MessageSocketHandler extends TextWebSocketHandler {
 
         if (TYPE_MESSAGE_REACTION.equals(type)) {
             handleReaction(session, payload);
+            return;
+        }
+
+        if (TYPE_MESSAGE_READ.equals(type)) {
+            handleMessageRead(session, payload);
             return;
         }
 
@@ -199,11 +209,54 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         broadcast(conversationId, outbound, session.getId());
     }
 
+    private void handleMessageRead(WebSocketSession session, JsonNode payload) throws IOException {
+        AuthenticatedUser reader = authenticatedUser(session);
+        if (reader == null) {
+            sendError(session, "Authentication is required.");
+            return;
+        }
+
+        if (!payload.path("conversationId").canConvertToLong()) {
+            sendError(session, "conversationId is required.");
+            return;
+        }
+
+        long conversationId = payload.path("conversationId").asLong();
+        try {
+            messageService.markConversationRead(reader, conversationId);
+        } catch (IllegalArgumentException e) {
+            sendError(session, e.getMessage());
+        }
+    }
+
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleChatMessageSent(ChatMessageSentEvent event) {
         ChatMessageResponse savedMessage = event.message();
         ObjectNode outbound = toOutboundMessage(savedMessage);
         broadcast(savedMessage.conversationId(), outbound, null);
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void handleMessageReadReceipt(MessageReadReceiptEvent event) {
+        MessageReadReceiptResponse receipt = event.receipt();
+        ObjectNode outbound = objectMapper.createObjectNode();
+        outbound.put("type", TYPE_MESSAGE_READ);
+        outbound.put("conversationId", receipt.conversationId());
+        outbound.put("readerUserId", receipt.readerUserId());
+        outbound.put("readerName", receipt.readerName());
+        outbound.put("readAt", receipt.readAt().toString());
+        outbound.set("messageIds", objectMapper.valueToTree(receipt.messageIds()));
+        outbound.set("clientIds", objectMapper.valueToTree(receipt.clientIds()));
+        broadcast(receipt.conversationId(), outbound, null);
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void handleMessageProcessesUpdated(MessageProcessesUpdatedEvent event) {
+        ObjectNode outbound = objectMapper.createObjectNode();
+        outbound.put("type", TYPE_PROCESS_UPDATED);
+        outbound.put("conversationId", event.conversationId());
+        outbound.set("processes", objectMapper.valueToTree(event.processes()));
+        broadcast(event.conversationId(), outbound, null);
     }
 
     private ObjectNode toOutboundMessage(ChatMessageResponse savedMessage) {
@@ -216,6 +269,11 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         outbound.put("senderName", savedMessage.senderName());
         outbound.put("message", savedMessage.message());
         outbound.put("createdAt", savedMessage.createdAt().toString());
+        if (savedMessage.readAt() == null) {
+            outbound.putNull("readAt");
+        } else {
+            outbound.put("readAt", savedMessage.readAt().toString());
+        }
         outbound.set("attachments", savedMessage.attachments());
         return outbound;
     }

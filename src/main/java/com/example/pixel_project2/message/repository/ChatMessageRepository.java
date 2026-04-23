@@ -13,4 +13,24 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
             "where m.conversation.id = :conversationId " +
             "order by m.createdAt asc, m.id asc")
     List<ChatMessage> findAllByConversationId(@Param("conversationId") Long conversationId);
+
+    @Query("select m from ChatMessage m " +
+            "join fetch m.sender s " +
+            "where m.conversation.id = :conversationId " +
+            "and m.sender.id <> :readerUserId " +
+            "and m.readAt is null " +
+            "order by m.createdAt asc, m.id asc")
+    List<ChatMessage> findUnreadByConversationIdForReader(
+            @Param("conversationId") Long conversationId,
+            @Param("readerUserId") Long readerUserId
+    );
+
+    @Query("select count(m) from ChatMessage m " +
+            "where m.conversation.id = :conversationId " +
+            "and m.sender.id <> :readerUserId " +
+            "and m.readAt is null")
+    int countUnreadByConversationIdForReader(
+            @Param("conversationId") Long conversationId,
+            @Param("readerUserId") Long readerUserId
+    );
 }

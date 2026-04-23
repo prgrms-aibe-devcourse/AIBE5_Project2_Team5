@@ -12,6 +12,7 @@ public record ChatMessageResponse(
         String senderName,
         String message,
         JsonNode attachments,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        LocalDateTime readAt
 ) {
 }

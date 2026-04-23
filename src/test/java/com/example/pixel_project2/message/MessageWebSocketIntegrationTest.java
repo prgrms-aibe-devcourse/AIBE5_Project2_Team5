@@ -7,9 +7,20 @@ import com.example.pixel_project2.common.repository.UserRepository;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.config.jwt.JwtTokenProvider;
 import com.example.pixel_project2.message.dto.CreateConversationRequest;
+import com.example.pixel_project2.message.dto.CreateMessageReviewRequest;
 import com.example.pixel_project2.message.dto.MessageConversationResponse;
+import com.example.pixel_project2.message.dto.MessageProcessConfirmationsRequest;
+import com.example.pixel_project2.message.dto.MessageProcessResponse;
+import com.example.pixel_project2.message.dto.MessageProcessRequest;
+import com.example.pixel_project2.message.dto.MessageProcessTaskRequest;
+import com.example.pixel_project2.message.dto.MessageReadReceiptResponse;
 import com.example.pixel_project2.message.dto.SendMessageRequest;
+import com.example.pixel_project2.message.dto.SaveMessageProcessesRequest;
+import com.example.pixel_project2.message.dto.UpdateMessageProcessConfirmationRequest;
+import com.example.pixel_project2.message.dto.UpdateMessageProcessTaskRequest;
 import com.example.pixel_project2.message.service.MessageService;
+import com.example.pixel_project2.profile.dto.ProfileReviewResponse;
+import com.example.pixel_project2.profile.service.ProfileService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -23,6 +34,7 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.client.standard.StandardWebSocketClient;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -41,6 +53,9 @@ class MessageWebSocketIntegrationTest {
 
     @Autowired
     private MessageService messageService;
+
+    @Autowired
+    private ProfileService profileService;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -213,6 +228,205 @@ class MessageWebSocketIntegrationTest {
 
         senderSession.close();
         receiverSession.close();
+    }
+
+    @Test
+    void messageReadReceiptIsPersistedAndBroadcastToConnectedParticipantSocket() throws Exception {
+        User sender = userRepository.saveAndFlush(testUser("read-sender@test.io", "Read Sender", "read-send"));
+        User receiver = userRepository.saveAndFlush(testUser("read-receiver@test.io", "Read Receiver", "read-recv"));
+
+        MessageConversationResponse conversation = messageService.createConversation(
+                principal(sender),
+                new CreateConversationRequest(receiver.getId())
+        );
+
+        messageService.sendMessage(
+                principal(sender),
+                conversation.id(),
+                new SendMessageRequest("read-client-message", "읽음 처리 테스트", objectMapper.createArrayNode())
+        );
+
+        CompletableFuture<JsonNode> receivedEvent = new CompletableFuture<>();
+        WebSocketSession senderSession = connectSocket(sender, conversation.id(), "message.read", receivedEvent);
+
+        MessageReadReceiptResponse receipt = messageService.markConversationRead(
+                principal(receiver),
+                conversation.id()
+        );
+
+        assertThat(receipt.readerUserId()).isEqualTo(receiver.getId());
+        assertThat(receipt.clientIds()).containsExactly("read-client-message");
+
+        JsonNode event = receivedEvent.get(5, TimeUnit.SECONDS);
+        assertThat(event.path("conversationId").asLong()).isEqualTo(conversation.id());
+        assertThat(event.path("readerUserId").asLong()).isEqualTo(receiver.getId());
+        assertThat(event.path("clientIds").get(0).asText()).isEqualTo("read-client-message");
+        assertThat(event.path("readAt").asText()).isNotBlank();
+
+        assertThat(messageService.getMessages(principal(sender), conversation.id()).getFirst().readAt())
+                .isNotNull();
+
+        senderSession.close();
+    }
+
+    @Test
+    void messageProcessesAreStoredAndCanBeUpdatedByConversationParticipant() {
+        User sender = userRepository.saveAndFlush(testUser("process-sender@test.io", "Process Sender", "pr-sender"));
+        User receiver = userRepository.saveAndFlush(testUser("process-receiver@test.io", "Process Receiver", "pr-recv"));
+
+        MessageConversationResponse conversation = messageService.createConversation(
+                principal(sender),
+                new CreateConversationRequest(receiver.getId())
+        );
+
+        List<MessageProcessResponse> savedProcesses = messageService.saveProcesses(
+                principal(sender),
+                conversation.id(),
+                new SaveMessageProcessesRequest(List.of(
+                        new MessageProcessRequest(
+                                null,
+                                "Design draft",
+                                new MessageProcessConfirmationsRequest(false, false),
+                                List.of(
+                                        new MessageProcessTaskRequest(null, "Wireframe", false),
+                                        new MessageProcessTaskRequest(null, "Visual design", false)
+                                )
+                        )
+                ))
+        );
+
+        assertThat(savedProcesses).hasSize(1);
+        assertThat(savedProcesses.getFirst().status()).isEqualTo("pending");
+
+        MessageProcessResponse firstTaskUpdated = messageService.updateProcessTask(
+                principal(receiver),
+                conversation.id(),
+                savedProcesses.getFirst().id(),
+                savedProcesses.getFirst().tasks().getFirst().id(),
+                new UpdateMessageProcessTaskRequest(true)
+        );
+        assertThat(firstTaskUpdated.status()).isEqualTo("in-progress");
+
+        MessageProcessResponse secondTaskUpdated = messageService.updateProcessTask(
+                principal(receiver),
+                conversation.id(),
+                savedProcesses.getFirst().id(),
+                savedProcesses.getFirst().tasks().get(1).id(),
+                new UpdateMessageProcessTaskRequest(true)
+        );
+        assertThat(secondTaskUpdated.status()).isEqualTo("in-progress");
+
+        MessageProcessResponse designerConfirmed = messageService.updateProcessConfirmation(
+                principal(sender),
+                conversation.id(),
+                savedProcesses.getFirst().id(),
+                "designer",
+                new UpdateMessageProcessConfirmationRequest(true)
+        );
+        assertThat(designerConfirmed.status()).isEqualTo("in-progress");
+
+        MessageProcessResponse clientConfirmed = messageService.updateProcessConfirmation(
+                principal(receiver),
+                conversation.id(),
+                savedProcesses.getFirst().id(),
+                "client",
+                new UpdateMessageProcessConfirmationRequest(true)
+        );
+        assertThat(clientConfirmed.status()).isEqualTo("completed");
+
+        List<MessageProcessResponse> loadedProcesses = messageService.getProcesses(principal(sender), conversation.id());
+        assertThat(loadedProcesses.getFirst().tasks()).allMatch(task -> task.completed());
+        assertThat(loadedProcesses.getFirst().confirmations().designer()).isTrue();
+        assertThat(loadedProcesses.getFirst().confirmations().client()).isTrue();
+    }
+
+    @Test
+    void messageProcessUpdatesAreBroadcastToConnectedParticipantSocket() throws Exception {
+        User sender = userRepository.saveAndFlush(testUser("process-ws-sender@test.io", "Process Ws Sender", "pr-ws-s"));
+        User receiver = userRepository.saveAndFlush(testUser("process-ws-receiver@test.io", "Process Ws Receiver", "pr-ws-r"));
+
+        MessageConversationResponse conversation = messageService.createConversation(
+                principal(sender),
+                new CreateConversationRequest(receiver.getId())
+        );
+
+        CompletableFuture<JsonNode> receivedEvent = new CompletableFuture<>();
+        WebSocketSession receiverSession = connectSocket(receiver, conversation.id(), "process.updated", receivedEvent);
+
+        messageService.saveProcesses(
+                principal(sender),
+                conversation.id(),
+                new SaveMessageProcessesRequest(List.of(
+                        new MessageProcessRequest(
+                                null,
+                                "Socket synced process",
+                                new MessageProcessConfirmationsRequest(false, false),
+                                List.of(new MessageProcessTaskRequest(null, "First task", false))
+                        )
+                ))
+        );
+
+        JsonNode event = receivedEvent.get(5, TimeUnit.SECONDS);
+        assertThat(event.path("conversationId").asLong()).isEqualTo(conversation.id());
+        assertThat(event.path("processes")).hasSize(1);
+        assertThat(event.path("processes").get(0).path("title").asText()).isEqualTo("Socket synced process");
+
+        receiverSession.close();
+    }
+
+    @Test
+    void completedConversationReviewIsStoredAndReturnedFromProfileReviews() {
+        User reviewer = userRepository.saveAndFlush(testUser("review-writer@test.io", "Review Writer", "rv-writer"));
+        User reviewee = userRepository.saveAndFlush(testUser("review-target@test.io", "Review Target", "rv-target"));
+
+        MessageConversationResponse conversation = messageService.createConversation(
+                principal(reviewer),
+                new CreateConversationRequest(reviewee.getId())
+        );
+
+        List<MessageProcessResponse> processes = messageService.saveProcesses(
+                principal(reviewer),
+                conversation.id(),
+                new SaveMessageProcessesRequest(List.of(
+                        new MessageProcessRequest(
+                                null,
+                                "Reviewable work",
+                                new MessageProcessConfirmationsRequest(true, true),
+                                List.of(new MessageProcessTaskRequest(null, "Final delivery", true))
+                        )
+                ))
+        );
+        assertThat(processes.getFirst().status()).isEqualTo("completed");
+
+        ProfileReviewResponse savedReview = messageService.createConversationReview(
+                principal(reviewer),
+                conversation.id(),
+                new CreateMessageReviewRequest(
+                        "프로필 연결 테스트 프로젝트",
+                        5,
+                        "작업 프로세스가 완료된 뒤 작성한 후기 내용이 프로필 후기 탭에 그대로 연결되는지 확인합니다.",
+                        List.of("브랜드 디자인", "피그마 시안"),
+                        List.of("답장이 빨라요", "결과물이 예뻐요")
+                )
+        );
+
+        assertThat(savedReview.projectId()).isEqualTo(conversation.id());
+        assertThat(savedReview.reviewerId()).isEqualTo(reviewer.getId());
+        assertThat(savedReview.rating()).isEqualTo(5);
+
+        List<ProfileReviewResponse> profileReviews =
+                profileService.getProfileReviews(reviewee.getLoginId(), principal(reviewer));
+        assertThat(profileReviews)
+                .extracting(ProfileReviewResponse::reviewId)
+                .contains(savedReview.reviewId());
+        ProfileReviewResponse profileReview = profileReviews.stream()
+                .filter(review -> review.reviewId().equals(savedReview.reviewId()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(profileReview.projectTitle()).isEqualTo("프로필 연결 테스트 프로젝트");
+        assertThat(profileReview.content()).contains("프로필 후기 탭");
+        assertThat(profileReview.workCategories()).containsExactly("브랜드 디자인", "피그마 시안");
+        assertThat(profileReview.complimentTags()).containsExactly("답장이 빨라요", "결과물이 예뻐요");
     }
 
     private WebSocketSession connectReceiver(

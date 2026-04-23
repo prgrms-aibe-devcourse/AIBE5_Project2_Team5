@@ -15,11 +15,15 @@ import com.example.pixel_project2.common.repository.FollowRepository;
 import com.example.pixel_project2.common.repository.PostRepository;
 import com.example.pixel_project2.common.repository.UserRepository;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
+import com.example.pixel_project2.message.entity.MessageReview;
+import com.example.pixel_project2.message.repository.MessageReviewRepository;
 import com.example.pixel_project2.profile.dto.ProfileFeedResponse;
 import com.example.pixel_project2.profile.dto.ProfileResponse;
 import com.example.pixel_project2.profile.dto.ProfileReviewResponse;
 import com.example.pixel_project2.profile.dto.UpdateDesignerProfileRequest;
 import com.example.pixel_project2.profile.dto.UpdateProfileRequest;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +41,8 @@ public class ProfileServiceImpl implements ProfileService {
     private final CommentRepository commentRepository;
     private final FollowRepository followRepository;
     private final DesignerRepository designerRepository;
+    private final MessageReviewRepository messageReviewRepository;
+    private final ObjectMapper objectMapper;
 
     @Override
     public ProfileResponse getMyProfile(AuthenticatedUser currentUser) {
@@ -124,7 +130,10 @@ public class ProfileServiceImpl implements ProfileService {
     }
 
     private List<ProfileReviewResponse> getProjectReviews(User user) {
-        return List.of();
+        return messageReviewRepository.findAllByRevieweeIdWithUsers(user.getId())
+                .stream()
+                .map(this::toReviewResponse)
+                .toList();
     }
 
     private ProfileResponse toProfileResponse(User user, AuthenticatedUser currentUser) {
@@ -182,6 +191,39 @@ public class ProfileServiceImpl implements ProfileService {
                 .tags(categoryLabel == null ? List.of() : List.of("#" + categoryLabel))
                 .createdAt(post.getCreatedAt())
                 .build();
+    }
+
+    private ProfileReviewResponse toReviewResponse(MessageReview review) {
+        User reviewer = review.getReviewer();
+        return ProfileReviewResponse.builder()
+                .reviewId(review.getId())
+                .projectId(review.getConversation().getId())
+                .projectTitle(review.getProjectTitle())
+                .reviewerId(reviewer.getId())
+                .reviewerName(reviewer.getName())
+                .reviewerNickname(reviewer.getNickname())
+                .reviewerProfileImage(reviewer.getProfileImage())
+                .rating(review.getRating())
+                .content(review.getContent())
+                .workCategories(readStringList(review.getWorkCategoriesJson()))
+                .complimentTags(readStringList(review.getComplimentTagsJson()))
+                .createdAt(review.getCreatedAt())
+                .build();
+    }
+
+    private List<String> readStringList(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+
+        try {
+            return objectMapper.readValue(
+                    json,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, String.class)
+            );
+        } catch (JsonProcessingException e) {
+            return List.of();
+        }
     }
 
     private User resolveProfileUser(String profileKey, AuthenticatedUser currentUser) {

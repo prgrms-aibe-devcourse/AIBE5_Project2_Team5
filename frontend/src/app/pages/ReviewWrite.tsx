@@ -2,11 +2,14 @@ import Navigation from "../components/Navigation";
 import { CheckCircle, Star, Send, ThumbsUp, MessageSquare, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
+import { createConversationReviewApi } from "../api/messageApi";
 import { matchingCategories } from "../utils/matchingCategories";
 
 export default function ReviewWrite() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const conversationId = Number(searchParams.get("conversationId") ?? 0);
+  const revieweeKey = searchParams.get("reviewee") || "me";
   const clientName = searchParams.get("client") || "김민재";
   const projectName = searchParams.get("project") || "브랜드 아이덴티티 프로젝트";
 
@@ -18,6 +21,7 @@ export default function ReviewWrite() {
   const [selectedImprovements, setSelectedImprovements] = useState<string[]>([]);
   const [isThankYouOpen, setIsThankYouOpen] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const ratingOptions = [
     {
@@ -126,31 +130,32 @@ export default function ReviewWrite() {
   };
 
   const handleGoToProfileReviews = () => {
-    navigate("/profile/jieun?tab=reviews");
+    navigate(`/profile/${encodeURIComponent(revieweeKey)}?tab=reviews`);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!isReviewReady || hasSubmitted) return;
-
-    // 실제로는 여기서 API 호출하여 후기 저장
-    const reviewData = {
-      clientName,
-      projectName,
-      workCategories: selectedWorkCategories,
-      rating,
-      complimentTags: selectedCompliments,
-      improvementTags: [],
-      review,
-      date: new Date().toISOString(),
-    };
-
-    // localStorage에 임시 저장 (실제로는 백엔드 API로 전송)
-    const existingReviews = JSON.parse(localStorage.getItem("reviews") || "[]");
-    existingReviews.push(reviewData);
-    localStorage.setItem("reviews", JSON.stringify(existingReviews));
+    if (!Number.isFinite(conversationId) || conversationId <= 0) {
+      setSubmitError("후기를 저장할 대화 정보를 찾지 못했습니다.");
+      return;
+    }
 
     setHasSubmitted(true);
-    setIsThankYouOpen(true);
+    setSubmitError("");
+
+    try {
+      await createConversationReviewApi(conversationId, {
+        projectTitle: projectName,
+        rating,
+        content: review,
+        workCategories: selectedWorkCategories,
+        complimentTags: shouldShowImprovements ? selectedImprovements : selectedCompliments,
+      });
+      setIsThankYouOpen(true);
+    } catch (error) {
+      setHasSubmitted(false);
+      setSubmitError(error instanceof Error ? error.message : "후기를 저장하지 못했습니다.");
+    }
   };
 
   const RatingStars = ({
@@ -402,6 +407,16 @@ export default function ReviewWrite() {
               </div>
             </div>
           </div>
+
+          {submitError && (
+            <div
+              className="mb-4 rounded-lg border border-[#FFD4C8] bg-[#FFF7F4] px-4 py-3 text-sm font-semibold text-[#D84325]"
+              role="alert"
+              aria-live="polite"
+            >
+              {submitError}
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="flex gap-3">

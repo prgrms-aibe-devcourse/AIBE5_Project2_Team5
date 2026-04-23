@@ -21,6 +21,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
+
 @Entity
 @Table(name = "chat_messages")
 @AttributeOverride(
@@ -61,4 +63,7 @@ public class ChatMessage extends BaseTimeEntity {
     @Lob
     @Column(name = "attachments_json")
     private String attachmentsJson;
+
+    @Column(name = "read_at")
+    private LocalDateTime readAt;
 }

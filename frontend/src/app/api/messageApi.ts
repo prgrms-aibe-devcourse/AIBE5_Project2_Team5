@@ -26,6 +26,7 @@ export type ChatMessageResponse = {
   message: string;
   attachments: MessageSocketAttachment[];
   createdAt: string;
+  readAt: string | null;
 };
 
 export type MessageUserResponse = {
@@ -38,6 +39,42 @@ export type MessageUserResponse = {
   job: string | null;
   introduction: string | null;
   url: string | null;
+};
+
+export type MessageProcessStatus = "completed" | "in-progress" | "pending";
+
+export type MessageProcessTaskResponse = {
+  id: number;
+  text: string;
+  completed: boolean;
+};
+
+export type MessageProcessConfirmationsResponse = {
+  designer: boolean;
+  client: boolean;
+};
+
+export type MessageProcessResponse = {
+  id: number;
+  title: string;
+  status: MessageProcessStatus;
+  confirmations: MessageProcessConfirmationsResponse;
+  tasks: MessageProcessTaskResponse[];
+};
+
+export type ConversationReviewResponse = {
+  reviewId: number;
+  projectId: number | null;
+  projectTitle: string;
+  reviewerId: number | null;
+  reviewerName: string | null;
+  reviewerNickname: string;
+  reviewerProfileImage: string | null;
+  rating: number;
+  content: string;
+  workCategories: string[];
+  complimentTags: string[];
+  createdAt: string | null;
 };
 
 export async function getMessageUsersApi() {
@@ -94,5 +131,98 @@ export async function sendConversationMessageApi(
       }),
     },
     "Failed to send message.",
+  );
+}
+
+export type MessageReadReceiptResponse = {
+  conversationId: number;
+  readerUserId: number;
+  readerName: string;
+  messageIds: number[];
+  clientIds: string[];
+  readAt: string;
+};
+
+export async function markConversationReadApi(conversationId: number) {
+  return apiRequest<MessageReadReceiptResponse>(
+    `/api/messages/conversations/${conversationId}/read`,
+    {
+      method: "POST",
+    },
+    "Failed to mark conversation as read.",
+  );
+}
+
+export async function getConversationProcessesApi(conversationId: number) {
+  return apiRequest<MessageProcessResponse[]>(
+    `/api/messages/conversations/${conversationId}/processes`,
+    {},
+    "Failed to load message processes.",
+  );
+}
+
+export async function saveConversationProcessesApi(
+  conversationId: number,
+  processes: MessageProcessResponse[],
+) {
+  return apiRequest<MessageProcessResponse[]>(
+    `/api/messages/conversations/${conversationId}/processes`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ processes }),
+    },
+    "Failed to save message processes.",
+  );
+}
+
+export async function updateConversationProcessTaskApi(
+  conversationId: number,
+  processId: number,
+  taskId: number,
+  completed: boolean,
+) {
+  return apiRequest<MessageProcessResponse>(
+    `/api/messages/conversations/${conversationId}/processes/${processId}/tasks/${taskId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ completed }),
+    },
+    "Failed to update message process task.",
+  );
+}
+
+export async function updateConversationProcessConfirmationApi(
+  conversationId: number,
+  processId: number,
+  role: "designer" | "client",
+  confirmed: boolean,
+) {
+  return apiRequest<MessageProcessResponse>(
+    `/api/messages/conversations/${conversationId}/processes/${processId}/confirmations/${role}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ confirmed }),
+    },
+    "Failed to update message process confirmation.",
+  );
+}
+
+export async function createConversationReviewApi(
+  conversationId: number,
+  params: {
+    projectTitle: string;
+    rating: number;
+    content: string;
+    workCategories: string[];
+    complimentTags: string[];
+  },
+) {
+  return apiRequest<ConversationReviewResponse>(
+    `/api/messages/conversations/${conversationId}/review`,
+    {
+      method: "POST",
+      body: JSON.stringify(params),
+    },
+    "Failed to save conversation review.",
   );
 }

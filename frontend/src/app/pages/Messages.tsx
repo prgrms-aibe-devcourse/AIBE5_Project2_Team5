@@ -9,18 +9,26 @@ import {
 } from "../utils/notificationState";
 import {
   createMessageConversationApi,
+  getConversationProcessesApi,
   getConversationMessagesApi,
   getMessageConversationsApi,
   getMessageUsersApi,
+  markConversationReadApi,
+  saveConversationProcessesApi,
   sendConversationMessageApi,
+  updateConversationProcessConfirmationApi,
+  updateConversationProcessTaskApi,
   type ChatMessageResponse as ApiChatMessageResponse,
   type MessageConversationResponse as ApiMessageConversationResponse,
+  type MessageProcessResponse as ApiMessageProcessResponse,
   type MessageUserResponse as ApiMessageUserResponse,
 } from "../api/messageApi";
 import {
   createMessageSocket,
   type IncomingChatSocketMessage,
+  type IncomingProcessSocketMessage,
   type IncomingReactionSocketMessage,
+  type IncomingReadReceiptSocketMessage,
   type IncomingTypingSocketMessage,
 } from "../api/messageSocket";
 import { uploadMessageAttachmentApi } from "../api/uploadApi";
@@ -64,7 +72,7 @@ type ImageAttachment = Extract<MessageAttachment, { type: "image" }>;
 type FileAttachment = Extract<MessageAttachment, { type: "file" }>;
 type IntegrationAttachment = Extract<MessageAttachment, { type: "integration" }>;
 
-type MessageDeliveryStatus = "sending" | "sent" | "read" | "failed";
+type MessageDeliveryStatus = "sending" | "sent" | "unread" | "read" | "failed";
 
 type MessageReaction = {
   emoji: string;
@@ -82,6 +90,7 @@ type ChatMessage = {
   message: string;
   time: string;
   createdAt: string;
+  readAt?: string | null;
   isSelf: boolean;
   status: MessageDeliveryStatus;
   highlighted?: boolean;
@@ -116,8 +125,6 @@ type ProcessToast = {
 };
 
 const CURRENT_USER_ID = "me";
-const PROCESS_STORAGE_KEY = "pickxel:message-processes:v2";
-const PROCESS_CREATED_STORAGE_KEY = "pickxel:message-processes-created:v2";
 const MESSAGE_DRAFTS_STORAGE_KEY = "pickxel:message-drafts";
 const LEFT_CONVERSATIONS_STORAGE_KEY = "pickxel:left-message-conversations";
 const MAX_MESSAGE_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
@@ -337,12 +344,6 @@ const writeJsonToStorage = (key: string, value: unknown) => {
   }
 };
 
-const readStoredProcesses = () =>
-  readJsonFromStorage<ProjectProcess[] | null>(PROCESS_STORAGE_KEY, null);
-
-const readStoredProcessCreated = () =>
-  readJsonFromStorage<boolean>(PROCESS_CREATED_STORAGE_KEY, false);
-
 const readStoredMessageDrafts = () =>
   readJsonFromStorage<Record<string, string>>(MESSAGE_DRAFTS_STORAGE_KEY, {});
 
@@ -465,8 +466,9 @@ const mapChatMessageResponse = (
     message: message.message,
     time: formatMessageTime(message.createdAt),
     createdAt: message.createdAt,
+    readAt: message.readAt,
     isSelf,
-    status: "sent",
+    status: isSelf ? (message.readAt ? "read" : "unread") : "read",
     attachments: (message.attachments ?? []) as MessageAttachment[],
   };
 };
@@ -645,6 +647,21 @@ const cloneProcesses = (items: ProjectProcess[]) =>
     tasks: process.tasks.map((task) => ({ ...task })),
   }));
 
+const mapApiProcess = (process: ApiMessageProcessResponse): ProjectProcess => ({
+  id: process.id,
+  title: process.title,
+  status: process.status,
+  confirmations: {
+    designer: process.confirmations?.designer ?? false,
+    client: process.confirmations?.client ?? false,
+  },
+  tasks: process.tasks.map((task) => ({
+    id: task.id,
+    text: task.text,
+    completed: task.completed,
+  })),
+});
+
 const getNextProcessId = (items: ProjectProcess[]) =>
   Math.max(0, ...items.map((process) => process.id)) + 1;
 
@@ -671,7 +688,6 @@ export default function Messages() {
   const [searchParams] = useSearchParams();
   const currentUser = getCurrentUser();
   const requestedConversationId = Number(searchParams.get("conversationId") ?? 0);
-  const storedProcessesRef = useRef<ProjectProcess[] | null>(readStoredProcesses());
   const storedMessageDraftsRef = useRef<Record<string, string>>(readStoredMessageDrafts());
   const [serverConversations, setServerConversations] = useState<Conversation[]>([]);
   const [isConversationsLoading, setIsConversationsLoading] = useState(true);
@@ -698,13 +714,13 @@ export default function Messages() {
   const [activeConversationId, setActiveConversationId] = useState(0);
   const [mobileView, setMobileView] = useState<"list" | "chat" | "detail">("list");
   const [conversationSearch, setConversationSearch] = useState("");
-  const [processes, setProcesses] = useState<ProjectProcess[]>(
-    () => storedProcessesRef.current ?? initialProcesses
-  );
-  const [expandedProcess, setExpandedProcess] = useState<number | null>(2);
-  const [processCreated, setProcessCreated] = useState(
-    () => readStoredProcessCreated()
-  );
+  const [isMemberListOpen, setIsMemberListOpen] = useState(false);
+  const [processes, setProcesses] = useState<ProjectProcess[]>(initialProcesses);
+  const [expandedProcess, setExpandedProcess] = useState<number | null>(null);
+  const [processCreated, setProcessCreated] = useState(false);
+  const [isProcessLoading, setIsProcessLoading] = useState(false);
+  const [isSavingProcesses, setIsSavingProcesses] = useState(false);
+  const [processError, setProcessError] = useState<string | null>(null);
   const [isProcessModalOpen, setIsProcessModalOpen] = useState(false);
   const [draftProcesses, setDraftProcesses] = useState<ProjectProcess[]>(createDefaultProcessDraft);
   const [processDraftSnapshot, setProcessDraftSnapshot] =
@@ -746,10 +762,13 @@ export default function Messages() {
   const [processToast, setProcessToast] = useState<ProcessToast | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageSocketRef = useRef<ReturnType<typeof createMessageSocket> | null>(null);
   const messageSocketConversationIdsRef = useRef(messageSocketConversationIds);
   const activeConversationIdRef = useRef(activeConversationId);
+  const mobileViewRef = useRef(mobileView);
+  const sentToUnreadTimeoutsRef = useRef<Record<string, number>>({});
   const ownTypingConversationIdRef = useRef<number | null>(null);
   const ownTypingStopTimeoutRef = useRef<number | null>(null);
   const partnerTypingTimeoutRef = useRef<number | null>(null);
@@ -760,6 +779,85 @@ export default function Messages() {
   const activeMessages = activeConversation
     ? chatMessages.filter((message) => message.conversationId === activeConversation.id)
     : [];
+
+  const clearSentToUnreadTimer = (clientId: string) => {
+    const timeoutId = sentToUnreadTimeoutsRef.current[clientId];
+    if (timeoutId === undefined) return;
+    window.clearTimeout(timeoutId);
+    delete sentToUnreadTimeoutsRef.current[clientId];
+  };
+
+  const scheduleSentToUnread = (clientId: string) => {
+    clearSentToUnreadTimer(clientId);
+    sentToUnreadTimeoutsRef.current[clientId] = window.setTimeout(() => {
+      setChatMessages((prev) =>
+        prev.map((message) =>
+          message.clientId === clientId && message.status === "sent"
+            ? { ...message, status: "unread" }
+            : message
+        )
+      );
+      delete sentToUnreadTimeoutsRef.current[clientId];
+    }, 700);
+  };
+
+  const isConversationVisible = (conversationId: number) => {
+    if (activeConversationIdRef.current !== conversationId) return false;
+    const isDesktopLayout =
+      typeof window !== "undefined" &&
+      window.matchMedia("(min-width: 1024px)").matches;
+    return isDesktopLayout || mobileViewRef.current !== "list";
+  };
+
+  const markConversationReadOnServer = (conversationId: number) => {
+    const now = new Date().toISOString();
+    setChatMessages((prev) =>
+      prev.map((message) =>
+        message.conversationId === conversationId && !message.isSelf && !message.readAt
+          ? { ...message, readAt: now }
+          : message
+      )
+    );
+
+    try {
+      if (messageSocketRef.current?.sendRead(conversationId)) {
+        return;
+      }
+    } catch {
+      // Fall through to REST when the socket closes between checks.
+    }
+
+    markConversationReadApi(conversationId).catch(() => {
+      // Read receipts are retried on the next visible message sync.
+    });
+  };
+
+  const applyReadReceipt = (receipt: IncomingReadReceiptSocketMessage) => {
+    const readMessageIds = new Set(receipt.messageIds.map(String));
+    const readClientIds = new Set(receipt.clientIds);
+    const readAt = receipt.readAt || new Date().toISOString();
+
+    receipt.clientIds.forEach(clearSentToUnreadTimer);
+
+    setChatMessages((prev) =>
+      prev.map((message) => {
+        if (message.conversationId !== receipt.conversationId) return message;
+        const isReceiptTarget =
+          readClientIds.has(message.clientId) ||
+          (message.serverId !== undefined && readMessageIds.has(message.serverId)) ||
+          readMessageIds.has(message.id);
+        if (!isReceiptTarget) return message;
+
+        if (currentUser?.userId === receipt.readerUserId) {
+          return message.isSelf ? message : { ...message, readAt };
+        }
+
+        return message.isSelf
+          ? { ...message, status: "read", readAt }
+          : message;
+      })
+    );
+  };
 
   const mergeConversationMessages = (conversationId: number, nextMessages: ChatMessage[]) => {
     setChatMessages((prev) => {
@@ -774,9 +872,16 @@ export default function Messages() {
             message.id === nextMessage.id
         );
 
-        return previousMessage?.reactions
-          ? { ...nextMessage, reactions: previousMessage.reactions }
-          : nextMessage;
+        const shouldKeepSentTransition =
+          previousMessage?.isSelf &&
+          previousMessage.status === "sent" &&
+          nextMessage.status === "unread";
+
+        return {
+          ...nextMessage,
+          status: shouldKeepSentTransition ? "sent" : nextMessage.status,
+          reactions: previousMessage?.reactions,
+        };
       });
       const pendingMessages = prev.filter(
         (message) => message.conversationId === conversationId && message.status === "sending"
@@ -940,6 +1045,20 @@ export default function Messages() {
   }, [activeConversationId]);
 
   useEffect(() => {
+    mobileViewRef.current = mobileView;
+  }, [mobileView]);
+
+  useEffect(
+    () => () => {
+      Object.values(sentToUnreadTimeoutsRef.current).forEach((timeoutId) => {
+        window.clearTimeout(timeoutId);
+      });
+      sentToUnreadTimeoutsRef.current = {};
+    },
+    []
+  );
+
+  useEffect(() => {
     messageSocketConversationIdsRef.current = messageSocketConversationIds;
     const conversationIds = parseMessageSocketConversationIds(messageSocketConversationIds);
     if (messageSocketRef.current?.isOpen()) {
@@ -973,8 +1092,13 @@ export default function Messages() {
           message: incomingMessage.message,
           time: formatMessageTime(incomingMessage.createdAt),
           createdAt: incomingMessage.createdAt,
+          readAt: incomingMessage.readAt,
           isSelf: isSelfMessage,
-          status: "sent",
+          status: isSelfMessage
+            ? incomingMessage.readAt
+              ? "read"
+              : "sent"
+            : "read",
           attachments: (incomingMessage.attachments ?? []) as MessageAttachment[],
         };
 
@@ -993,13 +1117,21 @@ export default function Messages() {
                   ...message,
                   id: nextMessage.id,
                   serverId: nextMessage.serverId,
-                  status: "sent",
+                  status:
+                    nextMessage.isSelf && !nextMessage.readAt
+                      ? "sent"
+                      : nextMessage.status,
                   createdAt: nextMessage.createdAt,
                   time: nextMessage.time,
+                  readAt: nextMessage.readAt,
                 }
               : message
           );
         });
+
+        if (isSelfMessage && !incomingMessage.readAt) {
+          scheduleSentToUnread(nextMessage.clientId);
+        }
 
         if (!conversationIds.includes(incomingMessage.conversationId)) {
           setConversationReloadKey((key) => key + 1);
@@ -1016,6 +1148,9 @@ export default function Messages() {
           setTypingConversationId((currentId) =>
             currentId === incomingMessage.conversationId ? null : currentId
           );
+          if (isConversationVisible(incomingMessage.conversationId)) {
+            markConversationReadOnServer(incomingMessage.conversationId);
+          }
         }
       },
       onTyping: (typingMessage: IncomingTypingSocketMessage) => {
@@ -1058,6 +1193,20 @@ export default function Messages() {
             reactionMessage.action
           )
         );
+      },
+      onReadReceipt: applyReadReceipt,
+      onProcessUpdate: (processMessage: IncomingProcessSocketMessage) => {
+        if (activeConversationIdRef.current !== processMessage.conversationId) return;
+
+        const nextProcesses = processMessage.processes.map(mapApiProcess);
+        setProcesses(nextProcesses);
+        setProcessCreated(nextProcesses.length > 0);
+        setExpandedProcess((currentProcessId) =>
+          nextProcesses.some((process) => process.id === currentProcessId)
+            ? currentProcessId
+            : nextProcesses[0]?.id ?? null
+        );
+        setProcessError(null);
       },
       onClose: () => {
         setSocketStatus("closed");
@@ -1197,6 +1346,12 @@ export default function Messages() {
       user.bio,
     ].some((value) => value.toLowerCase().includes(normalizedConversationSearch));
   });
+  const isMemberSearchActive = normalizedConversationSearch.length > 0;
+  const shouldShowMemberListBody = isMemberSearchActive || isMemberListOpen;
+  const memberListTitle = isMemberSearchActive ? "회원 검색 결과" : "전체 회원 목록";
+  const memberListCount = isMemberSearchActive
+    ? filteredMessageUsers.length
+    : messageUsers.length;
 
   useEffect(() => {
     if (!activeConversation) return;
@@ -1215,9 +1370,15 @@ export default function Messages() {
   }, [activeConversation?.id, clearingUnreadConversationId, mobileView]);
 
   useEffect(() => {
-    writeJsonToStorage(PROCESS_STORAGE_KEY, processes);
-    writeJsonToStorage(PROCESS_CREATED_STORAGE_KEY, processCreated);
-  }, [processCreated, processes]);
+    if (!activeConversation) return;
+    if (!isConversationVisible(activeConversation.id)) return;
+    const hasUnreadIncomingMessage = activeMessages.some(
+      (message) => !message.isSelf && !message.readAt
+    );
+    if (!hasUnreadIncomingMessage) return;
+
+    markConversationReadOnServer(activeConversation.id);
+  }, [activeConversation?.id, activeMessages.length, mobileView, socketStatus]);
 
   useEffect(() => {
     writeJsonToStorage(MESSAGE_DRAFTS_STORAGE_KEY, messageDrafts);
@@ -1235,28 +1396,109 @@ export default function Messages() {
     setMessageText(messageDrafts[String(activeConversation.id)] ?? "");
   }, [activeConversation?.id]);
 
-  const toggleTask = (processId: number, taskId: number) => {
-    setProcesses(prev => prev.map(process => {
-      if (process.id === processId) {
-        const tasks = process.tasks.map(task =>
-          task.id === taskId ? { ...task, completed: !task.completed } : task
+  useEffect(() => {
+    if (!activeConversation) {
+      setProcesses([]);
+      setProcessCreated(false);
+      setExpandedProcess(null);
+      setProcessError(null);
+      return;
+    }
+
+    let isCancelled = false;
+    setIsProcessLoading(true);
+    setProcessError(null);
+    setProcesses([]);
+    setProcessCreated(false);
+    setExpandedProcess(null);
+
+    getConversationProcessesApi(activeConversation.id)
+      .then((response) => {
+        if (isCancelled) return;
+        const nextProcesses = response.map(mapApiProcess);
+        setProcesses(nextProcesses);
+        setProcessCreated(nextProcesses.length > 0);
+        setExpandedProcess((currentProcessId) =>
+          nextProcesses.some((process) => process.id === currentProcessId)
+            ? currentProcessId
+            : nextProcesses[0]?.id ?? null
+        );
+      })
+      .catch((error) => {
+        if (isCancelled) return;
+        setProcesses([]);
+        setProcessCreated(false);
+        setExpandedProcess(null);
+        setProcessError(
+          error instanceof Error ? error.message : "작업 프로세스를 불러오지 못했습니다."
+        );
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsProcessLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeConversation?.id]);
+
+  const toggleTask = async (processId: number, taskId: number) => {
+    if (!activeConversation) return;
+
+    const previousProcesses = processes;
+    const targetProcess = processes.find((process) => process.id === processId);
+    const targetTask = targetProcess?.tasks.find((task) => task.id === taskId);
+    if (!targetProcess || !targetTask) return;
+
+    const nextCompleted = !targetTask.completed;
+    setProcessError(null);
+    setProcesses((prev) =>
+      prev.map((process) => {
+        if (process.id !== processId) return process;
+        const tasks = process.tasks.map((task) =>
+          task.id === taskId ? { ...task, completed: nextCompleted } : task
         );
         return {
           ...process,
           status: getProcessStatusFromState(tasks, process.confirmations),
           tasks,
         };
-      }
-      return process;
-    }));
+      })
+    );
+
+    try {
+      const updatedProcess = await updateConversationProcessTaskApi(
+        activeConversation.id,
+        processId,
+        taskId,
+        nextCompleted
+      );
+      const mappedProcess = mapApiProcess(updatedProcess);
+      setProcesses((prev) =>
+        prev.map((process) => (process.id === mappedProcess.id ? mappedProcess : process))
+      );
+    } catch (error) {
+      setProcesses(previousProcesses);
+      setProcessError(
+        error instanceof Error ? error.message : "작업 상태를 저장하지 못했습니다."
+      );
+    }
   };
 
-  const toggleProcessConfirmation = (
+  const toggleProcessConfirmation = async (
     processId: number,
     role: keyof ProcessConfirmations
   ) => {
+    if (!activeConversation) return;
+
+    const previousProcesses = processes;
     const targetProcess = processes.find((process) => process.id === processId);
-    const isConfirming = targetProcess ? !targetProcess.confirmations[role] : false;
+    if (!targetProcess) return;
+
+    const isConfirming = !targetProcess.confirmations[role];
+    setProcessError(null);
 
     setProcesses((prev) =>
       prev.map((process) => {
@@ -1264,7 +1506,7 @@ export default function Messages() {
 
         const confirmations = {
           ...process.confirmations,
-          [role]: !process.confirmations[role],
+          [role]: isConfirming,
         };
 
         return {
@@ -1275,9 +1517,27 @@ export default function Messages() {
       })
     );
 
-    if (isConfirming) {
-      const roleLabel = role === "designer" ? "디자이너" : "클라이언트";
-      showProcessToast(`${roleLabel} 확인이 기록되었습니다.`);
+    try {
+      const updatedProcess = await updateConversationProcessConfirmationApi(
+        activeConversation.id,
+        processId,
+        role,
+        isConfirming
+      );
+      const mappedProcess = mapApiProcess(updatedProcess);
+      setProcesses((prev) =>
+        prev.map((process) => (process.id === mappedProcess.id ? mappedProcess : process))
+      );
+
+      if (isConfirming) {
+        const roleLabel = role === "designer" ? "디자이너" : "클라이언트";
+        showProcessToast(`${roleLabel} 확인이 기록되었습니다.`);
+      }
+    } catch (error) {
+      setProcesses(previousProcesses);
+      setProcessError(
+        error instanceof Error ? error.message : "확인 상태를 저장하지 못했습니다."
+      );
     }
   };
 
@@ -1287,6 +1547,7 @@ export default function Messages() {
       : createDefaultProcessDraft();
     setDraftProcesses(nextDraftProcesses);
     setProcessDraftSnapshot(cloneProcesses(nextDraftProcesses));
+    setProcessError(null);
     setActiveTab("process");
     setIsProcessModalOpen(true);
   };
@@ -1422,8 +1683,8 @@ export default function Messages() {
     setDraggingDraftTask(null);
   };
 
-  const applyProcessDraft = () => {
-    if (draftValidationMessage) return;
+  const applyProcessDraft = async () => {
+    if (draftValidationMessage || !activeConversation || isSavingProcesses) return;
 
     const normalizedProcesses = draftProcesses.map((process) => {
       const tasks = process.tasks.map((task) => ({
@@ -1443,14 +1704,30 @@ export default function Messages() {
       };
     });
 
-    setProcesses(normalizedProcesses);
-    setProcessCreated(true);
-    setActiveTab("process");
-    setExpandedProcess(normalizedProcesses[0]?.id ?? null);
-    setProcessDraftSnapshot(cloneProcesses(normalizedProcesses));
-    setIsProcessModalOpen(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    setIsSavingProcesses(true);
+    setProcessError(null);
+
+    try {
+      const savedProcesses = await saveConversationProcessesApi(
+        activeConversation.id,
+        normalizedProcesses
+      );
+      const nextProcesses = savedProcesses.map(mapApiProcess);
+      setProcesses(nextProcesses);
+      setProcessCreated(true);
+      setActiveTab("process");
+      setExpandedProcess(nextProcesses[0]?.id ?? null);
+      setProcessDraftSnapshot(cloneProcesses(nextProcesses));
+      setIsProcessModalOpen(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (error) {
+      setProcessError(
+        error instanceof Error ? error.message : "작업 프로세스를 저장하지 못했습니다."
+      );
+    } finally {
+      setIsSavingProcesses(false);
+    }
   };
 
   const getProgressPercentage = (tasks: ProcessTask[]) => {
@@ -1525,8 +1802,16 @@ export default function Messages() {
 
   const handleCompleteWork = () => {
     if (!activeConversation) return;
+    const reviewProjectTitle =
+      processes.map((process) => process.title).filter(Boolean).join(", ") ||
+      activeConversation.role;
+
     navigate(
-      `/review/write?client=${encodeURIComponent(activeConversation.name)}&project=${encodeURIComponent(activeConversation.role)}`
+      `/review/write?conversationId=${activeConversation.id}&reviewee=${encodeURIComponent(
+        activeConversation.username
+      )}&client=${encodeURIComponent(activeConversation.name)}&project=${encodeURIComponent(
+        reviewProjectTitle
+      )}`
     );
   };
 
@@ -1604,7 +1889,7 @@ export default function Messages() {
   };
 
   const sendTypingState = (conversationId: number, isTyping: boolean) => {
-    if (!messageSocketRef.current?.isOpen()) return;
+    if (!messageSocketRef.current) return;
 
     try {
       messageSocketRef.current.sendTyping(conversationId, isTyping);
@@ -1734,6 +2019,7 @@ export default function Messages() {
       message: trimmedMessage,
       time: getCurrentTime(),
       createdAt: new Date().toISOString(),
+      readAt: null,
       isSelf: true,
       status: "sending",
       attachments: attachmentsForServer,
@@ -1766,10 +2052,11 @@ export default function Messages() {
         }).then((savedMessage) => ({
           serverId: String(savedMessage.id),
           createdAt: savedMessage.createdAt,
+          readAt: savedMessage.readAt,
         }));
 
     sendMessageToServer
-      .then(({ serverId, createdAt }) => {
+      .then(({ serverId, createdAt, readAt }) => {
         setChatMessages((prev) =>
           prev.map((message) =>
             message.clientId === clientId
@@ -1777,7 +2064,8 @@ export default function Messages() {
                   ...message,
                   id: serverId,
                   serverId,
-                  status: "sent",
+                  status: readAt ? "read" : "sent",
+                  readAt,
                   createdAt: createdAt ?? message.createdAt,
                   time: createdAt ? formatMessageTime(createdAt) : message.time,
                 }
@@ -1785,15 +2073,9 @@ export default function Messages() {
           )
         );
         setConversationReloadKey((key) => key + 1);
-        window.setTimeout(() => {
-          setChatMessages((prev) =>
-            prev.map((message) =>
-              message.clientId === clientId && message.status === "sent"
-                ? { ...message, status: "read" }
-                : message
-            )
-          );
-        }, 900);
+        if (!readAt) {
+          scheduleSentToUnread(clientId);
+        }
       })
       .catch(() => {
         setChatMessages((prev) =>
@@ -1934,18 +2216,10 @@ export default function Messages() {
     event.target.value = "";
   };
 
-  const handleAttachIcon = (icon: string) => {
-    setPendingAttachments((prev) => [
-      ...prev,
-      {
-        id: createClientId("icon"),
-        type: "icon",
-        value: icon,
-        name: `${icon} 아이콘`,
-        uploadStatus: "ready",
-      },
-    ]);
+  const handlePickEmoji = (icon: string) => {
+    updateMessageText(`${messageText}${icon}`);
     setIsIconPickerOpen(false);
+    window.requestAnimationFrame(() => messageInputRef.current?.focus());
   };
 
   const handleAttachIntegration = (provider: IntegrationProvider) => {
@@ -2030,7 +2304,7 @@ export default function Messages() {
     setChatMessages((prev) =>
       updateMessageReactionState(prev, messageClientId, emoji, action, action === "add")
     );
-    if (targetMessage && messageSocketRef.current?.isOpen()) {
+    if (targetMessage && messageSocketRef.current) {
       try {
         messageSocketRef.current.sendReaction({
           conversationId: targetMessage.conversationId,
@@ -2311,6 +2585,7 @@ export default function Messages() {
     switch (status) {
       case "sending": return "전송 중";
       case "sent": return "전송 완료";
+      case "unread": return "안읽음";
       case "read": return "읽음";
       case "failed": return "전송 실패";
       default: return "";
@@ -2321,6 +2596,7 @@ export default function Messages() {
     switch (status) {
       case "sending": return "text-gray-500";
       case "sent": return "text-[#00A88C]";
+      case "unread": return "text-[#B65318]";
       case "read": return "text-[#007E68]";
       case "failed": return "text-[#FF5C3A]";
       default: return "text-gray-500";
@@ -2333,6 +2609,8 @@ export default function Messages() {
         return <Clock className="size-3.5 animate-spin" />;
       case "sent":
         return <Check className="size-3.5" />;
+      case "unread":
+        return <Check className="size-3.5" />;
       case "read":
         return <CheckCheck className="size-3.5" />;
       case "failed":
@@ -2344,59 +2622,80 @@ export default function Messages() {
 
   const messageUserList = (
     <section className="border-t border-gray-100 bg-white px-4 py-4 text-left">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-bold text-[#12382D]">회원 목록</h3>
-        <span className="text-xs font-semibold text-gray-400">
-          {filteredMessageUsers.length}명
+      <button
+        type="button"
+        onClick={() => setIsMemberListOpen((isOpen) => !isOpen)}
+        className="flex w-full items-center justify-between rounded-lg border border-gray-100 bg-[#F7F7F5] px-3 py-2.5 text-left transition-colors hover:border-[#A8F0E4] hover:bg-[#F0FBF7]"
+        aria-expanded={shouldShowMemberListBody}
+      >
+        <span>
+          <span className="block text-sm font-bold text-[#12382D]">{memberListTitle}</span>
+          <span className="mt-0.5 block text-xs font-semibold text-gray-500">
+            {isMemberSearchActive
+              ? "검색한 회원과 바로 대화를 시작할 수 있어요."
+              : "필요할 때 펼쳐서 새 대화를 시작하세요."}
+          </span>
         </span>
-      </div>
+        <span className="ml-3 inline-flex shrink-0 items-center gap-2 text-xs font-bold text-gray-500">
+          {memberListCount}명
+          {shouldShowMemberListBody ? (
+            <ChevronUp className="size-4" />
+          ) : (
+            <ChevronDown className="size-4" />
+          )}
+        </span>
+      </button>
 
-      {isMessageUsersLoading && (
-        <p className="rounded-lg bg-[#F7F7F5] px-3 py-4 text-center text-xs font-semibold text-gray-500">
-          회원 목록을 불러오는 중입니다.
-        </p>
-      )}
+      {shouldShowMemberListBody && (
+        <div className="mt-3">
+          {isMessageUsersLoading && (
+            <p className="rounded-lg bg-[#F7F7F5] px-3 py-4 text-center text-xs font-semibold text-gray-500">
+              회원 목록을 불러오는 중입니다.
+            </p>
+          )}
 
-      {!isMessageUsersLoading && messageUsersError && (
-        <p className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-4 text-center text-xs font-semibold text-[#B13A21]">
-          {messageUsersError}
-        </p>
-      )}
+          {!isMessageUsersLoading && messageUsersError && (
+            <p className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-4 text-center text-xs font-semibold text-[#B13A21]">
+              {messageUsersError}
+            </p>
+          )}
 
-      {!isMessageUsersLoading && !messageUsersError && filteredMessageUsers.length === 0 && (
-        <p className="rounded-lg bg-[#F7F7F5] px-3 py-4 text-center text-xs font-semibold text-gray-500">
-          표시할 회원이 없습니다.
-        </p>
-      )}
+          {!isMessageUsersLoading && !messageUsersError && filteredMessageUsers.length === 0 && (
+            <p className="rounded-lg bg-[#F7F7F5] px-3 py-4 text-center text-xs font-semibold text-gray-500">
+              표시할 회원이 없습니다.
+            </p>
+          )}
 
-      {!isMessageUsersLoading && !messageUsersError && filteredMessageUsers.length > 0 && (
-        <div className="space-y-2">
-          {filteredMessageUsers.map((user) => {
-            const isCreating = creatingConversationUserId === user.userId;
+          {!isMessageUsersLoading && !messageUsersError && filteredMessageUsers.length > 0 && (
+            <div className="space-y-2">
+              {filteredMessageUsers.map((user) => {
+                const isCreating = creatingConversationUserId === user.userId;
 
-            return (
-              <button
-                key={user.userId}
-                type="button"
-                disabled={isCreating}
-                onClick={() => handleStartConversationWithUser(user)}
-                className="flex w-full items-center gap-3 rounded-lg border border-gray-100 bg-white p-3 text-left shadow-sm transition-all hover:border-[#A8F0E4] hover:bg-[#F0FBF7] disabled:cursor-wait disabled:opacity-70"
-              >
-                <ImageWithFallback
-                  src={user.avatar}
-                  alt={user.name}
-                  className="size-10 shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-[#12382D]">{user.name}</p>
-                  <p className="truncate text-xs font-semibold text-gray-500">{user.title}</p>
-                </div>
-                <span className="shrink-0 rounded-lg bg-[#E8FBF7] px-2.5 py-1 text-xs font-bold text-[#007E68]">
-                  {isCreating ? "생성 중" : "메시지"}
-                </span>
-              </button>
-            );
-          })}
+                return (
+                  <button
+                    key={user.userId}
+                    type="button"
+                    disabled={isCreating}
+                    onClick={() => handleStartConversationWithUser(user)}
+                    className="flex w-full items-center gap-3 rounded-lg border border-gray-100 bg-white p-3 text-left shadow-sm transition-all hover:border-[#A8F0E4] hover:bg-[#F0FBF7] disabled:cursor-wait disabled:opacity-70"
+                  >
+                    <ImageWithFallback
+                      src={user.avatar}
+                      alt={user.name}
+                      className="size-10 shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-[#12382D]">{user.name}</p>
+                      <p className="truncate text-xs font-semibold text-gray-500">{user.title}</p>
+                    </div>
+                    <span className="shrink-0 rounded-lg bg-[#E8FBF7] px-2.5 py-1 text-xs font-bold text-[#007E68]">
+                      {isCreating ? "생성 중" : "메시지"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </section>
@@ -2731,10 +3030,14 @@ export default function Messages() {
             {filteredConversations.length === 0 && (
               <div className="px-4 py-10 text-center">
                 <p className="text-sm font-semibold text-gray-600">
-                  검색 결과가 없습니다.
+                  {isMemberSearchActive && filteredMessageUsers.length > 0
+                    ? "대화 검색 결과가 없습니다."
+                    : "검색 결과가 없습니다."}
                 </p>
                 <p className="mt-1 text-xs text-gray-400">
-                  이름, 프로젝트, 마지막 메시지를 다시 확인해보세요.
+                  {isMemberSearchActive && filteredMessageUsers.length > 0
+                    ? "아래 회원 검색 결과에서 새 대화를 시작해보세요."
+                    : "이름, 프로젝트, 마지막 메시지를 다시 확인해보세요."}
                 </p>
               </div>
             )}
@@ -3198,6 +3501,7 @@ export default function Messages() {
               </div>
               <div className="relative flex min-w-0 flex-1 items-center gap-2 rounded-2xl border-2 border-transparent bg-[#F7F7F5] px-3 py-3 transition-all focus-within:border-[#00C9A7] sm:px-4">
                 <input
+                  ref={messageInputRef}
                   type="text"
                   value={messageText}
                   onChange={(event) => updateMessageText(event.target.value)}
@@ -3209,7 +3513,7 @@ export default function Messages() {
                   type="button"
                   onClick={() => setIsIconPickerOpen((prev) => !prev)}
                   className="p-1 hover:bg-[#A8F0E4]/30 rounded-lg transition-colors"
-                  aria-label="아이콘 첨부"
+                  aria-label="이모티콘 입력"
                 >
                   <Smile className="size-5 text-gray-600" />
                 </button>
@@ -3230,14 +3534,14 @@ export default function Messages() {
                   className="hidden"
                 />
                 {isIconPickerOpen && (
-                  <div className="absolute bottom-full right-2 mb-3 grid grid-cols-6 gap-1 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+                  <div className="absolute bottom-full right-2 z-30 mb-3 grid grid-cols-6 gap-1 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
                     {attachableIcons.map((icon) => (
                       <button
                         key={icon}
                         type="button"
-                        onClick={() => handleAttachIcon(icon)}
+                        onClick={() => handlePickEmoji(icon)}
                         className="flex size-9 items-center justify-center rounded-lg text-xl transition-colors hover:bg-[#A8F0E4]/20"
-                        aria-label={`${icon} 아이콘 첨부`}
+                        aria-label={`${icon} 이모티콘 입력`}
                       >
                         {icon}
                       </button>
@@ -3424,7 +3728,17 @@ export default function Messages() {
                   </p>
                 </div>
 
-                {!processCreated ? (
+                {processError && (
+                  <div className="mb-4 rounded-lg border border-[#FFD4C8] bg-[#FFF7F4] px-3 py-2 text-sm font-semibold text-[#D84325]">
+                    {processError}
+                  </div>
+                )}
+
+                {isProcessLoading ? (
+                  <div className="rounded-lg border border-dashed border-gray-200 bg-[#FAFBF8] px-4 py-8 text-center text-sm font-semibold text-gray-500">
+                    작업 프로세스를 불러오는 중입니다.
+                  </div>
+                ) : !processCreated ? (
                   null
                 ) : (
                   <>
@@ -4065,10 +4379,10 @@ export default function Messages() {
             <div className="flex flex-col gap-3 border-t border-gray-200 bg-[#FAFBF8] p-4 md:flex-row md:items-center md:justify-between">
               <p
                 className={`text-xs font-semibold ${
-                  draftValidationMessage ? "text-[#D84325]" : "text-gray-500"
+                  draftValidationMessage || processError ? "text-[#D84325]" : "text-gray-500"
                 }`}
               >
-                {draftValidationMessage || "미리보기를 확인한 뒤 저장할 수 있어요."}
+                {draftValidationMessage || processError || "미리보기를 확인한 뒤 저장할 수 있어요."}
               </p>
               <div className="flex items-center justify-end gap-2">
                 <button
@@ -4081,14 +4395,14 @@ export default function Messages() {
                 <button
                   type="button"
                   onClick={applyProcessDraft}
-                  disabled={Boolean(draftValidationMessage)}
+                  disabled={Boolean(draftValidationMessage) || isSavingProcesses}
                   className={`rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all ${
-                    draftValidationMessage
+                    draftValidationMessage || isSavingProcesses
                       ? "cursor-not-allowed bg-gray-300"
                       : "bg-[#FF5C3A] hover:bg-[#E94F2F] hover:shadow-md"
                   }`}
                 >
-                  프로세스 저장
+                  {isSavingProcesses ? "저장 중..." : "프로세스 저장"}
                 </button>
               </div>
             </div>
