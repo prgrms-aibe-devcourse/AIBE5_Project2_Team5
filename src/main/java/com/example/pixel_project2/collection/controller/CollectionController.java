@@ -5,6 +5,7 @@ import com.example.pixel_project2.collection.dto.CollectionFolderResponse;
 import com.example.pixel_project2.collection.dto.CollectionPolicyResponse;
 import com.example.pixel_project2.collection.dto.CreateCollectionFolderRequest;
 import com.example.pixel_project2.collection.dto.RenameCollectionFolderRequest;
+import com.example.pixel_project2.collection.dto.ReorderFoldersRequest;
 import com.example.pixel_project2.collection.dto.SaveFeedToCollectionRequest;
 import com.example.pixel_project2.collection.service.CollectionService;
 import com.example.pixel_project2.common.dto.ApiResponse;
@@ -63,6 +64,15 @@ public class CollectionController {
             @Valid @RequestBody RenameCollectionFolderRequest request
     ) {
         return ApiResponse.ok("컬렉션 폴더 이름을 바꿨습니다.", collectionService.renameFolder(currentUser, folderId, request));
+    }
+
+    @PostMapping("/reorder")
+    public ApiResponse<Void> reorderFolders(
+            @AuthenticationPrincipal AuthenticatedUser currentUser,
+            @Valid @RequestBody ReorderFoldersRequest request
+    ) {
+        collectionService.reorderFolders(currentUser, request);
+        return ApiResponse.ok("컬렉션 순서를 변경했습니다.", null);
     }
 
     @DeleteMapping("/folders/{folderId}")

@@ -12,7 +12,7 @@ public interface CollectionFolderRepository extends JpaRepository<CollectionFold
     @Query("select f from CollectionFolder f join fetch f.user where f.folder_id = :folderId")
     Optional<CollectionFolder> findByIdWithUser(@Param("folderId") Long folderId);
 
-    @Query("select f from CollectionFolder f where f.user.id = :userId order by f.createdAt desc")
+    @Query("select f from CollectionFolder f where f.user.id = :userId order by f.sortOrder asc nulls last, f.createdAt desc")
     List<CollectionFolder> findByUserId(@Param("userId") Long userId);
 
     @Query("select f from CollectionFolder f where f.user.id = :userId and f.folderName = :folderName")

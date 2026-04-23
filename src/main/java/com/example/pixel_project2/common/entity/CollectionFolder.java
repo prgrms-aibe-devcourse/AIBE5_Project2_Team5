@@ -28,4 +28,7 @@ public class CollectionFolder extends BaseTimeEntity {
 
     @Column(name = "folder_name", nullable = false, length = 100)
     private String folderName;
+
+    @Column(name = "sort_order")
+    private Integer sortOrder;
 }
