@@ -65,3 +65,6 @@ Thumbs.db
 ### Root-level accidental npm files ###
 /package.json
 /package-lock.json
+
+api/
+api_temp/

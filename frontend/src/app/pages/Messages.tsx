@@ -1,16 +1,21 @@
 import Navigation from "../components/Navigation";
 import { Edit, Search, Info, Send, Image, Smile, AtSign, Sparkles, Calendar, FileText, CheckCircle, Circle, ChevronDown, ChevronUp, ThumbsUp, XCircle, Paperclip, Figma, ExternalLink, Plus, Clock, Check, CheckCheck, Trash2, GripVertical, Eye, ArrowLeft, Bookmark } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import {
   getUnreadMessageConversationIds,
   markConversationRead,
 } from "../utils/notificationState";
 import {
-  getFeedProposalMessages,
-  type FeedProposalMessage,
-} from "../utils/feedProposalMessages";
+  getConversationMessagesApi,
+  getMessageConversationsApi,
+  sendConversationMessageApi,
+  type ChatMessageResponse as ApiChatMessageResponse,
+  type MessageConversationResponse as ApiMessageConversationResponse,
+} from "../api/messageApi";
+import { createMessageSocket, type IncomingChatSocketMessage } from "../api/messageSocket";
+import { getCurrentUser } from "../utils/auth";
 
 type AttachmentUploadStatus = "uploading" | "ready" | "failed";
 type IntegrationProvider = "figma" | "adobe" | "photoshop" | "pinterest";
@@ -101,9 +106,8 @@ type ProcessToast = {
 };
 
 const CURRENT_USER_ID = "me";
-const ACTIVE_PARTNER_ID = "kim-minjae";
-const PROCESS_STORAGE_KEY = "pickxel:message-processes";
-const PROCESS_CREATED_STORAGE_KEY = "pickxel:message-processes-created";
+const PROCESS_STORAGE_KEY = "pickxel:message-processes:v2";
+const PROCESS_CREATED_STORAGE_KEY = "pickxel:message-processes-created:v2";
 const MESSAGE_DRAFTS_STORAGE_KEY = "pickxel:message-drafts";
 const LEFT_CONVERSATIONS_STORAGE_KEY = "pickxel:left-message-conversations";
 
@@ -171,6 +175,15 @@ const getUrlHost = (url: string) => {
   } catch {
     return url.replace(/^https?:\/\//i, "").split("/")[0];
   }
+};
+
+const formatMessageTime = (createdAt?: string) => {
+  const date = createdAt ? new Date(createdAt) : new Date();
+  return new Intl.DateTimeFormat("ko-KR", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(Number.isNaN(date.getTime()) ? new Date() : date);
 };
 
 const integrationProviderMeta: Record<
@@ -325,333 +338,102 @@ const readStoredMessageDrafts = () =>
 const readLeftConversationIds = () =>
   readJsonFromStorage<number[]>(LEFT_CONVERSATIONS_STORAGE_KEY, []);
 
-const wait = (duration: number) =>
-  new Promise((resolve) => {
-    window.setTimeout(resolve, duration);
-  });
-
-const sendMessageToSocket = async (message: ChatMessage) => {
-  // Later this becomes the WebSocket send call and reconciles by clientId.
-  await wait(650);
-  return { serverId: message.id };
+type Conversation = {
+  id: number;
+  partnerId: string;
+  username: string;
+  name: string;
+  profileName: string;
+  title: string;
+  role: string;
+  message: string;
+  time: string;
+  unread: boolean;
+  unreadCount: number;
+  online: boolean;
+  statusText: string;
+  avatar: string;
+  bio: string;
+  sharedMedia: Array<{
+    id: number;
+    title: string;
+    src: string;
+  }>;
 };
 
-const conversations = [
-  {
-    id: 1,
-    partnerId: ACTIVE_PARTNER_ID,
-    username: "김민재",
-    name: "김민재 디렉터",
-    profileName: "김민재",
-    title: "UX 전략 디렉터 @ StudioX",
-    role: "크리에이티브팀 · 브랜드 아이덴티티 프로젝트",
-    message: "네, 제안해주신 방향으로 진행해도 좋겠습니다.",
-    time: "오전 10:45",
-    unread: true,
-    unreadCount: 2,
-    online: true,
-    statusText: "지금 활동 중",
-    avatar: "https://i.pravatar.cc/240?img=12",
-    bio: "디지털 브랜드 전략과 사용자 경험 설계를 전문으로 하는 크리에이티브 디렉터입니다. 명확한 콘셉트와 일관된 비주얼 시스템으로 브랜드의 가치를 전달합니다.",
-    sharedMedia: [
-      {
-        id: 1,
-        title: "브랜드 무드보드",
-        src: "https://images.unsplash.com/photo-1772272935464-2e90d8218987?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-      {
-        id: 2,
-        title: "컬러 팔레트 시안",
-        src: "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-      {
-        id: 3,
-        title: "가이드라인 초안",
-        src: "https://images.unsplash.com/photo-1718220216044-006f43e3a9b1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-    ],
-  },
-  {
-    id: 2,
-    partnerId: "lee-soyeon",
-    username: "이소연",
-    name: "이소연 일러스트레이터",
-    profileName: "이소연",
-    title: "일러스트레이터 · 캐릭터 아트",
-    role: "일러스트 의뢰 상담",
-    message: "필요한 자료 확인해서 오늘 중으로 정리해드릴게요.",
-    time: "어제",
-    unread: false,
-    unreadCount: 0,
+const conversations: Conversation[] = [];
+
+const getRoleLabel = (role: ApiMessageConversationResponse["partnerRole"]) =>
+  role === "DESIGNER" ? "디자이너" : "클라이언트";
+
+const formatConversationTime = (createdAt?: string | null) => {
+  if (!createdAt) return "";
+
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+};
+
+const mapConversationResponse = (
+  conversation: ApiMessageConversationResponse
+): Conversation => {
+  const partnerDisplayName =
+    conversation.partnerNickname || conversation.partnerName || "사용자";
+  const title = conversation.partnerJob || getRoleLabel(conversation.partnerRole);
+
+  return {
+    id: conversation.id,
+    partnerId: String(conversation.partnerUserId),
+    username: conversation.partnerLoginId || partnerDisplayName,
+    name: partnerDisplayName,
+    profileName: partnerDisplayName,
+    title,
+    role: title,
+    message: conversation.lastMessage ?? "새 대화를 시작해보세요.",
+    time: formatConversationTime(conversation.lastMessageAt),
+    unread: conversation.unreadCount > 0,
+    unreadCount: conversation.unreadCount,
     online: false,
-    statusText: "어제 활동",
-    avatar: "https://i.pravatar.cc/240?img=47",
-    bio: "브랜드 캐릭터와 에디토리얼 일러스트를 작업합니다. 따뜻한 색감과 명확한 스토리텔링을 중심으로 시안을 제안합니다.",
-    sharedMedia: [
-      {
-        id: 1,
-        title: "캐릭터 러프",
-        src: "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-      {
-        id: 2,
-        title: "컬러 스터디",
-        src: "https://images.unsplash.com/photo-1700605295478-2478ac29d2ec?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-      {
-        id: 3,
-        title: "레퍼런스 보드",
-        src: "https://images.unsplash.com/photo-1623932078839-44eb01fbee63?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-    ],
-  },
-  {
-    id: 3,
-    partnerId: "metaverse-team",
-    username: "메타버스 프로젝트 팀",
-    name: "메타버스 프로젝트 팀",
-    profileName: "메타버스 프로젝트 팀",
-    title: "XR 콘텐츠 제작 팀",
-    role: "새 미디어 30개 공유",
-    message: "프로젝트 참고 이미지와 시안을 공유했습니다.",
-    time: "토요일",
-    unread: false,
-    unreadCount: 0,
-    online: false,
-    statusText: "토요일 활동",
-    avatar: "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=240",
-    bio: "3D 공간, 인터랙션, 브랜드 경험을 결합한 메타버스 프로젝트를 진행하는 팀입니다. 월드 콘셉트와 에셋 제작을 함께 관리합니다.",
-    sharedMedia: [
-      {
-        id: 1,
-        title: "월드 콘셉트",
-        src: "https://images.unsplash.com/photo-1595411425732-e69c1abe2763?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-      {
-        id: 2,
-        title: "공간 시안",
-        src: "https://images.unsplash.com/photo-1618761714954-0b8cd0026356?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-      {
-        id: 3,
-        title: "아바타 레퍼런스",
-        src: "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-    ],
-  },
-];
+    statusText: "메시지 가능",
+    avatar:
+      conversation.partnerProfileImage ||
+      `https://i.pravatar.cc/150?u=message-${conversation.partnerUserId}`,
+    bio: conversation.partnerIntroduction || "프로젝트 대화를 진행 중입니다.",
+    sharedMedia: [],
+  };
+};
 
-type Conversation = (typeof conversations)[number];
+const mapChatMessageResponse = (
+  message: ApiChatMessageResponse,
+  currentUserId?: number
+): ChatMessage => {
+  const isSelf = currentUserId === message.senderUserId;
+  const messageId = String(message.id);
 
-const createProposalConversation = (
-  proposal: FeedProposalMessage
-): Conversation => ({
-  id: proposal.conversationId,
-  partnerId: `feed-author-${proposal.feedId}-${proposal.authorName}`,
-  username: proposal.authorName,
-  name: proposal.authorName,
-  profileName: proposal.authorName,
-  title: proposal.authorRole,
-  role: `${proposal.feedCategory ?? "피드"} · 제안 대화`,
-  message: proposal.message,
-  time: "방금",
-  unread: false,
-  unreadCount: 0,
-  online: false,
-  statusText: "피드에서 연결됨",
-  avatar: proposal.authorAvatar,
-  bio: `"${proposal.feedTitle}" 게시물에서 시작된 프로젝트 제안 대화입니다.`,
-  sharedMedia: [
-    {
-      id: proposal.feedId,
-      title: proposal.feedTitle,
-      src: proposal.feedImage,
-    },
-  ],
-});
+  return {
+    id: messageId,
+    clientId: message.clientId || messageId,
+    serverId: messageId,
+    conversationId: message.conversationId,
+    senderId: isSelf ? CURRENT_USER_ID : String(message.senderUserId),
+    sender: isSelf ? "나" : message.senderName,
+    message: message.message,
+    time: formatMessageTime(message.createdAt),
+    createdAt: message.createdAt,
+    isSelf,
+    status: "sent",
+    attachments: (message.attachments ?? []) as MessageAttachment[],
+  };
+};
 
-const createProposalChatMessage = (proposal: FeedProposalMessage): ChatMessage => ({
-  id: proposal.id,
-  clientId: proposal.id,
-  serverId: proposal.id,
-  conversationId: proposal.conversationId,
-  senderId: CURRENT_USER_ID,
-  sender: "나",
-  message: proposal.message,
-  time: "방금",
-  createdAt: proposal.createdAt,
-  isSelf: true,
-  status: "sent",
-  attachments: [
-    {
-      id: `${proposal.id}-feed-image`,
-      type: "image",
-      src: proposal.feedImage,
-      name: proposal.feedTitle,
-      uploadStatus: "ready",
-    },
-  ],
-});
-
-const messages = [
-  {
-    id: "msg-1",
-    clientId: "seed-msg-1",
-    serverId: "msg-1",
-    conversationId: 1,
-    senderId: ACTIVE_PARTNER_ID,
-    sender: "김민재 디렉터",
-    message:
-      "안녕하세요! 이번 브랜드 아이덴티티 가이드라인 작업과 관련해서 전체적인 컬러 톤과 방향을 먼저 논의하고 싶습니다.",
-    time: "오전 10:32",
-    createdAt: "2024-05-24T01:32:00.000Z",
-    isSelf: false,
-    status: "read",
-    reactions: [
-      { emoji: "👀", count: 1, reactedByMe: true },
-      { emoji: "👍", count: 2 },
-    ],
-  },
-  {
-    id: "msg-2",
-    clientId: "seed-msg-2",
-    serverId: "msg-2",
-    conversationId: 1,
-    senderId: CURRENT_USER_ID,
-    sender: "나",
-    message:
-      "좋습니다! 메인 컬러는 'Electric Mint'를 중심으로 두고, 보조 컬러는 차분한 그레이 톤으로 맞추면 어떨까요?",
-    time: "오전 10:40",
-    createdAt: "2024-05-24T01:40:00.000Z",
-    isSelf: true,
-    status: "read",
-    highlighted: true,
-    reactions: [{ emoji: "🎨", count: 1 }],
-  },
-  {
-    id: "msg-3",
-    clientId: "seed-msg-3",
-    serverId: "msg-3",
-    conversationId: 1,
-    senderId: ACTIVE_PARTNER_ID,
-    sender: "김민재 디렉터",
-    message:
-      "네, 제안해주신 컬러 방향이 프로젝트 분위기와 잘 맞는 것 같습니다. 다음 단계로 넘어가도 좋겠습니다. Plus Jakarta Sans의 모던한 느낌도 브랜드에 잘 어울립니다.",
-    time: "오전 10:45",
-    createdAt: "2024-05-24T01:45:00.000Z",
-    isSelf: false,
-    status: "read",
-    reactions: [{ emoji: "✅", count: 1, reactedByMe: true }],
-  },
-  {
-    id: "msg-4",
-    clientId: "seed-msg-4",
-    serverId: "msg-4",
-    conversationId: 2,
-    senderId: "lee-soyeon",
-    sender: "이소연 일러스트레이터",
-    message:
-      "안녕하세요! 캐릭터 일러스트 의뢰 자료 확인했습니다. 분위기는 따뜻하고 귀여운 방향으로 잡으면 좋을 것 같아요.",
-    time: "어제 오후 2:18",
-    createdAt: "2024-05-23T05:18:00.000Z",
-    isSelf: false,
-    status: "sent",
-  },
-  {
-    id: "msg-5",
-    clientId: "seed-msg-5",
-    serverId: "msg-5",
-    conversationId: 2,
-    senderId: CURRENT_USER_ID,
-    sender: "나",
-    message:
-      "좋아요. 표정 시안은 3가지 정도로 보고 싶고, 메인 컬러는 브랜드 팔레트에 맞춰주세요.",
-    time: "어제 오후 2:27",
-    createdAt: "2024-05-23T05:27:00.000Z",
-    isSelf: true,
-    status: "sent",
-  },
-  {
-    id: "msg-6",
-    clientId: "seed-msg-6",
-    serverId: "msg-6",
-    conversationId: 2,
-    senderId: "lee-soyeon",
-    sender: "이소연 일러스트레이터",
-    message:
-      "네, 필요한 자료 확인해서 오늘 중으로 러프 스케치와 컬러 방향을 정리해드릴게요.",
-    time: "어제 오후 2:35",
-    createdAt: "2024-05-23T05:35:00.000Z",
-    isSelf: false,
-    status: "sent",
-  },
-  {
-    id: "msg-7",
-    clientId: "seed-msg-7",
-    serverId: "msg-7",
-    conversationId: 3,
-    senderId: "metaverse-team",
-    sender: "메타버스 프로젝트 팀",
-    message:
-      "프로젝트 참고 이미지와 공간 콘셉트 시안을 공유했습니다. 월드 분위기는 미래적인 갤러리 톤으로 잡았습니다.",
-    time: "토요일 오전 11:12",
-    createdAt: "2024-05-18T02:12:00.000Z",
-    isSelf: false,
-    status: "sent",
-  },
-  {
-    id: "msg-8",
-    clientId: "seed-msg-8",
-    serverId: "msg-8",
-    conversationId: 3,
-    senderId: CURRENT_USER_ID,
-    sender: "나",
-    message:
-      "좋습니다. 입장 동선과 메인 전시 구역이 구분되면 더 보기 좋을 것 같아요.",
-    time: "토요일 오전 11:25",
-    createdAt: "2024-05-18T02:25:00.000Z",
-    isSelf: true,
-    status: "sent",
-  },
-  {
-    id: "msg-9",
-    clientId: "seed-msg-9",
-    serverId: "msg-9",
-    conversationId: 3,
-    senderId: "metaverse-team",
-    sender: "메타버스 프로젝트 팀",
-    message:
-      "확인했습니다. 동선 분리 버전으로 수정해서 다음 회의 전에 업데이트하겠습니다.",
-    time: "토요일 오전 11:40",
-    createdAt: "2024-05-18T02:40:00.000Z",
-    isSelf: false,
-    status: "sent",
-  },
-] satisfies ChatMessage[];
-
-const quickActions = [
-  { label: "AI 메시지 도우미", icon: <Sparkles className="size-4" /> },
-  { label: "미팅 일정 잡기", icon: <Calendar className="size-4" /> },
-  { label: "프로젝트 문서 첨부", icon: <FileText className="size-4" /> },
-];
-
-const sharedMedia = [
-  {
-    id: 1,
-    title: "브랜드 무드보드",
-    src: "https://images.unsplash.com/photo-1772272935464-2e90d8218987?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-  },
-  {
-    id: 2,
-    title: "컬러 팔레트 시안",
-    src: "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-  },
-  {
-    id: 3,
-    title: "가이드라인 초안",
-    src: "https://images.unsplash.com/photo-1718220216044-006f43e3a9b1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-  },
-];
+const messages: ChatMessage[] = [];
 
 const attachableIcons = [
   "👍",
@@ -765,75 +547,31 @@ const getProcessStatusFromState = (
   return "pending";
 };
 
-const initialProcesses: ProjectProcess[] = [
-  {
-    id: 1,
-    title: "프로젝트 기획",
-    status: "completed",
-    confirmations: { designer: true, client: true },
-    tasks: [
-      { id: 1, text: "클라이언트 요구사항 분석", completed: true },
-      { id: 2, text: "프로젝트 범위 정의", completed: true },
-      { id: 3, text: "일정 및 예산 확정", completed: true },
-    ],
-  },
-  {
-    id: 2,
-    title: "디자인 작업",
-    status: "in-progress",
-    confirmations: { designer: true, client: false },
-    tasks: [
-      { id: 4, text: "와이어프레임 제작", completed: true },
-      { id: 5, text: "시각 디자인 시안", completed: true },
-      { id: 6, text: "컬러 팔레트 확정", completed: false },
-      { id: 7, text: "타이포그래피 선정", completed: false },
-    ],
-  },
-  {
-    id: 3,
-    title: "피드백 및 수정",
-    status: "pending",
-    confirmations: createEmptyProcessConfirmations(),
-    tasks: [
-      { id: 8, text: "1차 클라이언트 리뷰", completed: false },
-      { id: 9, text: "수정사항 반영", completed: false },
-      { id: 10, text: "최종 승인", completed: false },
-    ],
-  },
-  {
-    id: 4,
-    title: "최종 납품",
-    status: "pending",
-    confirmations: createEmptyProcessConfirmations(),
-    tasks: [
-      { id: 11, text: "최종 파일 정리", completed: false },
-      { id: 12, text: "가이드라인 문서 작성", completed: false },
-      { id: 13, text: "프로젝트 완료", completed: false },
-    ],
-  },
-];
+const initialProcesses: ProjectProcess[] = [];
 
 export default function Messages() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const currentUser = getCurrentUser();
+  const requestedConversationId = Number(searchParams.get("conversationId") ?? 0);
   const storedProcessesRef = useRef<ProjectProcess[] | null>(readStoredProcesses());
   const storedMessageDraftsRef = useRef<Record<string, string>>(readStoredMessageDrafts());
-  const storedFeedProposalMessagesRef = useRef<FeedProposalMessage[]>(
-    getFeedProposalMessages()
-  );
-  const [proposalConversations] = useState<Conversation[]>(() =>
-    storedFeedProposalMessagesRef.current.map(createProposalConversation)
-  );
+  const [serverConversations, setServerConversations] = useState<Conversation[]>([]);
+  const [isConversationsLoading, setIsConversationsLoading] = useState(true);
+  const [conversationError, setConversationError] = useState<string | null>(null);
+  const [conversationReloadKey, setConversationReloadKey] = useState(0);
   const [leftConversationIds, setLeftConversationIds] = useState<number[]>(
     readLeftConversationIds
   );
-  const rawConversations = [...proposalConversations, ...conversations];
+  const rawConversations = [...serverConversations, ...conversations];
   const allConversations = rawConversations.filter(
     (conversation) => !leftConversationIds.includes(conversation.id)
   );
+  const messageSocketConversationIds = allConversations
+    .map((conversation) => conversation.id)
+    .join("|");
   const [activeTab, setActiveTab] = useState<"profile" | "process">("profile");
-  const [activeConversationId, setActiveConversationId] = useState(
-    () => allConversations[0]?.id ?? conversations[0].id
-  );
+  const [activeConversationId, setActiveConversationId] = useState(0);
   const [mobileView, setMobileView] = useState<"list" | "chat" | "detail">("list");
   const [conversationSearch, setConversationSearch] = useState("");
   const [processes, setProcesses] = useState<ProjectProcess[]>(
@@ -858,15 +596,12 @@ export default function Messages() {
   );
   const [clearingUnreadConversationId, setClearingUnreadConversationId] =
     useState<number | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => [
-    ...messages,
-    ...storedFeedProposalMessagesRef.current.map(createProposalChatMessage),
-  ]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => [...messages]);
   const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>(
     () => storedMessageDraftsRef.current
   );
   const [messageText, setMessageText] = useState(
-    () => storedMessageDraftsRef.current[String(allConversations[0]?.id ?? conversations[0].id)] ?? ""
+    () => storedMessageDraftsRef.current[String(allConversations[0]?.id ?? 0)] ?? ""
   );
   const [pendingAttachments, setPendingAttachments] = useState<MessageAttachment[]>([]);
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
@@ -888,14 +623,189 @@ export default function Messages() {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageSocketRef = useRef<ReturnType<typeof createMessageSocket> | null>(null);
+  const activeConversationIdRef = useRef(activeConversationId);
   const activeConversation =
     allConversations.find((conversation) => conversation.id === activeConversationId) ??
     allConversations[0] ??
-    rawConversations[0];
-  const activeMessages = chatMessages.filter(
-    (message) => message.conversationId === activeConversation.id
-  );
-  const isPartnerTyping = typingConversationId === activeConversation.id;
+    null;
+  const activeMessages = activeConversation
+    ? chatMessages.filter((message) => message.conversationId === activeConversation.id)
+    : [];
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadConversations() {
+      try {
+        setIsConversationsLoading(true);
+        setConversationError(null);
+        const conversationResponses = await getMessageConversationsApi();
+
+        if (!mounted) return;
+
+        const nextConversations = conversationResponses.map(mapConversationResponse);
+        setServerConversations(nextConversations);
+
+        const requestedId = Number.isFinite(requestedConversationId)
+          ? requestedConversationId
+          : 0;
+        const requestedConversation = nextConversations.find(
+          (conversation) => conversation.id === requestedId
+        );
+
+        setActiveConversationId((currentId) => {
+          if (nextConversations.some((conversation) => conversation.id === currentId)) {
+            return currentId;
+          }
+          return requestedConversation?.id ?? nextConversations[0]?.id ?? 0;
+        });
+      } catch (error) {
+        if (!mounted) return;
+        setConversationError(
+          error instanceof Error ? error.message : "대화 목록을 불러오지 못했습니다."
+        );
+      } finally {
+        if (mounted) {
+          setIsConversationsLoading(false);
+        }
+      }
+    }
+
+    loadConversations();
+
+    return () => {
+      mounted = false;
+    };
+  }, [requestedConversationId, conversationReloadKey]);
+
+  useEffect(() => {
+    if (!activeConversation) return;
+
+    let mounted = true;
+    const conversationId = activeConversation.id;
+
+    async function loadConversationMessages() {
+      try {
+        const messageResponses = await getConversationMessagesApi(conversationId);
+
+        if (!mounted) return;
+
+        const nextMessages = messageResponses.map((message) =>
+          mapChatMessageResponse(message, currentUser?.userId)
+        );
+
+        setChatMessages((prev) => {
+          const pendingMessages = prev.filter(
+            (message) =>
+              message.conversationId === conversationId && message.status === "sending"
+          );
+          const otherMessages = prev.filter(
+            (message) => message.conversationId !== conversationId
+          );
+          const pendingMessagesNotInHistory = pendingMessages.filter(
+            (pendingMessage) =>
+              !nextMessages.some((message) => message.clientId === pendingMessage.clientId)
+          );
+
+          return [...otherMessages, ...nextMessages, ...pendingMessagesNotInHistory];
+        });
+      } catch (error) {
+        setConversationError(
+          error instanceof Error ? error.message : "메시지 내역을 불러오지 못했습니다."
+        );
+      }
+    }
+
+    loadConversationMessages();
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeConversation?.id, currentUser?.userId]);
+
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    const conversationIds = messageSocketConversationIds
+      .split("|")
+      .map((conversationId) => Number(conversationId))
+      .filter((conversationId) => Number.isFinite(conversationId));
+
+    const socket = createMessageSocket({
+      onOpen: () => {
+        if (conversationIds.length > 0) {
+          socket.subscribe(conversationIds);
+        }
+      },
+      onMessage: (incomingMessage: IncomingChatSocketMessage) => {
+        const isSelfMessage = currentUser?.userId === incomingMessage.senderUserId;
+        const nextMessage: ChatMessage = {
+          id: incomingMessage.serverId,
+          clientId: incomingMessage.clientId || incomingMessage.serverId,
+          serverId: incomingMessage.serverId,
+          conversationId: incomingMessage.conversationId,
+          senderId: isSelfMessage ? CURRENT_USER_ID : String(incomingMessage.senderUserId),
+          sender: isSelfMessage ? "나" : incomingMessage.senderName || "상대",
+          message: incomingMessage.message,
+          time: formatMessageTime(incomingMessage.createdAt),
+          createdAt: incomingMessage.createdAt,
+          isSelf: isSelfMessage,
+          status: "sent",
+          attachments: (incomingMessage.attachments ?? []) as MessageAttachment[],
+        };
+
+        setChatMessages((prev) => {
+          const existingMessageIndex = prev.findIndex(
+            (message) => message.clientId === nextMessage.clientId
+          );
+
+          if (existingMessageIndex < 0) {
+            return [...prev, nextMessage];
+          }
+
+          return prev.map((message, index) =>
+            index === existingMessageIndex
+              ? {
+                  ...message,
+                  id: nextMessage.id,
+                  serverId: nextMessage.serverId,
+                  status: "sent",
+                  createdAt: nextMessage.createdAt,
+                  time: nextMessage.time,
+                }
+              : message
+          );
+        });
+
+        if (!conversationIds.includes(incomingMessage.conversationId)) {
+          setConversationReloadKey((key) => key + 1);
+        }
+
+        if (!isSelfMessage && incomingMessage.conversationId !== activeConversationIdRef.current) {
+          setUnreadConversationIds((prev) =>
+            prev.includes(incomingMessage.conversationId)
+              ? prev
+              : [...prev, incomingMessage.conversationId]
+          );
+        }
+      },
+    });
+
+    messageSocketRef.current = socket;
+    socket.connect();
+
+    return () => {
+      if (messageSocketRef.current === socket) {
+        messageSocketRef.current = null;
+      }
+      socket.close();
+    };
+  }, [currentUser?.userId, messageSocketConversationIds]);
+
+  const isPartnerTyping = Boolean(activeConversation && typingConversationId === activeConversation.id);
   const draftValidationMessage = getProcessDraftValidation(draftProcesses);
   const isProcessDraftDirty =
     JSON.stringify(draftProcesses) !== JSON.stringify(processDraftSnapshot);
@@ -997,10 +907,12 @@ export default function Messages() {
   });
 
   useEffect(() => {
+    if (!activeConversation) return;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeConversation.id, activeMessages.length, isPartnerTyping]);
+  }, [activeConversation?.id, activeMessages.length, isPartnerTyping]);
 
   useEffect(() => {
+    if (!activeConversation) return;
     if (clearingUnreadConversationId === activeConversation.id) return;
     const isDesktopLayout =
       typeof window !== "undefined" &&
@@ -1008,7 +920,7 @@ export default function Messages() {
 
     if (!isDesktopLayout && mobileView === "list") return;
     setUnreadConversationIds(markConversationRead(activeConversation.id));
-  }, [activeConversation.id, clearingUnreadConversationId, mobileView]);
+  }, [activeConversation?.id, clearingUnreadConversationId, mobileView]);
 
   useEffect(() => {
     writeJsonToStorage(PROCESS_STORAGE_KEY, processes);
@@ -1024,8 +936,12 @@ export default function Messages() {
   }, [leftConversationIds]);
 
   useEffect(() => {
+    if (!activeConversation) {
+      setMessageText("");
+      return;
+    }
     setMessageText(messageDrafts[String(activeConversation.id)] ?? "");
-  }, [activeConversation.id]);
+  }, [activeConversation?.id]);
 
   const toggleTask = (processId: number, taskId: number) => {
     setProcesses(prev => prev.map(process => {
@@ -1316,12 +1232,14 @@ export default function Messages() {
     processes.every((process) => process.status === "completed");
 
   const handleCompleteWork = () => {
+    if (!activeConversation) return;
     navigate(
       `/review/write?client=${encodeURIComponent(activeConversation.name)}&project=${encodeURIComponent(activeConversation.role)}`
     );
   };
 
   const handleOpenProfile = () => {
+    if (!activeConversation) return;
     navigate(`/profile/${encodeURIComponent(activeConversation.username)}`);
   };
 
@@ -1347,6 +1265,7 @@ export default function Messages() {
   };
 
   const handleLeaveConversation = () => {
+    if (!activeConversation) return;
     const conversationId = activeConversation.id;
     const shouldLeave = window.confirm(
       `${activeConversation.name} 대화방에서 나갈까요? 메시지 목록에서 이 대화가 사라집니다.`
@@ -1385,6 +1304,7 @@ export default function Messages() {
   };
 
   const updateMessageText = (value: string) => {
+    if (!activeConversation) return;
     setMessageText(value);
     setMessageDrafts((prev) => ({
       ...prev,
@@ -1413,6 +1333,7 @@ export default function Messages() {
   };
 
   const handleSendMessage = () => {
+    if (!activeConversation) return;
     const trimmedMessage = messageText.trim();
     if (!trimmedMessage && pendingAttachments.length === 0) return;
     if (hasUploadingAttachments) return;
@@ -1443,16 +1364,40 @@ export default function Messages() {
     setIsIconPickerOpen(false);
     setIsAttachMenuOpen(false);
 
-    sendMessageToSocket(outgoingMessage)
-      .then(({ serverId }) => {
+    const sendMessageToServer = messageSocketRef.current?.isOpen()
+      ? messageSocketRef.current.sendMessage({
+          clientId: outgoingMessage.clientId,
+          conversationId: outgoingMessage.conversationId,
+          message: outgoingMessage.message,
+          attachments: outgoingMessage.attachments,
+          createdAt: outgoingMessage.createdAt,
+        })
+      : sendConversationMessageApi(outgoingMessage.conversationId, {
+          clientId: outgoingMessage.clientId,
+          message: outgoingMessage.message,
+          attachments: outgoingMessage.attachments,
+        }).then((savedMessage) => ({
+          serverId: String(savedMessage.id),
+          createdAt: savedMessage.createdAt,
+        }));
+
+    sendMessageToServer
+      .then(({ serverId, createdAt }) => {
         setChatMessages((prev) =>
           prev.map((message) =>
             message.clientId === clientId
-              ? { ...message, id: serverId, serverId, status: "sent" }
+              ? {
+                  ...message,
+                  id: serverId,
+                  serverId,
+                  status: "sent",
+                  createdAt: createdAt ?? message.createdAt,
+                  time: createdAt ? formatMessageTime(createdAt) : message.time,
+                }
               : message
           )
         );
-        setTypingConversationId(outgoingMessage.conversationId);
+        setConversationReloadKey((key) => key + 1);
         window.setTimeout(() => {
           setChatMessages((prev) =>
             prev.map((message) =>
@@ -1462,11 +1407,6 @@ export default function Messages() {
             )
           );
         }, 900);
-        window.setTimeout(() => {
-          setTypingConversationId((currentId) =>
-            currentId === outgoingMessage.conversationId ? null : currentId
-          );
-        }, 1600);
       })
       .catch(() => {
         setChatMessages((prev) =>
@@ -1948,6 +1888,36 @@ export default function Messages() {
         return null;
     }
   };
+
+  if (!activeConversation) {
+    return (
+      <div className="min-h-screen bg-[#F7F7F5]">
+        <Navigation />
+        <main className="mx-auto flex min-h-[calc(100vh-80px)] w-full max-w-5xl items-center justify-center px-6 py-16">
+          <section className="w-full rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center shadow-sm">
+            <div className="mx-auto mb-5 grid size-14 place-items-center rounded-lg bg-[#E8FBF7] text-[#007E68]">
+              <Send className="size-7" />
+            </div>
+            <h1 className="text-2xl font-bold text-[#0F0F0F]">
+              {isConversationsLoading ? "대화를 불러오는 중입니다" : "아직 대화가 없습니다"}
+            </h1>
+            <p className="mt-3 text-sm leading-relaxed text-gray-600">
+              {conversationError ??
+                "피드나 프로젝트에서 제안을 시작하면 이곳에 대화가 생성됩니다."}
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate("/feed")}
+              className="mt-6 h-11 rounded-lg bg-[#00C9A7] px-5 text-sm font-bold text-[#0F0F0F] transition-colors hover:bg-[#00A88C]"
+            >
+              피드 둘러보기
+            </button>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F7F7F5]">
       <style>{`

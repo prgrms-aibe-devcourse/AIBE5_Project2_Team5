@@ -14,6 +14,8 @@ import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { matchingCategories } from "../utils/matchingCategories";
 import { getExploreFeedsApi, ExplorePostResponseDto, getExploreDesignersApi, ExploreDesignerResponseDto } from "../api/exploreApi";
 import { getMyCollectionsApi, saveFeedToCollectionApi, createCollectionFolderApi, CollectionFolderResponse } from "../api/collectionApi";
+import { createMessageConversationApi, sendConversationMessageApi } from "../api/messageApi";
+import { getCurrentUser } from "../utils/auth";
 import Footer from "../components/Footer";
 
 const creatorProfiles = [
@@ -335,6 +337,7 @@ const fetchCollections = async (setCollections: React.Dispatch<React.SetStateAct
 
 export default function Explore() {
   const navigate = useNavigate();
+  const currentUser = getCurrentUser();
   const categories = matchingCategories;
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -357,6 +360,7 @@ export default function Explore() {
   // 모달 상태
   const [selectedProjectForModal, setSelectedProjectForModal] = useState<ExplorePostResponseDto | null>(null);
   const [modalImageIndex, setModalImageIndex] = useState(0);
+  const [startingProposalPostId, setStartingProposalPostId] = useState<number | null>(null);
 
   // 컬렉션 관리
   const [collections, setCollections] = useState<SavedCollection[]>([]);
@@ -517,10 +521,47 @@ export default function Explore() {
     }
   };
 
-  const handleProposalClick = (item: ExplorePostResponseDto, e?: React.MouseEvent) => {
+  const handleProposalClick = async (item: ExplorePostResponseDto, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    // Feed.tsx와 동일하게 메시지함으로 이동 (데이터 저장 로직은 Feed.tsx에서 사용하는 유틸 필요시 추가)
-    navigate("/messages");
+
+    if (!item.userId) {
+      alert("대화 상대 정보를 찾을 수 없습니다.");
+      return;
+    }
+
+    if (currentUser?.userId === item.userId) {
+      alert("내 피드에는 제안을 보낼 수 없습니다.");
+      return;
+    }
+
+    const now = Date.now();
+    const proposalMessage = `안녕하세요. "${item.title}" 작업을 보고 프로젝트 제안을 드리고 싶어 연락드렸어요. 작업 가능 여부와 예상 일정, 견적을 이야기해보고 싶습니다.`;
+
+    setStartingProposalPostId(item.postId);
+    try {
+      const conversation = await createMessageConversationApi(item.userId);
+      await sendConversationMessageApi(conversation.id, {
+        clientId: `explore-proposal-${item.postId}-${now}`,
+        message: proposalMessage,
+        attachments: item.imageUrl
+          ? [
+              {
+                id: `explore-feed-${item.postId}`,
+                type: "image",
+                src: item.imageUrl,
+                name: item.title,
+                uploadStatus: "ready",
+              },
+            ]
+          : [],
+      });
+
+      navigate(`/messages?conversationId=${conversation.id}`);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "대화를 시작하지 못했습니다.");
+    } finally {
+      setStartingProposalPostId(null);
+    }
   };
 
   // ── lenis smooth scroll ──
@@ -1074,10 +1115,11 @@ export default function Explore() {
                     </div>
                     <button
                       onClick={(e) => handleProposalClick(selectedProjectForModal, e)}
-                      className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#FF5C3A] px-4 text-xs font-bold text-white shadow-lg shadow-[#FF5C3A]/20 hover:bg-[#E94F2F] transition-all"
+                      disabled={startingProposalPostId === selectedProjectForModal.postId}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#FF5C3A] px-4 text-xs font-bold text-white shadow-lg shadow-[#FF5C3A]/20 transition-all hover:bg-[#E94F2F] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <Send className="size-3.5" />
-                      제안하기
+                      {startingProposalPostId === selectedProjectForModal.postId ? "연결 중..." : "제안하기"}
                     </button>
                   </div>
 

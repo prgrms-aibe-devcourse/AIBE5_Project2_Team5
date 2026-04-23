@@ -335,6 +335,7 @@ public class FeedServiceImpl implements FeedService {
 
         return new FeedItemResponse(
                 post.getId(),
+                post.getUser().getId(),
                 post.getTitle(),
                 post.getUser().getNickname(),
                 thumbnailUrl,

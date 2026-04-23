@@ -18,6 +18,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+// 💡 CORS 설정을 위한 import 추가
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import java.util.List;
+
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
@@ -36,6 +42,9 @@ public class SecurityConfig {
             GoogleAuthorizationRequestResolver googleAuthorizationRequestResolver
     ) throws Exception {
         http
+                // ⭐ 1. CORS 설정 활성화 (아래 정의한 Bean 사용)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+
                 .csrf(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
@@ -53,14 +62,18 @@ public class SecurityConfig {
                         })
                 )
                 .authorizeHttpRequests(authorize -> authorize
+                        // ⭐ 2. OPTIONS 메서드로 들어오는 예비 요청(Preflight)은 토큰 없이도 무조건 허용!
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
                         .requestMatchers("/error").permitAll()
                         .requestMatchers(
-                                HttpMethod.GET,
-                                "/api/auth/oauth2/**",
-                                "/api/auth/nickname/check",
-                                "/oauth2/**",
-                                "/login/oauth2/**"
-                        ).permitAll()
+                        HttpMethod.GET,
+                        "/api/auth/oauth2/**",
+                        "/api/auth/nickname/check",
+                        "/oauth2/**",
+                        "/login/oauth2/**",
+                        "/ws/**"
+                ).permitAll()
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/auth/login",
@@ -82,6 +95,22 @@ public class SecurityConfig {
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    // ⭐ 3. CORS 상세 설정 Bean 추가 (프론트엔드 주소 허용)
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+
+        // 프론트엔드 로컬 개발 환경 주소 허용 (localhost와 127.0.0.1 모두 등록해두는 것이 안전합니다)
+        config.setAllowedOrigins(List.of("http://localhost:5173", "http://127.0.0.1:5173"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")); // 허용할 HTTP 메서드
+        config.setAllowedHeaders(List.of("*")); // 모든 헤더 허용 (JWT 토큰 등을 받기 위해)
+        config.setAllowCredentials(true); // 쿠키나 인증 정보 포함 허용
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config); // 모든 API 경로에 이 규칙 적용
+        return source;
     }
 
     private static boolean isPublicAuthRequest(HttpServletRequest request) {

@@ -7,6 +7,7 @@ import lombok.Builder;
 @Builder
 public record ExplorePostResponseDto(
         Long postId,      // 게시글 고유 ID
+        Long userId,      // 작성자 고유 ID
         String title,     // 게시글 제목
         String nickname,  // 작성자 닉네임
         Integer pickCount, // 좋아요(픽) 수
