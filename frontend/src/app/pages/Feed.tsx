@@ -57,6 +57,7 @@ type BaseFeedItem = {
   createdAt?: string;
   userId?: number;
   portfolioUrl?: string | null;
+  likedByMe?: boolean;
   isMine?: boolean;
   isApiFeed?: boolean;
 };
@@ -70,6 +71,7 @@ type FeedApiItem = {
   commentCount: number;
   postType: string;
   category: string;
+  picked: boolean;
 };
 
 type FeedListApiData = {
@@ -91,7 +93,14 @@ type FeedDetailApiData = {
   portfolioUrl: string | null;
   createdAt: string;
   imageUrls: string[];
+  picked: boolean;
   mine: boolean;
+};
+
+type FeedPickApiData = {
+  postId: number;
+  picked: boolean;
+  pickCount: number;
 };
 
 type CreateCommentApiData = {
@@ -678,6 +687,7 @@ export default function Feed() {
             comments: feedItem.commentCount,
             tags: [feedItem.category, feedItem.postType],
             category: feedItem.category,
+            likedByMe: feedItem.picked,
             isApiFeed: true,
           }))
         );
@@ -753,6 +763,7 @@ export default function Feed() {
           createdAt: detail.createdAt,
           userId: detail.userId,
           portfolioUrl: detail.portfolioUrl,
+          likedByMe: detail.picked,
           isMine: detail.mine,
           isApiFeed: true,
         };
@@ -888,21 +899,50 @@ export default function Feed() {
     return `${name.slice(0, 7)}...`;
   };
 
-  const toggleLike = (id: number, e?: React.MouseEvent) => {
+  const updateFeedPickState = (postId: number, picked: boolean, pickCount: number) => {
+    setApiFeedItems((prev) =>
+      prev.map((item) =>
+        item.id === postId ? { ...item, likedByMe: picked, likes: pickCount } : item
+      )
+    );
+    setSelectedFeed((prev) =>
+      prev && prev.id === postId ? { ...prev, likedByMe: picked, likes: pickCount } : prev
+    );
+  };
+
+  const toggleLike = async (item: BaseFeedItem, e?: React.MouseEvent) => {
     e?.stopPropagation();
+
+    if (!item.isApiFeed) {
     setLikedItems(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(id)) {
-        newSet.delete(id);
+      if (newSet.has(item.id)) {
+        newSet.delete(item.id);
       } else {
-        newSet.add(id);
+        newSet.add(item.id);
       }
       return newSet;
     });
+      return;
+    }
+
+    try {
+      const result = await apiRequest<FeedPickApiData>(
+        `/api/feeds/${item.id}/like`,
+        { method: "POST" },
+        "피드 좋아요 처리에 실패했습니다."
+      );
+      updateFeedPickState(result.postId, result.picked, result.pickCount);
+    } catch (error) {
+      setFeedError(error instanceof Error ? error.message : "피드 좋아요 처리에 실패했습니다.");
+    }
   };
 
+  const isFeedLiked = (item: BaseFeedItem) =>
+    item.isApiFeed ? Boolean(item.likedByMe) : likedItems.has(item.id);
+
   const getLikeCount = (item: BaseFeedItem) =>
-    item.likes + (likedItems.has(item.id) ? 1 : 0);
+    item.isApiFeed ? item.likes : item.likes + (likedItems.has(item.id) ? 1 : 0);
 
   const getCommentCount = (item: BaseFeedItem) => {
     const comments = feedComments[item.id];
@@ -1366,13 +1406,13 @@ export default function Feed() {
                         <div className="flex items-center gap-4">
                           <button
                             type="button"
-                            onClick={(e) => toggleLike(item.id, e)}
+                            onClick={(e) => toggleLike(item, e)}
                             className={`flex items-center gap-2 transition-colors ${
-                              likedItems.has(item.id) ? "text-[#FF5C3A]" : "text-gray-600 hover:text-[#FF5C3A]"
+                              isFeedLiked(item) ? "text-[#FF5C3A]" : "text-gray-600 hover:text-[#FF5C3A]"
                             }`}
-                            aria-pressed={likedItems.has(item.id)}
+                            aria-pressed={isFeedLiked(item)}
                           >
-                            <Heart className={`size-5 ${likedItems.has(item.id) ? "fill-[#FF5C3A]" : ""}`} />
+                            <Heart className={`size-5 ${isFeedLiked(item) ? "fill-[#FF5C3A]" : ""}`} />
                             <span className="text-sm">{getLikeCount(item)}</span>
                           </button>
                           <button
@@ -1710,13 +1750,13 @@ export default function Feed() {
                     <div className="flex items-center gap-4">
                       <button
                         type="button"
-                        onClick={(e) => toggleLike(selectedFeed.id, e)}
+                        onClick={(e) => toggleLike(selectedFeed, e)}
                         className={`flex items-center gap-2 transition-colors ${
-                          likedItems.has(selectedFeed.id) ? "text-[#FF5C3A]" : "text-gray-600 hover:text-[#FF5C3A]"
+                          isFeedLiked(selectedFeed) ? "text-[#FF5C3A]" : "text-gray-600 hover:text-[#FF5C3A]"
                         }`}
-                        aria-pressed={likedItems.has(selectedFeed.id)}
+                        aria-pressed={isFeedLiked(selectedFeed)}
                       >
-                        <Heart className={`size-6 ${likedItems.has(selectedFeed.id) ? "fill-[#FF5C3A]" : ""}`} />
+                        <Heart className={`size-6 ${isFeedLiked(selectedFeed) ? "fill-[#FF5C3A]" : ""}`} />
                         <span className="font-semibold">{getLikeCount(selectedFeed)}</span>
                       </button>
                       <button

@@ -8,6 +8,7 @@ public record FeedItemResponse(
         Integer pickCount,
         Integer commentCount,
         String postType,
-        String category
+        String category,
+        boolean picked
 ) {
 }
