@@ -6,6 +6,7 @@ import com.example.pixel_project2.collection.dto.CollectionFolderResponse;
 import com.example.pixel_project2.collection.dto.CollectionPolicyResponse;
 import com.example.pixel_project2.collection.dto.CreateCollectionFolderRequest;
 import com.example.pixel_project2.collection.dto.RenameCollectionFolderRequest;
+import com.example.pixel_project2.collection.dto.ReorderFoldersRequest;
 import com.example.pixel_project2.collection.dto.SaveFeedToCollectionRequest;
 import com.example.pixel_project2.common.entity.Collection;
 import com.example.pixel_project2.common.entity.CollectionFolder;
@@ -67,9 +68,12 @@ public class CollectionServiceImpl implements CollectionService {
         String folderName = normalizeFolderName(request.folderName());
         ensureUniqueFolderName(user.getId(), null, folderName);
 
+        int currentCount = collectionFolderRepository.findByUserId(user.getId()).size();
+
         CollectionFolder folder = collectionFolderRepository.save(CollectionFolder.builder()
                 .user(user)
                 .folderName(folderName)
+                .sortOrder(currentCount + 1)
                 .build());
 
         return toFolderResponse(folder);
@@ -91,6 +95,19 @@ public class CollectionServiceImpl implements CollectionService {
         CollectionFolder folder = findOwnedFolder(currentUser, folderId);
         collectionRepository.deleteByFolderId(folder.getFolder_id());
         collectionFolderRepository.delete(folder);
+    }
+
+    @Override
+    @Transactional
+    public void reorderFolders(AuthenticatedUser currentUser, ReorderFoldersRequest request) {
+        List<Long> folderIds = request.folderIds();
+        System.out.println("Reordering folders for user " + currentUser.id() + ": " + folderIds);
+        for (int i = 0; i < folderIds.size(); i++) {
+            Long folderId = folderIds.get(i);
+            CollectionFolder folder = findOwnedFolder(currentUser, folderId);
+            folder.setSortOrder(i + 1);
+            System.out.println("Folder ID " + folderId + " set to sortOrder " + (i + 1));
+        }
     }
 
     @Override

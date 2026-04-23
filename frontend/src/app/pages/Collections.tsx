@@ -20,6 +20,7 @@ import {
   renameCollectionFolderApi,
   deleteCollectionFolderApi,
   removeFeedFromCollectionApi,
+  reorderCollectionFoldersApi,
   type CollectionFolderResponse,
   type CollectionFolderDetailResponse,
 } from "../api/collectionApi";
@@ -145,9 +146,23 @@ export default function Collections() {
     setOpenCollectionMenuId(null);
   };
 
-  const stopReorderMode = () => {
+  const stopReorderMode = async () => {
     setIsReorderMode(false);
     setDraggingCollectionId(null);
+    
+    // 변경된 순서를 서버에 저장
+    const folderIds = collections.map(c => c.folderId);
+    console.log("Saving reordered folder IDs:", folderIds);
+    
+    try {
+      await reorderCollectionFoldersApi(folderIds);
+      console.log("Reorder saved successfully");
+      void loadCollections(); // 서버의 정렬된 최신 데이터 다시 불러오기
+    } catch (err) {
+      console.error("Reorder failed:", err);
+      alert("순서 저장에 실패했습니다.");
+      void loadCollections(); // 실패 시 원래 순서로 복구
+    }
   };
 
   const handleCollectionDragStart = (collectionId: number) => {
@@ -471,7 +486,10 @@ export default function Collections() {
       {selectedCollection && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
-          onClick={() => setSelectedCollectionId(null)}
+          onClick={() => {
+            setSelectedCollectionId(null);
+            setSelectedCollection(null);
+          }}
         >
           <div
             className="w-full max-w-6xl rounded-3xl bg-white shadow-2xl"
@@ -506,7 +524,10 @@ export default function Collections() {
                 </p>
               </div>
               <button
-                onClick={() => setSelectedCollectionId(null)}
+                onClick={() => {
+                  setSelectedCollectionId(null);
+                  setSelectedCollection(null);
+                }}
                 className="rounded-full border border-gray-200 p-2 text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-700"
               >
                 <X className="size-5" />

@@ -5,6 +5,7 @@ import com.example.pixel_project2.collection.dto.CollectionFolderResponse;
 import com.example.pixel_project2.collection.dto.CollectionPolicyResponse;
 import com.example.pixel_project2.collection.dto.CreateCollectionFolderRequest;
 import com.example.pixel_project2.collection.dto.RenameCollectionFolderRequest;
+import com.example.pixel_project2.collection.dto.ReorderFoldersRequest;
 import com.example.pixel_project2.collection.dto.SaveFeedToCollectionRequest;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 
@@ -22,6 +23,8 @@ public interface CollectionService {
     CollectionFolderResponse createFolder(AuthenticatedUser currentUser, CreateCollectionFolderRequest request);
 
     CollectionFolderResponse renameFolder(AuthenticatedUser currentUser, Long folderId, RenameCollectionFolderRequest request);
+
+    void reorderFolders(AuthenticatedUser currentUser, ReorderFoldersRequest request);
 
     void deleteFolder(AuthenticatedUser currentUser, Long folderId);
 
