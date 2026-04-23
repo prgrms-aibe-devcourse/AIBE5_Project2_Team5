@@ -78,14 +78,24 @@ public class MessageServiceImpl implements MessageService {
 
         JsonNode attachments = normalizeAttachments(request.attachments());
         String message = request.message() == null ? "" : request.message().trim();
+        String normalizedClientId = normalizeClientId(request.clientId());
         if (message.isBlank() && attachments.isEmpty()) {
             throw new IllegalArgumentException("메시지 내용 또는 첨부파일을 입력해주세요.");
+        }
+
+        if (normalizedClientId != null) {
+            ChatMessage existingMessage = chatMessageRepository
+                    .findByConversationIdAndSenderIdAndClientId(conversationId, currentUser.id(), normalizedClientId)
+                    .orElse(null);
+            if (existingMessage != null) {
+                return toChatMessageResponse(existingMessage);
+            }
         }
 
         ChatMessage chatMessage = ChatMessage.builder()
                 .conversation(conversation)
                 .sender(sender)
-                .clientId(normalizeClientId(request.clientId()))
+                .clientId(normalizedClientId)
                 .message(message)
                 .attachmentsJson(writeAttachments(attachments))
                 .build();

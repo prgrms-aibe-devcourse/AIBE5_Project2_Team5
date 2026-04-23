@@ -24,6 +24,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class MessageSocketHandler extends TextWebSocketHandler {
     private static final String TYPE_SUBSCRIBE = "subscribe";
     private static final String TYPE_CHAT_MESSAGE = "chat.message";
+    private static final String TYPE_PING = "ping";
+    private static final String TYPE_PONG = "pong";
 
     private final ObjectMapper objectMapper;
     private final MessageService messageService;
@@ -48,6 +50,11 @@ public class MessageSocketHandler extends TextWebSocketHandler {
             return;
         }
 
+        if (TYPE_PING.equals(type)) {
+            handlePing(session);
+            return;
+        }
+
         if (TYPE_CHAT_MESSAGE.equals(type)) {
             handleChatMessage(session, payload);
             return;
@@ -58,9 +65,13 @@ public class MessageSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        sessions.remove(session.getId());
-        subscriptions.remove(session.getId());
-        sessionLocks.remove(session.getId());
+        cleanupSession(session);
+    }
+
+    @Override
+    public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
+        cleanupSession(session);
+        closeQuietly(session);
     }
 
     private void handleSubscribe(WebSocketSession session, JsonNode payload) throws IOException {
@@ -83,6 +94,12 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         response.put("type", "subscribed");
         response.set("conversationIds", objectMapper.valueToTree(List.copyOf(conversationIds)));
         sendJson(session, response);
+    }
+
+    private void handlePing(WebSocketSession session) throws IOException {
+        ObjectNode pong = objectMapper.createObjectNode();
+        pong.put("type", TYPE_PONG);
+        sendJson(session, pong);
     }
 
     private void handleChatMessage(WebSocketSession session, JsonNode payload) throws IOException {
@@ -134,9 +151,10 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         broadcast(conversationId, session.getId(), outbound);
     }
 
-    private void broadcast(long conversationId, String senderSessionId, ObjectNode outbound) throws IOException {
+    private void broadcast(long conversationId, String senderSessionId, ObjectNode outbound) {
         for (WebSocketSession targetSession : sessions.values()) {
             if (!targetSession.isOpen()) {
+                cleanupSession(targetSession);
                 continue;
             }
 
@@ -149,7 +167,12 @@ public class MessageSocketHandler extends TextWebSocketHandler {
                     && messageService.canAccessConversation(targetUser, conversationId);
 
             if (senderSession || subscribed || participantSession) {
-                sendJson(targetSession, outbound);
+                try {
+                    sendJson(targetSession, outbound);
+                } catch (IOException e) {
+                    cleanupSession(targetSession);
+                    closeQuietly(targetSession);
+                }
             }
         }
     }
@@ -172,6 +195,22 @@ public class MessageSocketHandler extends TextWebSocketHandler {
             if (session.isOpen()) {
                 session.sendMessage(new TextMessage(objectMapper.writeValueAsString(payload)));
             }
+        }
+    }
+
+    private void cleanupSession(WebSocketSession session) {
+        sessions.remove(session.getId());
+        subscriptions.remove(session.getId());
+        sessionLocks.remove(session.getId());
+    }
+
+    private void closeQuietly(WebSocketSession session) {
+        try {
+            if (session.isOpen()) {
+                session.close();
+            }
+        } catch (IOException ignored) {
+            // Best effort close for broken sockets.
         }
     }
 

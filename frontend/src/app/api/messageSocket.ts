@@ -37,6 +37,10 @@ type PendingAck = {
 
 const MESSAGE_SOCKET_PATH = "/ws/messages";
 const MESSAGE_SOCKET_ACK_TIMEOUT = 5000;
+const MESSAGE_SOCKET_RECONNECT_BASE_DELAY = 1000;
+const MESSAGE_SOCKET_RECONNECT_MAX_DELAY = 5000;
+const MESSAGE_SOCKET_HEARTBEAT_INTERVAL = 15000;
+const MESSAGE_SOCKET_HEARTBEAT_TIMEOUT = 10000;
 
 const getWebSocketOrigin = () => {
   const configuredOrigin = import.meta.env.VITE_WS_ORIGIN ?? import.meta.env.VITE_API_ORIGIN;
@@ -55,6 +59,11 @@ const buildMessageSocketUrl = () => {
 
 export function createMessageSocket(callbacks: MessageSocketCallbacks) {
   let socket: WebSocket | null = null;
+  let reconnectTimerId: number | null = null;
+  let heartbeatIntervalId: number | null = null;
+  let heartbeatTimeoutId: number | null = null;
+  let reconnectAttempt = 0;
+  let manuallyClosed = false;
   const pendingAcks = new Map<string, PendingAck>();
 
   const rejectPendingAcks = () => {
@@ -65,6 +74,46 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
     pendingAcks.clear();
   };
 
+  const clearReconnectTimer = () => {
+    if (reconnectTimerId === null) return;
+    window.clearTimeout(reconnectTimerId);
+    reconnectTimerId = null;
+  };
+
+  const clearHeartbeatTimeout = () => {
+    if (heartbeatTimeoutId === null) return;
+    window.clearTimeout(heartbeatTimeoutId);
+    heartbeatTimeoutId = null;
+  };
+
+  const clearHeartbeatInterval = () => {
+    if (heartbeatIntervalId === null) return;
+    window.clearInterval(heartbeatIntervalId);
+    heartbeatIntervalId = null;
+  };
+
+  const clearHeartbeat = () => {
+    clearHeartbeatTimeout();
+    clearHeartbeatInterval();
+  };
+
+  const scheduleReconnect = () => {
+    if (manuallyClosed || reconnectTimerId !== null) {
+      return;
+    }
+
+    const delay = Math.min(
+      MESSAGE_SOCKET_RECONNECT_BASE_DELAY * 2 ** reconnectAttempt,
+      MESSAGE_SOCKET_RECONNECT_MAX_DELAY,
+    );
+    reconnectAttempt += 1;
+
+    reconnectTimerId = window.setTimeout(() => {
+      reconnectTimerId = null;
+      connect();
+    }, delay);
+  };
+
   const sendJson = (payload: unknown) => {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       throw new Error("Message socket is not connected.");
@@ -73,15 +122,48 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
     socket.send(JSON.stringify(payload));
   };
 
+  const startHeartbeat = () => {
+    clearHeartbeat();
+
+    heartbeatIntervalId = window.setInterval(() => {
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        return;
+      }
+
+      clearHeartbeatTimeout();
+
+      try {
+        sendJson({
+          type: "ping",
+          sentAt: new Date().toISOString(),
+        });
+      } catch {
+        socket.close();
+        return;
+      }
+
+      heartbeatTimeoutId = window.setTimeout(() => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.close();
+        }
+      }, MESSAGE_SOCKET_HEARTBEAT_TIMEOUT);
+    }, MESSAGE_SOCKET_HEARTBEAT_INTERVAL);
+  };
+
   const connect = () => {
     const url = buildMessageSocketUrl();
     if (!url || socket) {
       return;
     }
 
+    manuallyClosed = false;
     socket = new WebSocket(url);
 
     socket.onopen = () => {
+      clearReconnectTimer();
+      clearHeartbeatTimeout();
+      reconnectAttempt = 0;
+      startHeartbeat();
       callbacks.onOpen?.();
     };
 
@@ -100,6 +182,11 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
           return;
         }
 
+        if (payload?.type === "pong") {
+          clearHeartbeatTimeout();
+          return;
+        }
+
         if (payload?.type === "error") {
           callbacks.onError?.(payload.message ?? "Message socket error.");
         }
@@ -114,12 +201,18 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
 
     socket.onclose = () => {
       socket = null;
+      clearHeartbeat();
       rejectPendingAcks();
       callbacks.onClose?.();
+      scheduleReconnect();
     };
   };
 
   const close = () => {
+    manuallyClosed = true;
+    clearReconnectTimer();
+    clearHeartbeat();
+    reconnectAttempt = 0;
     const currentSocket = socket;
     socket = null;
     rejectPendingAcks();

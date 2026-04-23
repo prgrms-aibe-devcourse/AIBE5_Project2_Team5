@@ -1375,22 +1375,27 @@ export default function Messages() {
     setIsIconPickerOpen(false);
     setIsAttachMenuOpen(false);
 
+    const sendMessageWithRestFallback = () =>
+      sendConversationMessageApi(outgoingMessage.conversationId, {
+        clientId: outgoingMessage.clientId,
+        message: outgoingMessage.message,
+        attachments: outgoingMessage.attachments,
+      }).then((savedMessage) => ({
+        serverId: String(savedMessage.id),
+        createdAt: savedMessage.createdAt,
+      }));
+
     const sendMessageToServer = messageSocketRef.current?.isOpen()
-      ? messageSocketRef.current.sendMessage({
-          clientId: outgoingMessage.clientId,
-          conversationId: outgoingMessage.conversationId,
-          message: outgoingMessage.message,
-          attachments: outgoingMessage.attachments,
-          createdAt: outgoingMessage.createdAt,
-        })
-      : sendConversationMessageApi(outgoingMessage.conversationId, {
-          clientId: outgoingMessage.clientId,
-          message: outgoingMessage.message,
-          attachments: outgoingMessage.attachments,
-        }).then((savedMessage) => ({
-          serverId: String(savedMessage.id),
-          createdAt: savedMessage.createdAt,
-        }));
+      ? messageSocketRef.current
+          .sendMessage({
+            clientId: outgoingMessage.clientId,
+            conversationId: outgoingMessage.conversationId,
+            message: outgoingMessage.message,
+            attachments: outgoingMessage.attachments,
+            createdAt: outgoingMessage.createdAt,
+          })
+          .catch(() => sendMessageWithRestFallback())
+      : sendMessageWithRestFallback();
 
     sendMessageToServer
       .then(({ serverId, createdAt }) => {
