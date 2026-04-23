@@ -93,7 +93,6 @@ public class CollectionServiceImpl implements CollectionService {
     @Transactional
     public void deleteFolder(AuthenticatedUser currentUser, Long folderId) {
         CollectionFolder folder = findOwnedFolder(currentUser, folderId);
-        collectionRepository.deleteByFolderId(folder.getFolder_id());
         collectionFolderRepository.delete(folder);
     }
 
