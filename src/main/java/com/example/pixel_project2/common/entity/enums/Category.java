@@ -3,13 +3,33 @@ package com.example.pixel_project2.common.entity.enums;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
+@Getter
 @AllArgsConstructor
 public enum Category {
-    그래픽디자인("그래픽 디자인"), 포토그래피("포토그래피"), 일러스트레이션("일러스트레이션"),
-    Art_3D("3D art"), UI_UX("UI/UX"), 건축("건축"), 패션("패션"),
-    광고("광고"), 공예("공예"), 미술("미술"), 제품디자인("제품디자인"),
-    게임디자인("게임디자인"), 사운드("사운드");
+    GRAPHIC_DESIGN("그래픽 디자인"), // 그래픽 디자인
+    PHOTOGRAPHY("포토그래피"), // 포토그래피
+    ILLUSTRATION("일러스트레이션"), // 일러스트레이션
+    THREED_ART("3D Art"), // 3D아트
+    UI_UX("UI/UX"), // UI/UX
+    ARCHITECTURE("건축"), // 건축
+    FASHION("패션"), // 패션
+    ADVERTISEMENT("광고"), // 광고
+    CRAFT("공예"), // 공예
+    FINE_ART("미술"), // 미술
+    PRODUCT_DESIGN("제품 디자인"), // 제품 디자인
+    GAME_DESIGN("게임 디자인"), // 게임 디자인
+    SOUND("사운드"); // 사운드
 
-    private String name;
+    private final String label;
 
+    public static Category fromLabel(String label) {
+        if (label == null) return null;
+        String trimmedLabel = label.trim();
+        for (Category category : Category.values()) {
+            if (category.label.equalsIgnoreCase(trimmedLabel)) {
+                return category;
+            }
+        }
+        return null;
+    }
 }
