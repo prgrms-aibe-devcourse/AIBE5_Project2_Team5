@@ -2,6 +2,7 @@ package com.example.pixel_project2.config.oauth;
 
 import com.example.pixel_project2.common.entity.enums.UserRole;
 import com.example.pixel_project2.config.auth.dto.LoginResponse;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -37,6 +38,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             OAuth2User oauth2User = (OAuth2User) authentication.getPrincipal();
             String requestedMode = resolveRequestedMode(request);
             UserRole requestedRole = resolveRequestedRole(request);
+            String requestedName = resolveRequestedName(request);
             String requestedNickname = resolveRequestedNickname(request);
             String requestedEmail = resolveRequestedEmail(request);
             String redirectTo = resolveRedirectTo(request);
@@ -45,13 +47,17 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                     oauth2User,
                     requestedMode,
                     requestedRole,
+                    requestedName,
                     requestedNickname,
                     requestedEmail
             );
 
             SecurityContextHolder.clearContext();
+            clearOAuthSession(request, response);
             response.sendRedirect(buildSuccessRedirectUri(loginResponse, redirectTo));
         } catch (Exception e) {
+            SecurityContextHolder.clearContext();
+            clearOAuthSession(request, response);
             response.sendRedirect(buildFailureRedirectUri(e.getMessage(), providerLabel(registrationId)));
         }
     }
@@ -68,13 +74,14 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             OAuth2User oauth2User,
             String requestedMode,
             UserRole requestedRole,
+            String requestedName,
             String requestedNickname,
             String requestedEmail
     ) {
         if ("kakao".equalsIgnoreCase(registrationId)) {
-            return kakaoOAuth2LoginService.loginOrSignUp(oauth2User, requestedMode, requestedRole, requestedNickname, requestedEmail);
+            return kakaoOAuth2LoginService.loginOrSignUp(oauth2User, requestedMode, requestedRole, requestedName, requestedNickname, requestedEmail);
         }
-        return googleOAuth2LoginService.loginOrSignUp(oauth2User, requestedMode, requestedRole, requestedNickname);
+        return googleOAuth2LoginService.loginOrSignUp(oauth2User, requestedMode, requestedRole, requestedName, requestedNickname);
     }
 
     private UserRole resolveRequestedRole(HttpServletRequest request) {
@@ -114,6 +121,14 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         return String.valueOf(value);
     }
 
+    private String resolveRequestedName(HttpServletRequest request) {
+        Object value = getAndRemoveSessionAttribute(request, OAuth2SessionKeys.NAME);
+        if (value == null) {
+            return "";
+        }
+        return String.valueOf(value);
+    }
+
     private String resolveRequestedEmail(HttpServletRequest request) {
         Object value = getAndRemoveSessionAttribute(request, OAuth2SessionKeys.EMAIL);
         if (value == null) {
@@ -131,6 +146,19 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         Object value = session.getAttribute(key);
         session.removeAttribute(key);
         return value;
+    }
+
+    private void clearOAuthSession(HttpServletRequest request, HttpServletResponse response) {
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.invalidate();
+        }
+
+        Cookie cookie = new Cookie("JSESSIONID", null);
+        cookie.setPath("/");
+        cookie.setHttpOnly(true);
+        cookie.setMaxAge(0);
+        response.addCookie(cookie);
     }
 
     private String buildSuccessRedirectUri(LoginResponse response, String redirectTo) {

@@ -230,7 +230,7 @@ export default function Projects() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f6f8fb] text-[#111827]">
+    <div className="flex min-h-screen flex-col bg-[#f6f8fb] text-[#111827]">
       {/* [레이아웃: 네비게이션] 상단 메뉴 */}
       <Navigation />
 
@@ -275,7 +275,7 @@ export default function Projects() {
         </div>
       </section>
 
-      <div className="mx-auto flex max-w-[1400px] gap-6 px-6 py-8 xl:flex-row flex-col">
+      <div className="mx-auto flex w-full max-w-[1400px] flex-1 gap-6 px-6 py-8 xl:flex-row flex-col">
         {/* [기능: 사이드바 필터] 카테고리, 유형, 경력별 필터링 */}
         <aside className="w-full rounded-3xl border border-white/70 bg-white p-5 shadow-sm xl:w-72">
           <div className="mb-6">

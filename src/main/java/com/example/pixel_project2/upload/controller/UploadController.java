@@ -38,4 +38,17 @@ public class UploadController {
     ) {
         return ApiResponse.ok("Feed images uploaded.", uploadService.uploadFeedImages(currentUser, postId, files));
     }
+
+    @PostMapping(value = "/feed-images/replace", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<FeedImagesUploadResponse> replaceFeedImages(
+            @AuthenticationPrincipal AuthenticatedUser currentUser,
+            @RequestParam("postId") Long postId,
+            @RequestParam(value = "existingImageUrls", required = false) List<String> existingImageUrls,
+            @RequestParam(value = "files", required = false) List<MultipartFile> files
+    ) {
+        return ApiResponse.ok(
+                "Feed images replaced.",
+                uploadService.replaceFeedImages(currentUser, postId, existingImageUrls, files)
+        );
+    }
 }

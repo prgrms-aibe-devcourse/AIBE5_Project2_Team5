@@ -57,6 +57,9 @@ public class User extends BaseTimeEntity {
     @Column(name = "url", length = 255)
     private String url;
 
+    @Column(name = "location", length = 100)
+    private String location;
+
     @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
     private Designer designer;
 

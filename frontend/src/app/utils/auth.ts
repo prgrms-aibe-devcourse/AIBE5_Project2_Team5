@@ -14,6 +14,28 @@ export type CurrentUser = {
   profileImage?: string | null;
 };
 
+function getActiveStorage() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const hasSessionAuth =
+    window.sessionStorage.getItem(AUTH_STORAGE_KEY) === "true" ||
+    Boolean(window.sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY));
+  if (hasSessionAuth) {
+    return window.sessionStorage;
+  }
+
+  const hasLocalAuth =
+    window.localStorage.getItem(AUTH_STORAGE_KEY) === "true" ||
+    Boolean(window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY));
+  if (hasLocalAuth) {
+    return window.localStorage;
+  }
+
+  return window.localStorage;
+}
+
 export function isAuthenticated() {
   if (typeof window === "undefined") {
     return false;
@@ -58,6 +80,7 @@ export function setAuthTokens(accessToken: string, refreshToken = "", remember =
 
   otherStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
   otherStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+  otherStorage.removeItem(CURRENT_USER_STORAGE_KEY);
 }
 
 export function getAccessToken() {
@@ -65,10 +88,12 @@ export function getAccessToken() {
     return null;
   }
 
-  return (
-    window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) ||
-    window.sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
-  );
+  const activeStorage = getActiveStorage();
+  if (!activeStorage) {
+    return null;
+  }
+
+  return activeStorage.getItem(ACCESS_TOKEN_STORAGE_KEY);
 }
 
 export function getAuthHeaders() {
@@ -81,7 +106,8 @@ export function getCurrentUser(): CurrentUser | null {
     return null;
   }
 
-  const storedUser = window.localStorage.getItem(CURRENT_USER_STORAGE_KEY);
+  const activeStorage = getActiveStorage();
+  const storedUser = activeStorage?.getItem(CURRENT_USER_STORAGE_KEY);
   if (!storedUser) return null;
 
   try {
@@ -115,7 +141,12 @@ export function setCurrentUser(user: CurrentUser) {
     return;
   }
 
-  window.localStorage.setItem(CURRENT_USER_STORAGE_KEY, JSON.stringify(user));
+  const activeStorage = getActiveStorage();
+  const otherStorage =
+    activeStorage === window.localStorage ? window.sessionStorage : window.localStorage;
+
+  activeStorage?.setItem(CURRENT_USER_STORAGE_KEY, JSON.stringify(user));
+  otherStorage.removeItem(CURRENT_USER_STORAGE_KEY);
 }
 
 export function getCurrentUserRole(defaultRole: UserRole = "designer") {
@@ -132,6 +163,7 @@ export function clearAuthenticated() {
   window.localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
   window.localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
   window.sessionStorage.removeItem(AUTH_STORAGE_KEY);
+  window.sessionStorage.removeItem(CURRENT_USER_STORAGE_KEY);
   window.sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
   window.sessionStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
 }
