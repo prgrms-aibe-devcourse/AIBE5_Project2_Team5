@@ -636,10 +636,12 @@ export default function Messages() {
   useEffect(() => {
     let mounted = true;
 
-    async function loadConversations() {
+    async function loadConversations(silent = false) {
       try {
-        setIsConversationsLoading(true);
-        setConversationError(null);
+        if (!silent) {
+          setIsConversationsLoading(true);
+          setConversationError(null);
+        }
         const conversationResponses = await getMessageConversationsApi();
 
         if (!mounted) return;
@@ -661,21 +663,25 @@ export default function Messages() {
           return requestedConversation?.id ?? nextConversations[0]?.id ?? 0;
         });
       } catch (error) {
-        if (!mounted) return;
+        if (!mounted || silent) return;
         setConversationError(
           error instanceof Error ? error.message : "대화 목록을 불러오지 못했습니다."
         );
       } finally {
-        if (mounted) {
+        if (mounted && !silent) {
           setIsConversationsLoading(false);
         }
       }
     }
 
-    loadConversations();
+    void loadConversations();
+    const pollInterval = window.setInterval(() => {
+      void loadConversations(true);
+    }, 1000);
 
     return () => {
       mounted = false;
+      window.clearInterval(pollInterval);
     };
   }, [requestedConversationId, conversationReloadKey]);
 
@@ -685,11 +691,11 @@ export default function Messages() {
     let mounted = true;
     const conversationId = activeConversation.id;
 
-    async function loadConversationMessages() {
+    async function loadConversationMessages(silent = false) {
       try {
         const messageResponses = await getConversationMessagesApi(conversationId);
 
-        if (!mounted) return;
+        if (!mounted || activeConversationIdRef.current !== conversationId) return;
 
         const nextMessages = messageResponses.map((message) =>
           mapChatMessageResponse(message, currentUser?.userId)
@@ -711,16 +717,21 @@ export default function Messages() {
           return [...otherMessages, ...nextMessages, ...pendingMessagesNotInHistory];
         });
       } catch (error) {
+        if (!mounted || silent) return;
         setConversationError(
           error instanceof Error ? error.message : "메시지 내역을 불러오지 못했습니다."
         );
       }
     }
 
-    loadConversationMessages();
+    void loadConversationMessages();
+    const pollInterval = window.setInterval(() => {
+      void loadConversationMessages(true);
+    }, 1000);
 
     return () => {
       mounted = false;
+      window.clearInterval(pollInterval);
     };
   }, [activeConversation?.id, currentUser?.userId]);
 
