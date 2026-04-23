@@ -9,6 +9,8 @@ import com.example.pixel_project2.common.repository.PostRepository;
 import com.example.pixel_project2.common.repository.UserRepository;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.upload.dto.FeedImagesUploadResponse;
+import com.example.pixel_project2.upload.dto.MessageAttachmentUploadResponse;
+import com.example.pixel_project2.upload.dto.StoredFile;
 import com.example.pixel_project2.upload.dto.ProfileImageUploadResponse;
 import com.example.pixel_project2.upload.dto.StoredImage;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +43,21 @@ public class UploadServiceImpl implements UploadService {
         userRepository.save(user);
 
         return new ProfileImageUploadResponse(storedImage.url());
+    }
+
+    @Override
+    public MessageAttachmentUploadResponse uploadMessageAttachment(AuthenticatedUser currentUser, MultipartFile file) {
+        StoredFile storedFile = r2StorageService.uploadMessageAttachment(
+                file,
+                "messages/" + currentUser.id()
+        );
+
+        return new MessageAttachmentUploadResponse(
+                storedFile.url(),
+                storedFile.originalFilename(),
+                storedFile.contentType(),
+                storedFile.size()
+        );
     }
 
     @Override

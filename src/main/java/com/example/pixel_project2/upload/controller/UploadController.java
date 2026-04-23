@@ -3,6 +3,7 @@ package com.example.pixel_project2.upload.controller;
 import com.example.pixel_project2.common.dto.ApiResponse;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.upload.dto.FeedImagesUploadResponse;
+import com.example.pixel_project2.upload.dto.MessageAttachmentUploadResponse;
 import com.example.pixel_project2.upload.dto.ProfileImageUploadResponse;
 import com.example.pixel_project2.upload.service.UploadService;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,14 @@ public class UploadController {
             @RequestParam("file") MultipartFile file
     ) {
         return ApiResponse.ok("Profile image uploaded.", uploadService.uploadProfileImage(currentUser, file));
+    }
+
+    @PostMapping(value = "/message-attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<MessageAttachmentUploadResponse> uploadMessageAttachment(
+            @AuthenticationPrincipal AuthenticatedUser currentUser,
+            @RequestParam("file") MultipartFile file
+    ) {
+        return ApiResponse.ok("Message attachment uploaded.", uploadService.uploadMessageAttachment(currentUser, file));
     }
 
     @PostMapping(value = "/feed-images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

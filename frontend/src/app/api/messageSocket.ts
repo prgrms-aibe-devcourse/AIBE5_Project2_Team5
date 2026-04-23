@@ -22,8 +22,28 @@ export type IncomingChatSocketMessage = {
   createdAt: string;
 };
 
+export type IncomingTypingSocketMessage = {
+  type: "typing";
+  conversationId: number;
+  senderUserId: number;
+  senderName: string;
+  isTyping: boolean;
+};
+
+export type IncomingReactionSocketMessage = {
+  type: "message.reaction";
+  conversationId: number;
+  messageClientId: string;
+  emoji: string;
+  action: "add" | "remove";
+  senderUserId: number;
+  senderName: string;
+};
+
 type MessageSocketCallbacks = {
   onMessage: (message: IncomingChatSocketMessage) => void;
+  onTyping?: (message: IncomingTypingSocketMessage) => void;
+  onReaction?: (message: IncomingReactionSocketMessage) => void;
   onOpen?: () => void;
   onClose?: () => void;
   onError?: (message: string) => void;
@@ -127,6 +147,16 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
           return;
         }
 
+        if (payload?.type === "typing") {
+          callbacks.onTyping?.(payload as IncomingTypingSocketMessage);
+          return;
+        }
+
+        if (payload?.type === "message.reaction") {
+          callbacks.onReaction?.(payload as IncomingReactionSocketMessage);
+          return;
+        }
+
         if (payload?.type === "error") {
           callbacks.onError?.(payload.message ?? "Message socket error.");
         }
@@ -163,6 +193,26 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
     });
   };
 
+  const sendTyping = (conversationId: number, isTyping: boolean) => {
+    sendJson({
+      type: "typing",
+      conversationId,
+      isTyping,
+    });
+  };
+
+  const sendReaction = (message: {
+    conversationId: number;
+    messageClientId: string;
+    emoji: string;
+    action: "add" | "remove";
+  }) => {
+    sendJson({
+      type: "message.reaction",
+      ...message,
+    });
+  };
+
   const sendMessage = (message: OutgoingChatSocketMessage) =>
     new Promise<{ serverId: string }>((resolve, reject) => {
       const timeoutId = window.setTimeout(() => {
@@ -194,7 +244,9 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
     close,
     connect,
     isOpen,
+    sendReaction,
     sendMessage,
+    sendTyping,
     subscribe,
   };
 }

@@ -27,6 +27,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class MessageSocketHandler extends TextWebSocketHandler {
     private static final String TYPE_SUBSCRIBE = "subscribe";
     private static final String TYPE_CHAT_MESSAGE = "chat.message";
+    private static final String TYPE_TYPING = "typing";
+    private static final String TYPE_MESSAGE_REACTION = "message.reaction";
 
     private final ObjectMapper objectMapper;
     private final MessageService messageService;
@@ -53,6 +55,16 @@ public class MessageSocketHandler extends TextWebSocketHandler {
 
         if (TYPE_CHAT_MESSAGE.equals(type)) {
             handleChatMessage(session, payload);
+            return;
+        }
+
+        if (TYPE_TYPING.equals(type)) {
+            handleTyping(session, payload);
+            return;
+        }
+
+        if (TYPE_MESSAGE_REACTION.equals(type)) {
+            handleReaction(session, payload);
             return;
         }
 
@@ -121,11 +133,77 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         }
     }
 
+    private void handleTyping(WebSocketSession session, JsonNode payload) throws IOException {
+        AuthenticatedUser sender = authenticatedUser(session);
+        if (sender == null) {
+            sendError(session, "Authentication is required.");
+            return;
+        }
+
+        if (!payload.path("conversationId").canConvertToLong()) {
+            sendError(session, "conversationId is required.");
+            return;
+        }
+
+        long conversationId = payload.path("conversationId").asLong();
+        if (!messageService.canAccessConversation(sender, conversationId)) {
+            sendError(session, "Conversation access is denied.");
+            return;
+        }
+
+        ObjectNode outbound = objectMapper.createObjectNode();
+        outbound.put("type", TYPE_TYPING);
+        outbound.put("conversationId", conversationId);
+        outbound.put("senderUserId", sender.id());
+        outbound.put("senderName", sender.nickname());
+        outbound.put("isTyping", payload.path("isTyping").asBoolean(false));
+        broadcast(conversationId, outbound, session.getId());
+    }
+
+    private void handleReaction(WebSocketSession session, JsonNode payload) throws IOException {
+        AuthenticatedUser sender = authenticatedUser(session);
+        if (sender == null) {
+            sendError(session, "Authentication is required.");
+            return;
+        }
+
+        if (!payload.path("conversationId").canConvertToLong()) {
+            sendError(session, "conversationId is required.");
+            return;
+        }
+
+        long conversationId = payload.path("conversationId").asLong();
+        if (!messageService.canAccessConversation(sender, conversationId)) {
+            sendError(session, "Conversation access is denied.");
+            return;
+        }
+
+        String messageClientId = text(payload, "messageClientId");
+        String emoji = text(payload, "emoji");
+        String action = text(payload, "action");
+        if (messageClientId == null || messageClientId.isBlank()
+                || emoji == null || emoji.isBlank()
+                || (!"add".equals(action) && !"remove".equals(action))) {
+            sendError(session, "Reaction payload is invalid.");
+            return;
+        }
+
+        ObjectNode outbound = objectMapper.createObjectNode();
+        outbound.put("type", TYPE_MESSAGE_REACTION);
+        outbound.put("conversationId", conversationId);
+        outbound.put("messageClientId", messageClientId);
+        outbound.put("emoji", emoji);
+        outbound.put("action", action);
+        outbound.put("senderUserId", sender.id());
+        outbound.put("senderName", sender.nickname());
+        broadcast(conversationId, outbound, session.getId());
+    }
+
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleChatMessageSent(ChatMessageSentEvent event) {
         ChatMessageResponse savedMessage = event.message();
         ObjectNode outbound = toOutboundMessage(savedMessage);
-        broadcast(savedMessage.conversationId(), outbound);
+        broadcast(savedMessage.conversationId(), outbound, null);
     }
 
     private ObjectNode toOutboundMessage(ChatMessageResponse savedMessage) {
@@ -142,10 +220,13 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         return outbound;
     }
 
-    private void broadcast(long conversationId, ObjectNode outbound) {
+    private void broadcast(long conversationId, ObjectNode outbound, String excludedSessionId) {
         for (WebSocketSession targetSession : sessions.values()) {
             if (!targetSession.isOpen()) {
                 removeSession(targetSession);
+                continue;
+            }
+            if (targetSession.getId().equals(excludedSessionId)) {
                 continue;
             }
 

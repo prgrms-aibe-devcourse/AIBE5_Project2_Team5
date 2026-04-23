@@ -17,7 +17,13 @@ import {
   type MessageConversationResponse as ApiMessageConversationResponse,
   type MessageUserResponse as ApiMessageUserResponse,
 } from "../api/messageApi";
-import { createMessageSocket, type IncomingChatSocketMessage } from "../api/messageSocket";
+import {
+  createMessageSocket,
+  type IncomingChatSocketMessage,
+  type IncomingReactionSocketMessage,
+  type IncomingTypingSocketMessage,
+} from "../api/messageSocket";
+import { uploadMessageAttachmentApi } from "../api/uploadApi";
 import { getCurrentUser } from "../utils/auth";
 
 type AttachmentUploadStatus = "uploading" | "ready" | "failed";
@@ -43,6 +49,7 @@ type MessageAttachment =
       type: "file";
       size: number;
       mimeType: string;
+      dataUrl?: string;
     })
   | (MessageAttachmentBase & {
       type: "integration";
@@ -113,6 +120,7 @@ const PROCESS_STORAGE_KEY = "pickxel:message-processes:v2";
 const PROCESS_CREATED_STORAGE_KEY = "pickxel:message-processes-created:v2";
 const MESSAGE_DRAFTS_STORAGE_KEY = "pickxel:message-drafts";
 const LEFT_CONVERSATIONS_STORAGE_KEY = "pickxel:left-message-conversations";
+const MAX_MESSAGE_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
 
 const createClientId = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -471,6 +479,79 @@ const parseMessageSocketConversationIds = (value: string) =>
     .map((conversationId) => Number(conversationId))
     .filter((conversationId) => Number.isFinite(conversationId));
 
+const updateMessageReactionState = (
+  messages: ChatMessage[],
+  messageClientId: string,
+  emoji: string,
+  action: "add" | "remove",
+  reactedByMe?: boolean
+) =>
+  messages.map((message) => {
+    if (message.clientId !== messageClientId) return message;
+
+    const reactions = message.reactions ?? [];
+    const existingReaction = reactions.find((reaction) => reaction.emoji === emoji);
+
+    if (action === "add") {
+      if (!existingReaction) {
+        return {
+          ...message,
+          reactions: [...reactions, { emoji, count: 1, reactedByMe: Boolean(reactedByMe) }],
+        };
+      }
+
+      return {
+        ...message,
+        reactions: reactions.map((reaction) =>
+          reaction.emoji === emoji
+            ? {
+                ...reaction,
+                count: reaction.count + 1,
+                reactedByMe: reactedByMe ?? reaction.reactedByMe,
+              }
+            : reaction
+        ),
+      };
+    }
+
+    if (!existingReaction) return message;
+
+    const nextCount = Math.max(0, existingReaction.count - 1);
+    return {
+      ...message,
+      reactions: reactions
+        .map((reaction) =>
+          reaction.emoji === emoji
+            ? {
+                ...reaction,
+                count: nextCount,
+                reactedByMe: reactedByMe ?? reaction.reactedByMe,
+              }
+            : reaction
+        )
+      .filter((reaction) => reaction.count > 0),
+    };
+  });
+
+const prepareMessageAttachmentsForSend = (attachments: MessageAttachment[]) =>
+  attachments.map((attachment) => {
+    if (isImageAttachment(attachment)) {
+      const { uploadStatus, uploadedUrl, ...imageAttachment } = attachment;
+      return {
+        ...imageAttachment,
+        src: uploadedUrl ?? attachment.src,
+      };
+    }
+
+    if (isFileAttachment(attachment)) {
+      const { uploadStatus, dataUrl, ...fileAttachment } = attachment;
+      return fileAttachment;
+    }
+
+    const { uploadStatus, ...messageAttachment } = attachment;
+    return messageAttachment;
+  });
+
 const attachableIcons = [
   "👍",
   "👏",
@@ -669,6 +750,9 @@ export default function Messages() {
   const messageSocketRef = useRef<ReturnType<typeof createMessageSocket> | null>(null);
   const messageSocketConversationIdsRef = useRef(messageSocketConversationIds);
   const activeConversationIdRef = useRef(activeConversationId);
+  const ownTypingConversationIdRef = useRef<number | null>(null);
+  const ownTypingStopTimeoutRef = useRef<number | null>(null);
+  const partnerTypingTimeoutRef = useRef<number | null>(null);
   const activeConversation =
     allConversations.find((conversation) => conversation.id === activeConversationId) ??
     allConversations[0] ??
@@ -679,16 +763,31 @@ export default function Messages() {
 
   const mergeConversationMessages = (conversationId: number, nextMessages: ChatMessage[]) => {
     setChatMessages((prev) => {
+      const previousMessages = prev.filter(
+        (message) => message.conversationId === conversationId
+      );
+      const messagesWithLocalState = nextMessages.map((nextMessage) => {
+        const previousMessage = previousMessages.find(
+          (message) =>
+            message.clientId === nextMessage.clientId ||
+            message.serverId === nextMessage.serverId ||
+            message.id === nextMessage.id
+        );
+
+        return previousMessage?.reactions
+          ? { ...nextMessage, reactions: previousMessage.reactions }
+          : nextMessage;
+      });
       const pendingMessages = prev.filter(
         (message) => message.conversationId === conversationId && message.status === "sending"
       );
       const otherMessages = prev.filter((message) => message.conversationId !== conversationId);
       const pendingMessagesNotInHistory = pendingMessages.filter(
         (pendingMessage) =>
-          !nextMessages.some((message) => message.clientId === pendingMessage.clientId)
+          !messagesWithLocalState.some((message) => message.clientId === pendingMessage.clientId)
       );
 
-      return [...otherMessages, ...nextMessages, ...pendingMessagesNotInHistory];
+      return [...otherMessages, ...messagesWithLocalState, ...pendingMessagesNotInHistory];
     });
   };
 
@@ -804,11 +903,15 @@ export default function Messages() {
     if (!activeConversation) return;
 
     let mounted = true;
+    let isSyncing = false;
     const conversationId = activeConversation.id;
-    const intervalMs = socketStatus === "open" ? 3000 : 1500;
+    const intervalMs = 1000;
 
     async function syncConversationMessages() {
+      if (isSyncing) return;
+
       try {
+        isSyncing = true;
         const messageResponses = await getConversationMessagesApi(conversationId);
 
         if (!mounted) return;
@@ -819,6 +922,8 @@ export default function Messages() {
         mergeConversationMessages(conversationId, nextMessages);
       } catch {
         // Keep the latest local view if background sync fails.
+      } finally {
+        isSyncing = false;
       }
     }
 
@@ -907,6 +1012,52 @@ export default function Messages() {
               : [...prev, incomingMessage.conversationId]
           );
         }
+        if (!isSelfMessage) {
+          setTypingConversationId((currentId) =>
+            currentId === incomingMessage.conversationId ? null : currentId
+          );
+        }
+      },
+      onTyping: (typingMessage: IncomingTypingSocketMessage) => {
+        if (currentUser?.userId === typingMessage.senderUserId) return;
+
+        if (partnerTypingTimeoutRef.current !== null) {
+          window.clearTimeout(partnerTypingTimeoutRef.current);
+          partnerTypingTimeoutRef.current = null;
+        }
+
+        if (!typingMessage.isTyping) {
+          setTypingConversationId((currentId) =>
+            currentId === typingMessage.conversationId ? null : currentId
+          );
+          return;
+        }
+
+        setTypingConversationId(typingMessage.conversationId);
+        partnerTypingTimeoutRef.current = window.setTimeout(() => {
+          setTypingConversationId((currentId) =>
+            currentId === typingMessage.conversationId ? null : currentId
+          );
+          partnerTypingTimeoutRef.current = null;
+        }, 2500);
+      },
+      onReaction: (reactionMessage: IncomingReactionSocketMessage) => {
+        if (currentUser?.userId === reactionMessage.senderUserId) return;
+
+        setReactionAnimation({
+          messageClientId: reactionMessage.messageClientId,
+          emoji: reactionMessage.emoji,
+          key: Date.now(),
+          shouldBounceCount: reactionMessage.action === "add",
+        });
+        setChatMessages((prev) =>
+          updateMessageReactionState(
+            prev,
+            reactionMessage.messageClientId,
+            reactionMessage.emoji,
+            reactionMessage.action
+          )
+        );
       },
       onClose: () => {
         setSocketStatus("closed");
@@ -924,6 +1075,10 @@ export default function Messages() {
       if (messageSocketRef.current === socket) {
         messageSocketRef.current = null;
       }
+      if (partnerTypingTimeoutRef.current !== null) {
+        window.clearTimeout(partnerTypingTimeoutRef.current);
+        partnerTypingTimeoutRef.current = null;
+      }
       socket.close();
     };
   }, [currentUser?.userId]);
@@ -934,6 +1089,9 @@ export default function Messages() {
     JSON.stringify(draftProcesses) !== JSON.stringify(processDraftSnapshot);
   const hasUploadingAttachments = pendingAttachments.some(
     (attachment) => attachment.uploadStatus === "uploading"
+  );
+  const hasFailedAttachments = pendingAttachments.some(
+    (attachment) => attachment.uploadStatus === "failed"
   );
   const integrationModalMeta = integrationModalProvider
     ? integrationProviderMeta[integrationModalProvider]
@@ -1378,6 +1536,7 @@ export default function Messages() {
   };
 
   const handleSelectConversation = (conversationId: number) => {
+    stopOwnTyping();
     if (unreadConversationIds.includes(conversationId)) {
       setClearingUnreadConversationId(conversationId);
       window.setTimeout(() => {
@@ -1400,6 +1559,7 @@ export default function Messages() {
 
   const handleLeaveConversation = () => {
     if (!activeConversation) return;
+    stopOwnTyping(activeConversation.id);
     const conversationId = activeConversation.id;
     const shouldLeave = window.confirm(
       `${activeConversation.name} 대화방에서 나갈까요? 메시지 목록에서 이 대화가 사라집니다.`
@@ -1435,6 +1595,39 @@ export default function Messages() {
     } else {
       setMobileView("list");
     }
+  };
+
+  const clearOwnTypingStopTimeout = () => {
+    if (ownTypingStopTimeoutRef.current === null) return;
+    window.clearTimeout(ownTypingStopTimeoutRef.current);
+    ownTypingStopTimeoutRef.current = null;
+  };
+
+  const sendTypingState = (conversationId: number, isTyping: boolean) => {
+    if (!messageSocketRef.current?.isOpen()) return;
+
+    try {
+      messageSocketRef.current.sendTyping(conversationId, isTyping);
+    } catch {
+      // Typing is ephemeral, so ignore transient socket failures.
+    }
+  };
+
+  const stopOwnTyping = (conversationId = ownTypingConversationIdRef.current) => {
+    clearOwnTypingStopTimeout();
+    if (conversationId !== null) {
+      sendTypingState(conversationId, false);
+    }
+    if (ownTypingConversationIdRef.current === conversationId) {
+      ownTypingConversationIdRef.current = null;
+    }
+  };
+
+  const scheduleOwnTypingStop = (conversationId: number) => {
+    clearOwnTypingStopTimeout();
+    ownTypingStopTimeoutRef.current = window.setTimeout(() => {
+      stopOwnTyping(conversationId);
+    }, 1200);
   };
 
   const handleStartConversationWithUser = async (user: MessageUser) => {
@@ -1480,11 +1673,28 @@ export default function Messages() {
 
   const updateMessageText = (value: string) => {
     if (!activeConversation) return;
+    const conversationId = activeConversation.id;
+
     setMessageText(value);
     setMessageDrafts((prev) => ({
       ...prev,
-      [String(activeConversation.id)]: value,
+      [String(conversationId)]: value,
     }));
+
+    if (!value.trim()) {
+      stopOwnTyping(conversationId);
+      return;
+    }
+
+    if (ownTypingConversationIdRef.current !== conversationId) {
+      if (ownTypingConversationIdRef.current !== null) {
+        sendTypingState(ownTypingConversationIdRef.current, false);
+      }
+      ownTypingConversationIdRef.current = conversationId;
+      sendTypingState(conversationId, true);
+    }
+
+    scheduleOwnTypingStop(conversationId);
   };
 
   const getCurrentTime = () => {
@@ -1511,9 +1721,10 @@ export default function Messages() {
     if (!activeConversation) return;
     const trimmedMessage = messageText.trim();
     if (!trimmedMessage && pendingAttachments.length === 0) return;
-    if (hasUploadingAttachments) return;
+    if (hasUploadingAttachments || hasFailedAttachments) return;
 
     const clientId = createClientId("msg");
+    const attachmentsForServer = prepareMessageAttachmentsForSend(pendingAttachments);
     const outgoingMessage: ChatMessage = {
       id: clientId,
       clientId,
@@ -1525,7 +1736,7 @@ export default function Messages() {
       createdAt: new Date().toISOString(),
       isSelf: true,
       status: "sending",
-      attachments: [...pendingAttachments],
+      attachments: attachmentsForServer,
     };
 
     setChatMessages((prev) => [...prev, outgoingMessage]);
@@ -1538,6 +1749,7 @@ export default function Messages() {
     setPendingAttachments([]);
     setIsIconPickerOpen(false);
     setIsAttachMenuOpen(false);
+    stopOwnTyping(activeConversation.id);
 
     const sendMessageToServer = messageSocketRef.current?.isOpen()
       ? messageSocketRef.current.sendMessage({
@@ -1573,7 +1785,6 @@ export default function Messages() {
           )
         );
         setConversationReloadKey((key) => key + 1);
-        setTypingConversationId(outgoingMessage.conversationId);
         window.setTimeout(() => {
           setChatMessages((prev) =>
             prev.map((message) =>
@@ -1583,11 +1794,6 @@ export default function Messages() {
             )
           );
         }, 900);
-        window.setTimeout(() => {
-          setTypingConversationId((currentId) =>
-            currentId === outgoingMessage.conversationId ? null : currentId
-          );
-        }, 1600);
       })
       .catch(() => {
         setChatMessages((prev) =>
@@ -1615,22 +1821,52 @@ export default function Messages() {
 
     files.forEach((file, index) => {
       const attachmentId = createClientId(`image-${index}`);
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result !== "string") return;
-        setPendingAttachments((prev) => [
-          ...prev,
-          {
-            id: attachmentId,
-            type: "image",
-            src: reader.result,
-            name: file.name,
-            uploadStatus: "uploading",
-          },
-        ]);
-        markAttachmentReady(attachmentId, 560 + index * 120);
-      };
-      reader.readAsDataURL(file);
+      const previewUrl = URL.createObjectURL(file);
+
+      setPendingAttachments((prev) => [
+        ...prev,
+        {
+          id: attachmentId,
+          type: "image",
+          src: previewUrl,
+          name: file.name,
+          uploadStatus:
+            file.size > MAX_MESSAGE_ATTACHMENT_SIZE_BYTES ? "failed" : "uploading",
+        },
+      ]);
+
+      if (file.size > MAX_MESSAGE_ATTACHMENT_SIZE_BYTES) {
+        return;
+      }
+
+      uploadMessageAttachmentApi(file)
+        .then((uploadedFile) => {
+          setPendingAttachments((prev) =>
+            prev.map((attachment) =>
+              attachment.id === attachmentId
+                ? {
+                    ...attachment,
+                    src: uploadedFile.url,
+                    name: uploadedFile.fileName,
+                    uploadedUrl: uploadedFile.url,
+                    uploadStatus: "ready",
+                  }
+                : attachment
+            )
+          );
+        })
+        .catch(() => {
+          setPendingAttachments((prev) =>
+            prev.map((attachment) =>
+              attachment.id === attachmentId
+                ? {
+                    ...attachment,
+                    uploadStatus: "failed",
+                  }
+                : attachment
+            )
+          );
+        });
     });
 
     event.target.value = "";
@@ -1640,18 +1876,59 @@ export default function Messages() {
     const files = Array.from(event.target.files ?? []);
     if (files.length === 0) return;
 
-    const attachments = files.map((file) => ({
-      id: createClientId("file"),
-      type: "file" as const,
-      name: file.name,
-      size: file.size,
-      mimeType: file.type || "application/octet-stream",
-      uploadStatus: "uploading" as const,
-    }));
+    files.forEach((file, index) => {
+      const attachmentId = createClientId(`file-${index}`);
+      const baseAttachment = {
+        id: attachmentId,
+        type: "file" as const,
+        name: file.name,
+        size: file.size,
+        mimeType: file.type || "application/octet-stream",
+        uploadStatus: "uploading" as const,
+      };
 
-    setPendingAttachments((prev) => [...prev, ...attachments]);
-    attachments.forEach((attachment, index) => {
-      markAttachmentReady(attachment.id, 520 + index * 140);
+      if (file.size > MAX_MESSAGE_ATTACHMENT_SIZE_BYTES) {
+        setPendingAttachments((prev) => [
+          ...prev,
+          {
+            ...baseAttachment,
+            uploadStatus: "failed",
+          },
+        ]);
+        return;
+      }
+
+      setPendingAttachments((prev) => [...prev, baseAttachment]);
+
+      uploadMessageAttachmentApi(file)
+        .then((uploadedFile) => {
+          setPendingAttachments((prev) =>
+            prev.map((attachment) =>
+              attachment.id === attachmentId
+                ? {
+                    ...attachment,
+                    name: uploadedFile.fileName,
+                    size: uploadedFile.size,
+                    mimeType: uploadedFile.contentType,
+                    uploadedUrl: uploadedFile.url,
+                    uploadStatus: "ready",
+                  }
+                : attachment
+            )
+          );
+        })
+        .catch(() => {
+          setPendingAttachments((prev) =>
+            prev.map((attachment) =>
+              attachment.id === attachmentId
+                ? {
+                    ...attachment,
+                    uploadStatus: "failed",
+                  }
+                : attachment
+            )
+          );
+        });
     });
     setIsAttachMenuOpen(false);
     event.target.value = "";
@@ -1741,53 +2018,30 @@ export default function Messages() {
     const targetReaction = targetMessage?.reactions?.find(
       (reaction) => reaction.emoji === emoji
     );
-    const shouldBounceCount = !targetReaction || !targetReaction.reactedByMe;
+    const action = targetReaction?.reactedByMe ? "remove" : "add";
 
     setReactionAnimation({
       messageClientId,
       emoji,
       key: Date.now(),
-      shouldBounceCount,
+      shouldBounceCount: action === "add",
     });
 
     setChatMessages((prev) =>
-      prev.map((message) => {
-        if (message.clientId !== messageClientId) return message;
-
-        const reactions = message.reactions ?? [];
-        const existingReaction = reactions.find((reaction) => reaction.emoji === emoji);
-
-        if (!existingReaction) {
-          return {
-            ...message,
-            reactions: [...reactions, { emoji, count: 1, reactedByMe: true }],
-          };
-        }
-
-        if (existingReaction.reactedByMe) {
-          const nextCount = existingReaction.count - 1;
-          return {
-            ...message,
-            reactions: reactions
-              .map((reaction) =>
-                reaction.emoji === emoji
-                  ? { ...reaction, count: nextCount, reactedByMe: false }
-                  : reaction
-              )
-              .filter((reaction) => reaction.count > 0),
-          };
-        }
-
-        return {
-          ...message,
-          reactions: reactions.map((reaction) =>
-            reaction.emoji === emoji
-              ? { ...reaction, count: reaction.count + 1, reactedByMe: true }
-              : reaction
-          ),
-        };
-      })
+      updateMessageReactionState(prev, messageClientId, emoji, action, action === "add")
     );
+    if (targetMessage && messageSocketRef.current?.isOpen()) {
+      try {
+        messageSocketRef.current.sendReaction({
+          conversationId: targetMessage.conversationId,
+          messageClientId: targetMessage.clientId,
+          emoji,
+          action,
+        });
+      } catch {
+        // Reactions are lightweight UI events, so local feedback remains.
+      }
+    }
     setReactionPickerMessageId(null);
   };
 
@@ -1914,12 +2168,11 @@ export default function Messages() {
     removable = false
   ) => {
     const meta = getFileAttachmentMeta(attachment);
-
-    return (
-      <div
-        key={attachment.id}
-        className="relative flex max-w-72 items-center gap-2 rounded-lg border border-white/70 bg-white/80 px-3 py-2 pr-8 text-left shadow-sm"
-      >
+    const fileUrl = attachment.uploadedUrl ?? attachment.dataUrl;
+    const cardClass =
+      "relative flex max-w-72 items-center gap-2 rounded-lg border border-white/70 bg-white/80 px-3 py-2 pr-8 text-left shadow-sm";
+    const cardContent = (
+      <>
         <span
           className={`flex size-10 shrink-0 items-center justify-center rounded-lg text-[10px] font-black ${meta.className}`}
         >
@@ -1934,6 +2187,25 @@ export default function Messages() {
             {renderAttachmentStatus(attachment)}
           </div>
         </div>
+      </>
+    );
+
+    if (!removable && fileUrl) {
+      return (
+        <a
+          key={attachment.id}
+          href={fileUrl}
+          download={attachment.name}
+          className={`${cardClass} transition-all hover:-translate-y-0.5 hover:bg-white`}
+        >
+          {cardContent}
+        </a>
+      );
+    }
+
+    return (
+      <div key={attachment.id} className={cardClass}>
+        {cardContent}
         {removable && (
           <button
             type="button"
@@ -2798,6 +3070,12 @@ export default function Messages() {
                     첨부 파일을 준비하는 중입니다. 완료되면 전송할 수 있어요.
                   </div>
                 )}
+                {hasFailedAttachments && (
+                  <div className="flex basis-full items-center gap-2 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#D84325]">
+                    <XCircle className="size-3.5" />
+                    첨부 파일을 준비하지 못했어요. 삭제 후 다시 선택해주세요.
+                  </div>
+                )}
               </div>
             )}
             <div className="flex items-end gap-2">
@@ -2972,6 +3250,7 @@ export default function Messages() {
                 onClick={handleSendMessage}
                 disabled={
                   hasUploadingAttachments ||
+                  hasFailedAttachments ||
                   (!messageText.trim() && pendingAttachments.length === 0)
                 }
                 title={hasUploadingAttachments ? "첨부가 완료되면 전송할 수 있어요." : undefined}

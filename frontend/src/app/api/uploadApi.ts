@@ -10,6 +10,13 @@ export type FeedImagesUploadResponse = {
   thumbnailImageUrl: string | null;
 };
 
+export type MessageAttachmentUploadResponse = {
+  url: string;
+  fileName: string;
+  contentType: string;
+  size: number;
+};
+
 export async function uploadProfileImageApi(file: File) {
   const formData = new FormData();
   formData.append("file", file);
@@ -36,6 +43,20 @@ export async function uploadFeedImagesApi(postId: number, files: File[]) {
       body: formData,
     },
     "Failed to upload feed images.",
+  );
+}
+
+export async function uploadMessageAttachmentApi(file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  return apiRequest<MessageAttachmentUploadResponse>(
+    "/api/uploads/message-attachments",
+    {
+      method: "POST",
+      body: formData,
+    },
+    "Failed to upload message attachment.",
   );
 }
 
