@@ -20,16 +20,15 @@ import { publicApiRequest } from "../api/apiClient";
 // [기능: 타입 정의] API 응답 및 프로젝트 데이터 구조 정의
 type ProjectApiItem = {
   id: number;
+  nickname: string;
+  companyName: string | null;
+  category: string | null;
   title: string;
-  description: string;
-  fullDescription: string;
-  category: string;
-  skills: string[];
+  overview: string;
   budget: string;
   deadline: string;
-  imageUrl: string;
-  projectType: string;
   experienceLevel: string;
+  jobState: string;
 };
 
 // 왼쪽 중단바의 필터링 옵션들
@@ -39,7 +38,8 @@ interface FilterOptions {
   categories: string[];
 }
 
-const PROJECTS_API_URL = `${(import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:5173"}/api/projects`;
+const API_BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "").replace(/\/$/, "");
+const PROJECTS_API_URL = `${API_BASE_URL}/api/projects`;
 
 const SORT_OPTIONS = ["최신순", "예산순", "마감임박순"] as const;
 const DEFAULT_AVATAR = "https://i.pravatar.cc/40?img=12";
@@ -70,29 +70,29 @@ function toProjectData(project: ProjectApiItem): ProjectData {
     badge: getBadge(project.deadline),
     priority: getPriority(project.deadline),
     title: project.title,
-    description: project.description,
-    fullDescription: project.fullDescription,
+    description: project.overview,
+    fullDescription: project.overview,
     client: {
-      name: "Pixel Client",
+      name: project.nickname,
       avatar: DEFAULT_AVATAR,
       verified: true,
     },
-    category: project.category,
-    skills: project.skills,
+    category: project.category ?? "Uncategorized",
+    skills: [],
     budget: project.budget,
-    duration: project.projectType,
+    duration: project.jobState,
     deadline: project.deadline,
     applicants: 0,
     remote: true,
-    imageUrl: project.imageUrl,
-    referenceImages: [project.imageUrl],
+    imageUrl: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
+    referenceImages: [],
     requirements: [],
     responsibilities: [],
-    projectType: project.projectType,
+    projectType: project.jobState,
     experienceLevel: project.experienceLevel,
     companyInfo: {
-      size: "협의",
-      industry: project.category,
+      size: project.companyName ?? "",
+      industry: project.category ?? "Client",
     },
   };
 }
