@@ -36,6 +36,11 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      '/ws': {
+        target: 'ws://localhost:8080',
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.

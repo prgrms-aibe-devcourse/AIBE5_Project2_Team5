@@ -465,6 +465,12 @@ const mapChatMessageResponse = (
 
 const messages: ChatMessage[] = [];
 
+const parseMessageSocketConversationIds = (value: string) =>
+  value
+    .split("|")
+    .map((conversationId) => Number(conversationId))
+    .filter((conversationId) => Number.isFinite(conversationId));
+
 const attachableIcons = [
   "👍",
   "👏",
@@ -658,6 +664,7 @@ export default function Messages() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageSocketRef = useRef<ReturnType<typeof createMessageSocket> | null>(null);
+  const messageSocketConversationIdsRef = useRef(messageSocketConversationIds);
   const activeConversationIdRef = useRef(activeConversationId);
   const activeConversation =
     allConversations.find((conversation) => conversation.id === activeConversationId) ??
@@ -794,18 +801,27 @@ export default function Messages() {
   }, [activeConversationId]);
 
   useEffect(() => {
-    const conversationIds = messageSocketConversationIds
-      .split("|")
-      .map((conversationId) => Number(conversationId))
-      .filter((conversationId) => Number.isFinite(conversationId));
+    messageSocketConversationIdsRef.current = messageSocketConversationIds;
+    const conversationIds = parseMessageSocketConversationIds(messageSocketConversationIds);
+    if (messageSocketRef.current?.isOpen()) {
+      messageSocketRef.current.subscribe(conversationIds);
+    }
+  }, [messageSocketConversationIds]);
 
+  useEffect(() => {
     const socket = createMessageSocket({
       onOpen: () => {
+        const conversationIds = parseMessageSocketConversationIds(
+          messageSocketConversationIdsRef.current
+        );
         if (conversationIds.length > 0) {
           socket.subscribe(conversationIds);
         }
       },
       onMessage: (incomingMessage: IncomingChatSocketMessage) => {
+        const conversationIds = parseMessageSocketConversationIds(
+          messageSocketConversationIdsRef.current
+        );
         const isSelfMessage = currentUser?.userId === incomingMessage.senderUserId;
         const nextMessage: ChatMessage = {
           id: incomingMessage.serverId,
@@ -868,7 +884,7 @@ export default function Messages() {
       }
       socket.close();
     };
-  }, [currentUser?.userId, messageSocketConversationIds]);
+  }, [currentUser?.userId]);
 
   const isPartnerTyping = Boolean(activeConversation && typingConversationId === activeConversation.id);
   const draftValidationMessage = getProcessDraftValidation(draftProcesses);

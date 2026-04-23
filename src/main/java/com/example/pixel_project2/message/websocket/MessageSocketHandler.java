@@ -58,9 +58,7 @@ public class MessageSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        sessions.remove(session.getId());
-        subscriptions.remove(session.getId());
-        sessionLocks.remove(session.getId());
+        removeSession(session);
     }
 
     private void handleSubscribe(WebSocketSession session, JsonNode payload) throws IOException {
@@ -137,6 +135,7 @@ public class MessageSocketHandler extends TextWebSocketHandler {
     private void broadcast(long conversationId, String senderSessionId, ObjectNode outbound) throws IOException {
         for (WebSocketSession targetSession : sessions.values()) {
             if (!targetSession.isOpen()) {
+                removeSession(targetSession);
                 continue;
             }
 
@@ -149,9 +148,23 @@ public class MessageSocketHandler extends TextWebSocketHandler {
                     && messageService.canAccessConversation(targetUser, conversationId);
 
             if (senderSession || subscribed || participantSession) {
-                sendJson(targetSession, outbound);
+                try {
+                    sendJson(targetSession, outbound);
+                } catch (IOException e) {
+                    removeSession(targetSession);
+                    try {
+                        targetSession.close(CloseStatus.SERVER_ERROR);
+                    } catch (IOException ignored) {
+                    }
+                }
             }
         }
+    }
+
+    private void removeSession(WebSocketSession session) {
+        sessions.remove(session.getId());
+        subscriptions.remove(session.getId());
+        sessionLocks.remove(session.getId());
     }
 
     private AuthenticatedUser authenticatedUser(WebSocketSession session) {

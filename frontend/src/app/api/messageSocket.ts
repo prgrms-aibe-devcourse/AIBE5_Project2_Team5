@@ -40,7 +40,9 @@ const MESSAGE_SOCKET_ACK_TIMEOUT = 5000;
 
 const getWebSocketOrigin = () => {
   const configuredOrigin = import.meta.env.VITE_WS_ORIGIN ?? import.meta.env.VITE_API_ORIGIN;
-  const origin = configuredOrigin || "http://localhost:8080";
+  const currentOrigin =
+    typeof window === "undefined" ? "http://localhost:8080" : window.location.origin;
+  const origin = configuredOrigin || currentOrigin;
   return origin.replace(/^http/i, "ws");
 };
 
