@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import axios from 'axios';
 import { Link } from "react-router";
 import {
   AlertTriangle,
@@ -16,8 +15,8 @@ import ProjectDetailModal from "../components/ProjectDetailModal";
 import type { ProjectData } from "../components/ProjectDetailModal";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { publicApiRequest } from "../api/apiClient";
+import { getProjectDetailApi } from "../api/projectApi";
 
-// [기능: 타입 정의] API 응답 및 프로젝트 데이터 구조 정의
 type ProjectApiItem = {
   id: number;
   nickname: string;
@@ -31,21 +30,30 @@ type ProjectApiItem = {
   jobState: string;
 };
 
-// 왼쪽 중단바의 필터링 옵션들
-interface FilterOptions {
+type FilterOptions = {
   jobStates: string[];
   experienceLevels: string[];
   categories: string[];
-}
+};
 
 const API_BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "").replace(/\/$/, "");
 const PROJECTS_API_URL = `${API_BASE_URL}/api/projects`;
-
 const SORT_OPTIONS = ["최신순", "예산순", "마감임박순"] as const;
 const DEFAULT_AVATAR = "https://i.pravatar.cc/40?img=12";
 
+function parseBudgetToManwon(value: string | number | null | undefined): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
 
-// [기능: 헬퍼 함수] 마감일 계산 및 프로젝트 데이터 변환 로직
+  if (!value) {
+    return 0;
+  }
+
+  const parsed = Number.parseInt(String(value).replace(/\D/g, ""), 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function getDday(deadline: string): number {
   return Math.ceil((new Date(deadline).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
 }
@@ -60,7 +68,7 @@ function getPriority(deadline: string): ProjectData["priority"] {
 function getBadge(deadline: string): string {
   const dday = getDday(deadline);
   if (dday <= 0) return "마감";
-  if (dday <= 3) return "곧 마감";
+  if (dday <= 3) return "급마감";
   return "모집중";
 }
 
@@ -71,7 +79,7 @@ function toProjectData(project: ProjectApiItem): ProjectData {
     priority: getPriority(project.deadline),
     title: project.title,
     description: project.overview,
-    fullDescription: project.overview,
+    fullDescription: "",
     client: {
       name: project.nickname,
       avatar: DEFAULT_AVATAR,
@@ -79,7 +87,7 @@ function toProjectData(project: ProjectApiItem): ProjectData {
     },
     category: project.category ?? "Uncategorized",
     skills: [],
-    budget: project.budget,
+    budget: parseBudgetToManwon(project.budget),
     duration: project.jobState,
     deadline: project.deadline,
     applicants: 0,
@@ -97,7 +105,6 @@ function toProjectData(project: ProjectApiItem): ProjectData {
   };
 }
 
-// [기능: UI 컴포넌트] D-day 표시 배지
 function DdayPill({ deadline }: { deadline: string }) {
   const dday = getDday(deadline);
   const label = dday <= 0 ? "마감" : `D-${dday}`;
@@ -118,9 +125,9 @@ function DdayPill({ deadline }: { deadline: string }) {
   );
 }
 
-// [기능: UI 컴포넌트] 프로젝트 썸네일 이미지
 function Thumbnail({ project, mode }: { project: ProjectData; mode: "list" | "grid" }) {
   const className = mode === "grid" ? "h-44 w-full" : "h-full w-40 shrink-0";
+
   return (
     <div className={`${className} overflow-hidden bg-gray-100`}>
       <ImageWithFallback
@@ -133,7 +140,6 @@ function Thumbnail({ project, mode }: { project: ProjectData; mode: "list" | "gr
 }
 
 export default function Projects() {
-  // [기능: 상태 관리] 프로젝트 목록, 필터, 정렬, 뷰 모드 등
   const [apiProjects, setApiProjects] = useState<ProjectApiItem[]>([]);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     jobStates: [],
@@ -148,9 +154,9 @@ export default function Projects() {
   const [selectedProject, setSelectedProject] = useState<ProjectData | null>(null);
   const [bookmarked, setBookmarked] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // [기능: 데이터 패칭] API로부터 프로젝트 목록 로드
   useEffect(() => {
     let mounted = true;
 
@@ -161,7 +167,7 @@ export default function Projects() {
 
         const [projectsData, filtersData] = await Promise.all([
           publicApiRequest<ProjectApiItem[]>(PROJECTS_API_URL),
-          publicApiRequest<FilterOptions>(`${PROJECTS_API_URL}/filtering`)
+          publicApiRequest<FilterOptions>(`${PROJECTS_API_URL}/filtering`),
         ]);
 
         if (!mounted) return;
@@ -184,7 +190,6 @@ export default function Projects() {
     };
   }, []);
 
-  // [기능: 데이터 가공] 필터링 및 정렬 로직
   const projectsData = useMemo(() => apiProjects.map(toProjectData), [apiProjects]);
 
   const categoryCounts = useMemo(() => {
@@ -210,7 +215,7 @@ export default function Projects() {
     }
 
     if (sortBy === "예산순") {
-      list.sort((a, b) => parseInt(b.budget.replace(/\D/g, ""), 10) - parseInt(a.budget.replace(/\D/g, ""), 10));
+      list.sort((a, b) => Number(b.budget) - Number(a.budget));
     }
 
     if (sortBy === "마감임박순") {
@@ -220,105 +225,134 @@ export default function Projects() {
     return list;
   }, [projectsData, selectedCategory, selectedExperience, selectedProjectType, sortBy]);
 
-  const projectTypes = filterOptions.jobStates;
-  const experienceLevels = filterOptions.experienceLevels;
+  async function handleOpenProject(project: ProjectData) {
+    setSelectedProject(project);
+    setDetailLoading(project.id);
 
-  // [기능: 북마크 토글] 즐겨찾기 상태 변경
-  const toggleBookmark = (projectId: number, event: React.MouseEvent) => {
+    try {
+      const detail = await getProjectDetailApi(project.id);
+
+      setSelectedProject((current) => {
+        if (!current || current.id !== project.id) {
+          return current;
+        }
+
+        return {
+          ...current,
+          category: detail.category || current.category,
+          title: detail.title || current.title,
+          description: detail.overview || current.description,
+          fullDescription: detail.fullDescription || "",
+          responsibilities: detail.responsibilities ?? [],
+          requirements: detail.qualifications ?? [],
+          skills: detail.skills ?? [],
+          budget: parseBudgetToManwon(detail.budget),
+          duration: detail.jobState || current.duration,
+          projectType: detail.jobState || current.projectType,
+          experienceLevel: detail.experienceLevel || current.experienceLevel,
+          deadline: detail.deadline || current.deadline,
+        };
+      });
+    } catch {
+      setSelectedProject((current) => current);
+    } finally {
+      setDetailLoading((current) => (current === project.id ? null : current));
+    }
+  }
+
+  function toggleBookmark(projectId: number, event: React.MouseEvent) {
     event.stopPropagation();
     setBookmarked((prev) => (prev.includes(projectId) ? prev.filter((id) => id !== projectId) : [...prev, projectId]));
-  };
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-[#f6f8fb] text-[#111827]">
-      {/* [레이아웃: 네비게이션] 상단 메뉴 */}
       <Navigation />
 
-      {/* [기능: 헤더 섹션] 서비스 소개 및 프로젝트 등록 버튼 */}
       <section className="bg-[#0f172a] text-white">
         <div className="mx-auto flex max-w-[1400px] items-end justify-between gap-6 px-6 py-12">
           <div>
-            <div className="inline-flex items-center gap-2 bg-[#00C9A7]/15 border border-[#00C9A7]/30 rounded-full px-3 py-1 mb-4">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#00C9A7] animate-pulse" />
-              <span className="text-[#00C9A7] text-xs font-semibold tracking-wide">LIVE · 프리랜서 매칭 플랫폼</span>
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#00C9A7]/30 bg-[#00C9A7]/15 px-3 py-1">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#00C9A7]" />
+              <span className="text-xs font-semibold tracking-wide text-[#00C9A7]">LIVE MATCHING BOARD</span>
             </div>
             <h1 className="text-4xl font-black">
               <span className="text-[#FF5C3A]">p</span>
               <span className="text-white">ick</span>
-              <span className="text-white mx-2">&</span>
+              <span className="mx-2 text-white">&</span>
               <span className="text-[#00C9A7]">s</span>
-              <span className="text-white">ell</span></h1>
+              <span className="text-white">ell</span>
+            </h1>
             <p className="mt-3 max-w-2xl text-sm text-slate-300">
-              원하는 프로젝트를 고르고<span className="text-[#FF5C3A] font-semibold">(pick)</span>, 크리에이티브를 판매하세요<span className="text-[#00C9A7] font-semibold">(sell)</span><br />
-              클라이언트와 디자이너를 잇는 새로운 방식의 프로젝트 매칭 플랫폼
+              프로젝트를 고르고, 적합한 디자이너를 연결하는 매칭 보드입니다.
             </p>
           </div>
+
           <div className="flex items-center gap-6">
-          <div className="flex items-center gap-5">
-            <div className="text-center">
-              <p className="text-2xl font-bold text-white"><span className="text-[#00C9A7] font-semibold">{projectsData.length}</span></p>
-              <p className="text-[11px] text-gray-400 mt-0.5">등록 공고</p>
+            <div className="flex items-center gap-5">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-white">
+                  <span className="font-semibold text-[#00C9A7]">{projectsData.length}</span>
+                </p>
+                <p className="mt-0.5 text-[11px] text-gray-400">등록 공고</p>
+              </div>
+              <div className="h-8 w-px bg-white/10" />
+              <div className="text-center">
+                <p className="text-2xl font-bold text-[#FF5C3A]">{projectsData.filter((p) => p.priority === "high").length}</p>
+                <p className="mt-0.5 text-[11px] text-gray-400">급한 공고</p>
+              </div>
             </div>
-            <div className="w-px h-8 bg-white/10" />
-            <div className="text-center">
-              <p className="text-2xl font-bold text-[#FF5C3A]">{projectsData.filter((p) => p.priority === "high").length}</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">급구 공고</p>
-            </div>
-          </div>
-          <Link
-            to="/projects/new"
-            className="rounded-xl bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-900 transition hover:bg-emerald-300"
-          >
-            <span className="text-[#111827] font-semibold">+ 프로젝트 등록</span>
-          </Link>
+
+            <Link
+              to="/projects/new"
+              className="rounded-xl bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-900 transition hover:bg-emerald-300"
+            >
+              + 프로젝트 등록
+            </Link>
           </div>
         </div>
       </section>
 
       <div className="mx-auto flex w-full max-w-[1400px] flex-1 gap-6 px-6 py-8 xl:flex-row flex-col">
-        {/* [기능: 사이드바 필터] 카테고리, 유형, 경력별 필터링 */}
         <aside className="w-full rounded-3xl border border-white/70 bg-white p-5 shadow-sm xl:w-72">
           <div className="mb-6">
             <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-400">Filter</h2>
           </div>
 
-          {/* 사이드 필터: 프로젝트 유형 */}
           <div>
             <p className="mb-1 text-xs font-bold text-gray-400">프로젝트 유형</p>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {projectTypes.map((projectType) => (
-                  <button
-                      key={projectType}
-                      onClick={() => setSelectedProjectType((prev) => (prev === projectType ? null : projectType))}
-                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                          selectedProjectType === projectType ? "bg-slate-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                  >
-                    {projectType}
-                  </button>
+            <div className="mb-4 flex flex-wrap gap-2">
+              {filterOptions.jobStates.map((projectType) => (
+                <button
+                  key={projectType}
+                  onClick={() => setSelectedProjectType((prev) => (prev === projectType ? null : projectType))}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                    selectedProjectType === projectType ? "bg-slate-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {projectType}
+                </button>
               ))}
             </div>
           </div>
 
-          {/* 사이드 필터: 경력 */}
           <div>
             <p className="mb-1 text-xs font-bold text-gray-400">경력</p>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {experienceLevels.map((experienceLevel) => (
-                  <button
-                      key={experienceLevel}
-                      onClick={() => setSelectedExperience((prev) => (prev === experienceLevel ? null : experienceLevel))}
-                      className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                          selectedExperience === experienceLevel ? "bg-slate-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                  >
-                    {experienceLevel}
-                  </button>
+            <div className="mb-4 flex flex-wrap gap-2">
+              {filterOptions.experienceLevels.map((experienceLevel) => (
+                <button
+                  key={experienceLevel}
+                  onClick={() => setSelectedExperience((prev) => (prev === experienceLevel ? null : experienceLevel))}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                    selectedExperience === experienceLevel ? "bg-slate-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {experienceLevel}
+                </button>
               ))}
             </div>
           </div>
 
-          {/* 사이드 필터: 카테고리 */}
           <div className="space-y-6">
             <div>
               <p className="mb-1 text-xs font-bold text-gray-400">카테고리</p>
@@ -352,7 +386,6 @@ export default function Projects() {
         </aside>
 
         <main className="min-w-0 flex-1">
-          {/* [기능: 목록 제어] 정렬 방식 및 뷰 모드(리스트/그리드) 선택 */}
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm text-gray-500">총 프로젝트</p>
@@ -389,7 +422,6 @@ export default function Projects() {
             </div>
           </div>
 
-          {/* [기능: 상태별 화면] 로딩, 에러, 결과 없음 처리 */}
           {loading && (
             <div className="rounded-3xl border border-dashed border-gray-300 bg-white px-6 py-20 text-center text-sm text-gray-500">
               프로젝트 목록을 불러오는 중입니다.
@@ -409,13 +441,12 @@ export default function Projects() {
             </div>
           )}
 
-          {/* [기능: 프로젝트 목록 렌더링] 필터링된 프로젝트 카드 목록 */}
           {!loading && !error && filteredProjects.length > 0 && (
             <div className={viewMode === "grid" ? "grid grid-cols-1 gap-4 lg:grid-cols-2" : "space-y-4"}>
               {filteredProjects.map((project) => (
                 <article
                   key={project.id}
-                  onClick={() => setSelectedProject(project)}
+                  onClick={() => void handleOpenProject(project)}
                   className="group cursor-pointer overflow-hidden rounded-3xl border border-white/70 bg-white shadow-sm transition hover:-translate-y-1 hover:border-emerald-200 hover:shadow-xl"
                 >
                   <div className={viewMode === "grid" ? "flex flex-col" : "flex flex-col md:flex-row"}>
@@ -446,18 +477,10 @@ export default function Projects() {
 
                       <p className="line-clamp-2 text-sm leading-6 text-gray-500">{project.description}</p>
 
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {project.skills.map((skill) => (
-                          <span key={skill} className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                            {skill}
-                          </span>
-                        ))}
-                      </div>
-
                       <div className="mt-5 flex flex-wrap items-end justify-between gap-4 border-t border-gray-100 pt-4">
                         <div>
                           <p className="text-xs text-gray-400">예산</p>
-                          <p className="text-lg font-black text-emerald-600">{project.budget}</p>
+                          <p className="text-lg font-black text-emerald-600">{project.budget}만원</p>
                         </div>
 
                         <div className="flex items-center gap-3 text-sm text-gray-500">
@@ -467,7 +490,7 @@ export default function Projects() {
                           </span>
                           <DdayPill deadline={project.deadline} />
                           <span className="inline-flex items-center gap-1 font-semibold text-emerald-600">
-                            상세보기
+                            {detailLoading === project.id ? "불러오는 중" : "상세보기"}
                             <ArrowRight className="size-4" />
                           </span>
                         </div>
@@ -483,7 +506,6 @@ export default function Projects() {
 
       <Footer />
 
-      {/* [기능: 상세 모달] 프로젝트 클릭 시 상세 정보 팝업 */}
       <ProjectDetailModal
         project={selectedProject}
         onClose={() => setSelectedProject(null)}
@@ -493,7 +515,7 @@ export default function Projects() {
           setBookmarked((prev) =>
             prev.includes(selectedProject.id)
               ? prev.filter((id) => id !== selectedProject.id)
-              : [...prev, selectedProject.id]
+              : [...prev, selectedProject.id],
           );
         }}
       />

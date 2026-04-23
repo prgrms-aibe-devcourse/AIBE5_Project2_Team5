@@ -128,6 +128,13 @@ public class MatchingServiceImpl implements MatchingService {
     }
 
     private ProjectDetailResponse toProjectDetailResponse(Project project) {
+        List<String> skills = jobSkillRepository.findAllByProjectPostId(project.getPost_id()).stream()
+                .map(JobSkill::getSkillName)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .toList();
         return new ProjectDetailResponse(
                 project.getPost_id(),
                 project.getPost().getPostType().name(),
@@ -135,9 +142,11 @@ public class MatchingServiceImpl implements MatchingService {
                 project.getPost().getTitle(),
                 project.getBudget(),
                 project.getOverview(),
+                project.getFullDescription(),
                 // 수정 포인트 2: 엔티티 객체에서 꺼낼 필요 없이 바로 List<String>을 반환합니다.
                 project.getResponsibilities(),
                 project.getQualifications(),
+                skills,
                 project.getExperienceLevel() != null ? project.getExperienceLevel().getLabel() : null,
                 project.getJobState() != null ? project.getJobState().getLabel() : null,
                 project.getDeadline() != null ? project.getDeadline().toString() : null
