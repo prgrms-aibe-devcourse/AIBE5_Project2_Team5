@@ -31,4 +31,8 @@ public class CollectionFolder extends BaseTimeEntity {
 
     @Column(name = "sort_order")
     private Integer sortOrder;
+
+    @Builder.Default
+    @OneToMany(mappedBy = "folder", cascade = CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<Collection> collections = new java.util.ArrayList<>();
 }

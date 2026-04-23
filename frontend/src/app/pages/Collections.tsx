@@ -10,7 +10,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import Navigation from "../components/Navigation";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import {
@@ -59,6 +59,9 @@ export default function Collections() {
   const [draggingCollectionId, setDraggingCollectionId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [collectionToDeleteId, setCollectionToDeleteId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     void loadCollections();
@@ -126,18 +129,31 @@ export default function Collections() {
   };
 
   const deleteCollection = async (collectionId: number) => {
-    if (!confirm("정말 이 컬렉션을 삭제하시겠습니까?")) return;
+    console.log("Proceeding with API delete call for ID:", collectionId);
     try {
       await deleteCollectionFolderApi(collectionId);
-      if (selectedCollectionId === collectionId) {
-        setSelectedCollectionId(null);
-        setSelectedCollection(null);
-      }
+      console.log("Delete API success");
+      
+      setIsDeleteDialogOpen(false);
+      setCollectionToDeleteId(null);
+      setSelectedCollectionId(null);
+      setSelectedCollection(null);
       setOpenCollectionMenuId(null);
+      
       void loadCollections();
     } catch (err) {
+      console.error("Delete API failed:", err);
       alert("컬렉션 삭제에 실패했습니다.");
     }
+  };
+
+  const openDeleteConfirm = (e: React.MouseEvent, id: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log("Opening custom delete confirm for ID:", id);
+    setCollectionToDeleteId(id);
+    setIsDeleteDialogOpen(true);
+    setOpenCollectionMenuId(null); // 메뉴 닫기
   };
 
   const startReorderMode = () => {
@@ -191,14 +207,17 @@ export default function Collections() {
 
   const handleRenameSelectedCollection = async () => {
     if (!selectedCollectionId || !editingCollectionName.trim()) return;
+    console.log("Renaming collection:", selectedCollectionId, "to:", editingCollectionName.trim());
 
     try {
       await renameCollectionFolderApi(selectedCollectionId, editingCollectionName.trim());
+      console.log("Rename successful");
       void loadCollections();
       if (selectedCollection) {
         setSelectedCollection({ ...selectedCollection, folderName: editingCollectionName.trim() });
       }
     } catch (err) {
+      console.error("Rename failed:", err);
       alert("이름 수정에 실패했습니다.");
     }
   };
@@ -386,10 +405,7 @@ export default function Collections() {
                       순서 변경
                     </button>
                     <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        deleteCollection(collection.folderId);
-                      }}
+                      onClick={(event) => openDeleteConfirm(event, collection.folderId)}
                       className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-red-500 hover:bg-red-50"
                     >
                       <Trash2 className="size-4" />
@@ -512,7 +528,7 @@ export default function Collections() {
                     이름 수정
                   </button>
                   <button
-                    onClick={() => deleteCollection(selectedCollection.folderId)}
+                    onClick={(e) => openDeleteConfirm(e, selectedCollection.folderId)}
                     className="flex items-center gap-1 rounded-xl border border-red-200 px-3 py-2 text-sm text-red-500 hover:bg-red-50"
                   >
                     <Trash2 className="size-4" />
@@ -591,6 +607,48 @@ export default function Collections() {
           </div>
         </div>
       )}
+      {/* 삭제 확인 커스텀 모달 */}
+      <AnimatePresence>
+        {isDeleteDialogOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsDeleteDialogOpen(false)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"
+            >
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-500">
+                <Trash2 className="size-6" />
+              </div>
+              <h3 className="mb-2 text-lg font-bold text-gray-900">컬렉션 삭제</h3>
+              <p className="mb-6 text-sm text-gray-500">
+                정말 이 컬렉션을 삭제하시겠습니까? 컬렉션 내의 저장된 피드 정보가 모두 삭제되며, 이 작업은 되돌릴 수 없습니다.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setIsDeleteDialogOpen(false)}
+                  className="flex-1 rounded-xl bg-gray-100 py-3 text-sm font-semibold text-gray-600 hover:bg-gray-200 transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={() => collectionToDeleteId && deleteCollection(collectionToDeleteId)}
+                  className="flex-1 rounded-xl bg-red-500 py-3 text-sm font-semibold text-white hover:bg-red-600 transition-colors shadow-lg shadow-red-200"
+                >
+                  삭제하기
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
