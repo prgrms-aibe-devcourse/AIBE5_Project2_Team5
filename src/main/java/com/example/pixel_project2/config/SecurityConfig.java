@@ -67,12 +67,13 @@ public class SecurityConfig {
 
                         .requestMatchers("/error").permitAll()
                         .requestMatchers(
-                                HttpMethod.GET,
-                                "/api/auth/oauth2/**",
-                                "/api/auth/nickname/check",
-                                "/oauth2/**",
-                                "/login/oauth2/**"
-                        ).permitAll()
+                        HttpMethod.GET,
+                        "/api/auth/oauth2/**",
+                        "/api/auth/nickname/check",
+                        "/oauth2/**",
+                        "/login/oauth2/**",
+                        "/ws/**"
+                ).permitAll()
                         .requestMatchers(
                                 HttpMethod.POST,
                                 "/api/auth/login",

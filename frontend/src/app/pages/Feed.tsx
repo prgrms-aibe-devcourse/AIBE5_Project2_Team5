@@ -21,8 +21,11 @@ import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { apiRequest } from "../api/apiClient";
+import {
+  createMessageConversationApi,
+  sendConversationMessageApi,
+} from "../api/messageApi";
 import { getCurrentUser } from "../utils/auth";
-import { saveFeedProposalMessage } from "../utils/feedProposalMessages";
 import {
   getMyCollectionsApi,
   saveFeedToCollectionApi,
@@ -31,6 +34,7 @@ import {
 } from "../api/collectionApi";
 
 type FeedAuthor = {
+  userId?: number;
   name: string;
   role: string;
   avatar: string;
@@ -63,6 +67,7 @@ type BaseFeedItem = {
 
 type FeedApiItem = {
   postId: number;
+  userId: number;
   title: string;
   nickname: string;
   thumbnailUrl: string | null;
@@ -598,7 +603,7 @@ export default function Feed() {
   );
 
   const savedItemIds = useMemo(() => {
-    // Note: Since server response doesn't have all itemIds, 
+    // Note: Since server response doesn't have all itemIds,
     // we use a simplified version or fetch details if needed.
     // For now, we rely on the modal fetch to show accurate saved status.
     return new Set<number>();
@@ -665,6 +670,7 @@ export default function Feed() {
           (feedData?.feeds ?? []).map((feedItem) => ({
             id: feedItem.postId,
             author: {
+              userId: feedItem.userId,
               name: feedItem.nickname,
               role: toFeedAuthorRole("", feedItem.postType),
               avatar: `https://i.pravatar.cc/150?u=feed-${feedItem.postId}`,
@@ -1183,28 +1189,42 @@ export default function Feed() {
     }
   };
 
-  const handleProposalClick = (item: FeedCardItem, e?: React.MouseEvent) => {
+  const handleProposalClick = async (item: FeedCardItem, e?: React.MouseEvent) => {
     e?.stopPropagation();
+
+    if (!item.author.userId) {
+      alert("대화 상대 정보를 찾을 수 없습니다.");
+      return;
+    }
+
+    if (currentUser?.userId === item.author.userId) {
+      alert("내 피드에는 제안을 보낼 수 없습니다.");
+      return;
+    }
 
     const now = Date.now();
     const proposalMessage = `안녕하세요. "${item.title}" 작업을 보고 프로젝트 제안을 드리고 싶어 연락드렸어요. 작업 가능 여부와 예상 일정, 견적을 이야기해보고 싶습니다.`;
 
-    saveFeedProposalMessage({
-      id: `feed-proposal-${item.id}-${now}`,
-      conversationId: now,
-      feedId: item.id,
-      feedTitle: item.title,
-      feedDescription: item.description,
-      feedImage: getFeedImages(item)[0] ?? item.image,
-      feedCategory: item.category,
-      authorName: item.author.name,
-      authorRole: item.author.role,
-      authorAvatar: item.author.avatar,
-      message: proposalMessage,
-      createdAt: new Date(now).toISOString(),
-    });
+    try {
+      const conversation = await createMessageConversationApi(item.author.userId);
+      await sendConversationMessageApi(conversation.id, {
+        clientId: `feed-proposal-${item.id}-${now}`,
+        message: proposalMessage,
+        attachments: [
+          {
+            id: `feed-${item.id}`,
+            type: "image",
+            src: getFeedImages(item)[0] ?? item.image,
+            name: item.title,
+            uploadStatus: "ready",
+          },
+        ],
+      });
 
-    navigate("/messages");
+      navigate(`/messages?conversationId=${conversation.id}`);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "대화를 시작하지 못했습니다.");
+    }
   };
 
   return (
@@ -1933,7 +1953,7 @@ export default function Feed() {
                   // Note: In API mode, we don't know for sure if it's saved without details.
                   // But we can assume it's NOT saved unless the user just saved it in this session,
                   // or we can just show the list and handle it via API response.
-                  const isSavedInCollection = false; 
+                  const isSavedInCollection = false;
 
                   return (
                     <button
