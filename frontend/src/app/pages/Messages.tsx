@@ -23,7 +23,11 @@ import {
 import {
   uploadMessageAttachmentsApi,
 } from "../api/uploadApi";
-import { createMessageSocket, type IncomingMessageSocketEvent } from "../api/messageSocket";
+import {
+  createMessageSocket,
+  type IncomingMessageSocketEvent,
+  type MessagePresenceState,
+} from "../api/messageSocket";
 import { getCurrentUser } from "../utils/auth";
 
 type AttachmentUploadStatus = "uploading" | "ready" | "failed";
@@ -358,6 +362,7 @@ const readLeftConversationIds = () =>
 type Conversation = {
   id: number;
   partnerId: string;
+  partnerRole: ApiMessageConversationResponse["partnerRole"];
   username: string;
   name: string;
   profileName: string;
@@ -408,6 +413,7 @@ const mapConversationResponse = (
   return {
     id: conversation.id,
     partnerId: String(conversation.partnerUserId),
+    partnerRole: conversation.partnerRole,
     username: conversation.partnerLoginId || partnerDisplayName,
     name: partnerDisplayName,
     profileName: partnerDisplayName,
@@ -633,6 +639,32 @@ const readFileAsDataUrl = (file: File) =>
     reader.readAsDataURL(file);
   });
 
+const reactionEmojiAliases: Record<string, string> = {
+  thumbs_up: "👍",
+  thumbsup: "👍",
+  "thumbs-up": "👍",
+  heart: "❤️",
+  fire: "🔥",
+  clap: "👏",
+  joy: "😂",
+  wow: "😮",
+  palette: "🎨",
+  check: "✅",
+  eyes: "👀",
+  rocket: "🚀",
+};
+
+const normalizeReactionEmoji = (emoji: string) => {
+  const normalizedKey = emoji.trim().replace(/\uFE0F/g, "").replace(/-/g, "_").toLowerCase();
+  return reactionEmojiAliases[normalizedKey] ?? emoji;
+};
+
+const normalizeMessageReactions = (reactions: MessageReaction[] = []) =>
+  reactions.map((reaction) => ({
+    ...reaction,
+    emoji: normalizeReactionEmoji(reaction.emoji),
+  }));
+
 const mapChatMessageResponse = (
   message: ApiChatMessageResponse,
   currentUserId?: number
@@ -653,7 +685,7 @@ const mapChatMessageResponse = (
     isSelf,
     status: isSelf && message.readByPartner ? "read" : "sent",
     attachments: normalizeIncomingAttachments(message.attachments ?? []),
-    reactions: message.reactions ?? [],
+    reactions: normalizeMessageReactions(message.reactions ?? []),
   };
 };
 
@@ -804,7 +836,14 @@ export default function Messages() {
   const [leftConversationIds, setLeftConversationIds] = useState<number[]>(
     readLeftConversationIds
   );
-  const rawConversations = [...serverConversations, ...conversations];
+  const rawConversations = [...serverConversations, ...conversations].map((conversation) => {
+    const isOnline = onlineByConversationId[conversation.id] ?? conversation.online;
+    return {
+      ...conversation,
+      online: isOnline,
+      statusText: isOnline ? "온라인" : conversation.statusText,
+    };
+  });
   const allConversations = rawConversations.filter(
     (conversation) => !leftConversationIds.includes(conversation.id)
   );
@@ -854,6 +893,9 @@ export default function Messages() {
     key: number;
     shouldBounceCount: boolean;
   } | null>(null);
+  const [onlineByConversationId, setOnlineByConversationId] = useState<Record<number, boolean>>(
+    {}
+  );
   const [typingConversationId, setTypingConversationId] = useState<number | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ src: string; name: string } | null>(null);
@@ -873,6 +915,18 @@ export default function Messages() {
   const activeMessages = activeConversation
     ? chatMessages.filter((message) => message.conversationId === activeConversation.id)
     : [];
+
+  function applyPresenceStates(states: MessagePresenceState[]) {
+    const partnerStates = states.filter((state) => state.userId !== currentUserId);
+    if (partnerStates.length === 0) return;
+    setOnlineByConversationId((prev) => {
+      const next = { ...prev };
+      partnerStates.forEach((state) => {
+        next[state.conversationId] = state.isOnline;
+      });
+      return next;
+    });
+  }
 
   function clearOwnTypingTimeout() {
     if (typingTimeoutRef.current !== null) {
@@ -1230,6 +1284,22 @@ export default function Messages() {
           return;
         }
 
+        if (event.type === "presence.snapshot") {
+          applyPresenceStates(event.states);
+          return;
+        }
+
+        if (event.type === "presence.update") {
+          applyPresenceStates([
+            {
+              conversationId: event.conversationId,
+              userId: event.userId,
+              isOnline: event.isOnline,
+            },
+          ]);
+          return;
+        }
+
         const incomingMessage = event;
         const isSelfMessage = currentUserId === incomingMessage.senderUserId;
         const nextMessage: ChatMessage = {
@@ -1245,7 +1315,7 @@ export default function Messages() {
           isSelf: isSelfMessage,
           status: isSelfMessage && incomingMessage.readByPartner ? "read" : "sent",
           attachments: normalizeIncomingAttachments(incomingMessage.attachments ?? []),
-          reactions: incomingMessage.reactions ?? [],
+          reactions: normalizeMessageReactions(incomingMessage.reactions ?? []),
         };
 
         setChatMessages((prev) => {
@@ -1490,7 +1560,7 @@ export default function Messages() {
       };
     });
 
-    const roleLabel = role === "designer" ? "디자이너" : "클라이언트";
+    const roleLabel = getProcessParticipantRoleLabel(role);
     void persistProcesses(nextProcesses, {
       optimistic: true,
       preferredExpandedId: processId,
@@ -1705,11 +1775,21 @@ export default function Messages() {
     );
   };
 
+  const getCurrentParticipantRoleLabel = () =>
+    currentUser?.role === "client" ? "클라이언트" : "디자이너";
+
+  const getPartnerParticipantRoleLabel = () =>
+    activeConversation?.partnerRole === "CLIENT" ? "클라이언트" : "디자이너";
+
+  const getProcessParticipantRoleLabel = (
+    role: keyof ProcessConfirmations
+  ) => (role === "designer" ? getCurrentParticipantRoleLabel() : getPartnerParticipantRoleLabel());
+
   const getConfirmationLabel = (
     role: keyof ProcessConfirmations,
     confirmations: ProcessConfirmations
   ) => {
-    const roleLabel = role === "designer" ? "디자이너" : "클라이언트";
+    const roleLabel = getProcessParticipantRoleLabel(role);
     return confirmations[role] ? `${roleLabel} 확인 완료` : `${roleLabel} 대기`;
   };
 
@@ -1835,6 +1915,8 @@ export default function Messages() {
       setMobileView("list");
     }
   };
+
+  const processCompletionGuideText = `${getCurrentParticipantRoleLabel()}와 ${getPartnerParticipantRoleLabel()}가 모두 확인해야 완료됩니다.`;
 
   const handleDeleteConversation = async () => {
     if (!activeConversation) return;
@@ -2264,11 +2346,11 @@ export default function Messages() {
       setChatMessages((prev) =>
         prev.map((message) =>
           message.clientId === messageClientId || Number(message.serverId ?? message.id) === response.messageId
-            ? {
-                ...message,
-                reactions: response.reactions,
-              }
-            : message
+              ? {
+                  ...message,
+                  reactions: normalizeMessageReactions(response.reactions),
+                }
+              : message
         )
       );
     } catch (error) {
@@ -3714,7 +3796,7 @@ export default function Messages() {
                                     완료 확인
                                   </p>
                                   <p className="text-xs text-gray-500">
-                                    디자이너와 클라이언트가 모두 확인해야 완료됩니다.
+                                    {processCompletionGuideText}
                                   </p>
                                   <p className="mt-1 text-xs font-semibold text-[#00A88C]">
                                     {approvalSummary}
@@ -3748,7 +3830,9 @@ export default function Messages() {
                                       <CheckCircle className="size-4" />
                                     </span>
                                     <span className="text-left leading-tight">
-                                      <span className="block">디자이너</span>
+                                      <span className="block">
+                                        {getProcessParticipantRoleLabel("designer")}
+                                      </span>
                                       <span
                                         className={`block text-[11px] font-bold ${
                                           process.confirmations.designer
@@ -3784,7 +3868,9 @@ export default function Messages() {
                                       <CheckCircle className="size-4" />
                                     </span>
                                     <span className="text-left leading-tight">
-                                      <span className="block">클라이언트</span>
+                                      <span className="block">
+                                        {getProcessParticipantRoleLabel("client")}
+                                      </span>
                                       <span
                                         className={`block text-[11px] font-bold ${
                                           process.confirmations.client

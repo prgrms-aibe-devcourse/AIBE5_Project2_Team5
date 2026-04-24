@@ -289,6 +289,12 @@ public class MessageServiceImpl implements MessageService {
                 .orElse(Set.of());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Set<Long> getConversationIdsForUser(Long userId) {
+        return Set.copyOf(conversationRepository.findIdsByParticipant(userId));
+    }
+
     private MessageConversation findOrCreateConversation(Long currentUserId, Long partnerUserId) {
         if (currentUserId.equals(partnerUserId)) {
             throw new IllegalArgumentException("자기 자신과는 대화를 만들 수 없습니다.");

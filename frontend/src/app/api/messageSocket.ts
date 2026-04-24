@@ -39,10 +39,30 @@ export type IncomingConversationReadSocketMessage = {
   lastReadMessageId: number | null;
 };
 
+export type MessagePresenceState = {
+  conversationId: number;
+  userId: number;
+  isOnline: boolean;
+};
+
+export type IncomingPresenceSnapshotSocketMessage = {
+  type: "presence.snapshot";
+  states: MessagePresenceState[];
+};
+
+export type IncomingPresenceUpdateSocketMessage = {
+  type: "presence.update";
+  conversationId: number;
+  userId: number;
+  isOnline: boolean;
+};
+
 export type IncomingMessageSocketEvent =
   | IncomingChatSocketMessage
   | IncomingTypingSocketMessage
-  | IncomingConversationReadSocketMessage;
+  | IncomingConversationReadSocketMessage
+  | IncomingPresenceSnapshotSocketMessage
+  | IncomingPresenceUpdateSocketMessage;
 
 type MessageSocketCallbacks = {
   onEvent: (event: IncomingMessageSocketEvent) => void;
@@ -211,6 +231,16 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
 
         if (payload?.type === "conversation.read") {
           callbacks.onEvent(payload as IncomingConversationReadSocketMessage);
+          return;
+        }
+
+        if (payload?.type === "presence.snapshot") {
+          callbacks.onEvent(payload as IncomingPresenceSnapshotSocketMessage);
+          return;
+        }
+
+        if (payload?.type === "presence.update") {
+          callbacks.onEvent(payload as IncomingPresenceUpdateSocketMessage);
           return;
         }
 

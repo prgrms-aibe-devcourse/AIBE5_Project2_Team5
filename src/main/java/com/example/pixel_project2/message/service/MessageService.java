@@ -48,4 +48,6 @@ public interface MessageService {
     boolean canAccessConversation(AuthenticatedUser currentUser, Long conversationId);
 
     Set<Long> getConversationParticipantIds(Long conversationId);
+
+    Set<Long> getConversationIdsForUser(Long userId);
 }
