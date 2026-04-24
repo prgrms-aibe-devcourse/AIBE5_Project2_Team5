@@ -6,7 +6,8 @@
   "scripts": {
     "start": "vite --host 127.0.0.1",
     "build": "vite build",
-    "dev": "vite --host 127.0.0.1"
+    "dev": "vite --host 127.0.0.1",
+    "deploy:firebase": "npm run build && firebase deploy --only hosting"
   },
   "dependencies": {
     "react": "18.3.1",

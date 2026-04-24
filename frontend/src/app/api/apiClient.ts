@@ -6,6 +6,20 @@ type ApiResponse<T> = {
   data: T | null;
 };
 
+const API_BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "").replace(/\/$/, "");
+
+function buildApiUrl(path: string) {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  if (!API_BASE_URL) {
+    return path;
+  }
+
+  return path.startsWith("/") ? `${API_BASE_URL}${path}` : `${API_BASE_URL}/${path}`;
+}
+
 async function readJsonResponse<T>(response: Response, fallbackMessage: string) {
   let result: ApiResponse<T>;
 
@@ -43,7 +57,7 @@ export async function publicApiRequest<T>(
   options: RequestInit = {},
   fallbackMessage = "API request failed.",
 ) {
-  const response = await fetch(path, {
+  const response = await fetch(buildApiUrl(path), {
     ...options,
     headers: buildHeaders(options, false),
   });
@@ -56,7 +70,7 @@ export async function apiRequest<T>(
   options: RequestInit = {},
   fallbackMessage = "API request failed.",
 ) {
-  const response = await fetch(path, {
+  const response = await fetch(buildApiUrl(path), {
     ...options,
     headers: buildHeaders(options, true),
   });

@@ -6,6 +6,7 @@ import com.example.pixel_project2.config.oauth.OAuth2LoginFailureHandler;
 import com.example.pixel_project2.config.oauth.OAuth2LoginSuccessHandler;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -27,6 +28,9 @@ import java.util.List;
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+    @Value("${app.cors.allowed-origins}")
+    private List<String> corsAllowedOrigins;
+
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -103,7 +107,12 @@ public class SecurityConfig {
         CorsConfiguration config = new CorsConfiguration();
 
         // 프론트엔드 로컬 개발 환경 주소 허용 (localhost와 127.0.0.1 모두 등록해두는 것이 안전합니다)
-        config.setAllowedOrigins(List.of("http://localhost:5173", "http://127.0.0.1:5173"));
+        config.setAllowedOrigins(
+                corsAllowedOrigins.stream()
+                        .map(String::trim)
+                        .filter(origin -> !origin.isBlank())
+                        .toList()
+        );
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")); // 허용할 HTTP 메서드
         config.setAllowedHeaders(List.of("*")); // 모든 헤더 허용 (JWT 토큰 등을 받기 위해)
         config.setAllowCredentials(true); // 쿠키나 인증 정보 포함 허용

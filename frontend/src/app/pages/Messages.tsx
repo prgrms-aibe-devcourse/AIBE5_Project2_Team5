@@ -808,6 +808,20 @@ const mapChatMessageResponse = (
   };
 };
 
+const isSameChatMessage = (
+  left: Pick<ChatMessage, "id" | "clientId" | "serverId">,
+  right: Pick<ChatMessage, "id" | "clientId" | "serverId">
+) => {
+  if (left.clientId && right.clientId && left.clientId === right.clientId) {
+    return true;
+  }
+
+  const leftServerIds = [left.serverId, left.id].filter(Boolean);
+  const rightServerIds = [right.serverId, right.id].filter(Boolean);
+
+  return leftServerIds.some((serverId) => rightServerIds.includes(serverId));
+};
+
 const mapProcessResponse = (
   process: ApiMessageProcessResponse
 ): ProjectProcess => ({
@@ -1387,19 +1401,21 @@ export default function Messages() {
         );
 
         setChatMessages((prev) => {
-          const pendingMessages = prev.filter(
-            (message) =>
-              message.conversationId === conversationId && message.status === "sending"
+          const localConversationMessages = prev.filter(
+            (message) => message.conversationId === conversationId
           );
           const otherMessages = prev.filter(
             (message) => message.conversationId !== conversationId
           );
-          const pendingMessagesNotInHistory = pendingMessages.filter(
-            (pendingMessage) =>
-              !nextMessages.some((message) => message.clientId === pendingMessage.clientId)
+          const localMessagesNotInHistory = localConversationMessages.filter(
+            (localMessage) =>
+              !nextMessages.some((message) => isSameChatMessage(message, localMessage)) &&
+              (localMessage.status === "sending" ||
+                localMessage.status === "failed" ||
+                localMessage.isSelf)
           );
 
-          return [...otherMessages, ...nextMessages, ...pendingMessagesNotInHistory];
+          return [...otherMessages, ...nextMessages, ...localMessagesNotInHistory];
         });
       } catch (error) {
         if (!mounted || silent) return;

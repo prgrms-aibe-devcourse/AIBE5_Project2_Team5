@@ -51,6 +51,7 @@ out/
 ### Node.js & Frontend ###
 node_modules/
 .pnpm-store/
+.firebase/
 dist/
 out/
 /.env
