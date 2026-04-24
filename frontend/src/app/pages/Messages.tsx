@@ -1029,6 +1029,7 @@ export default function Messages() {
   const onlineByConversationIdRef = useRef<Record<number, boolean>>({});
   const typingTimeoutRef = useRef<number | null>(null);
   const typingConversationRef = useRef<number | null>(null);
+  const isMessageComposingRef = useRef(false);
   const partnerTypingConversationIdRef = useRef<number | null>(null);
   const lastTypingSyncAtRef = useRef<Record<number, number>>({});
   const partnerTypingTimeoutRef = useRef<number | null>(null);
@@ -1097,6 +1098,24 @@ export default function Messages() {
       window.clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = null;
     }
+  }
+
+  function startOwnTyping(conversationId: number) {
+    if (typingConversationRef.current !== conversationId) {
+      if (typingConversationRef.current !== null) {
+        stopOwnTyping(typingConversationRef.current);
+      }
+
+      notifyTypingState(conversationId, true);
+      typingConversationRef.current = conversationId;
+    } else {
+      notifyTypingState(conversationId, true);
+    }
+
+    clearOwnTypingTimeout();
+    typingTimeoutRef.current = window.setTimeout(() => {
+      stopOwnTyping(conversationId);
+    }, TYPING_IDLE_DELAY);
   }
 
   function applyConversationPresence(
@@ -2351,6 +2370,11 @@ export default function Messages() {
     const trimmedValue = value.trim();
 
     if (!trimmedValue) {
+      if (isMessageComposingRef.current) {
+        startOwnTyping(conversationId);
+        return;
+      }
+
       if (typingConversationRef.current === conversationId) {
         stopOwnTyping(conversationId);
       } else {
@@ -2359,21 +2383,7 @@ export default function Messages() {
       return;
     }
 
-    if (typingConversationRef.current !== conversationId) {
-      if (typingConversationRef.current !== null) {
-        stopOwnTyping(typingConversationRef.current);
-      }
-
-      notifyTypingState(conversationId, true);
-      typingConversationRef.current = conversationId;
-    } else {
-      notifyTypingState(conversationId, true);
-    }
-
-    clearOwnTypingTimeout();
-    typingTimeoutRef.current = window.setTimeout(() => {
-      stopOwnTyping(conversationId);
-    }, TYPING_IDLE_DELAY);
+    startOwnTyping(conversationId);
   };
 
   const getCurrentTime = () => {
@@ -2545,10 +2555,40 @@ export default function Messages() {
   };
 
   const handleMessageKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (
+      activeConversation &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      (event.key.length === 1 || event.key === "Backspace" || event.key === "Delete")
+    ) {
+      startOwnTyping(activeConversation.id);
+    }
+
     if (event.key === "Enter" && !event.nativeEvent.isComposing) {
       event.preventDefault();
       handleSendMessage();
     }
+  };
+
+  const handleMessageCompositionStart = () => {
+    if (!activeConversation) return;
+    isMessageComposingRef.current = true;
+    startOwnTyping(activeConversation.id);
+  };
+
+  const handleMessageCompositionUpdate = () => {
+    if (!activeConversation) return;
+    isMessageComposingRef.current = true;
+    startOwnTyping(activeConversation.id);
+  };
+
+  const handleMessageCompositionEnd = (
+    event: React.CompositionEvent<HTMLInputElement>
+  ) => {
+    if (!activeConversation) return;
+    isMessageComposingRef.current = false;
+    updateMessageText(event.currentTarget.value);
   };
 
   const handleImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -3609,13 +3649,14 @@ export default function Messages() {
 
           {/* Message Input */}
           <div className="border-t border-gray-200 bg-white p-3 sm:p-4">
-            <div className="mb-2 flex min-h-[18px] items-center gap-1.5 px-1">
+            <div className="mb-2 min-h-[34px] px-1">
               {isPartnerTyping && (
-                <>
-                  <div
-                    className="flex items-center gap-1"
-                    style={{ animation: "pickxelTypingBubbleIn 180ms ease-out both" }}
-                  >
+                <div
+                  aria-live="polite"
+                  className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#BDEFD8] bg-[#F3FFFB] px-3 py-1.5 text-sm font-medium text-[#0F6C5C] shadow-sm"
+                  style={{ animation: "pickxelTypingBubbleIn 180ms ease-out both" }}
+                >
+                  <div className="flex shrink-0 items-center gap-1">
                     {[0, 1, 2].map((index) => (
                       <span
                         key={index}
@@ -3627,10 +3668,10 @@ export default function Messages() {
                       />
                     ))}
                   </div>
-                  <p className="truncate text-xs text-gray-500">
+                  <p className="min-w-0 break-words leading-5">
                     {activeConversation.profileName}님이 입력 중...
                   </p>
-                </>
+                </div>
               )}
             </div>
             {pendingAttachments.length > 0 && (
@@ -3800,6 +3841,9 @@ export default function Messages() {
                   value={messageText}
                   onChange={(event) => updateMessageText(event.target.value)}
                   onKeyDown={handleMessageKeyDown}
+                  onCompositionStart={handleMessageCompositionStart}
+                  onCompositionUpdate={handleMessageCompositionUpdate}
+                  onCompositionEnd={handleMessageCompositionEnd}
                   placeholder={`${activeConversation.name}님에게 메시지 보내기...`}
                   className="min-w-0 flex-1 bg-transparent text-sm focus:outline-none"
                 />
