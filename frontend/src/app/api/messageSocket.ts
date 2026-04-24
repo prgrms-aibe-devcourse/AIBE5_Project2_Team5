@@ -1,4 +1,5 @@
 import { getAccessToken } from "../utils/auth";
+import type { MessageReactionSummaryResponse } from "./messageApi";
 
 export type MessageSocketAttachment = unknown;
 
@@ -20,10 +21,31 @@ export type IncomingChatSocketMessage = {
   message: string;
   attachments: MessageSocketAttachment[];
   createdAt: string;
+  reactions: MessageReactionSummaryResponse[];
+  readByPartner: boolean;
 };
 
+export type IncomingTypingSocketMessage = {
+  type: "typing";
+  conversationId: number;
+  senderUserId: number;
+  isTyping: boolean;
+};
+
+export type IncomingConversationReadSocketMessage = {
+  type: "conversation.read";
+  conversationId: number;
+  readerUserId: number;
+  lastReadMessageId: number | null;
+};
+
+export type IncomingMessageSocketEvent =
+  | IncomingChatSocketMessage
+  | IncomingTypingSocketMessage
+  | IncomingConversationReadSocketMessage;
+
 type MessageSocketCallbacks = {
-  onMessage: (message: IncomingChatSocketMessage) => void;
+  onEvent: (event: IncomingMessageSocketEvent) => void;
   onOpen?: () => void;
   onClose?: () => void;
   onError?: (message: string) => void;
@@ -178,7 +200,17 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
             pendingAck.resolve({ serverId: incomingMessage.serverId });
             pendingAcks.delete(incomingMessage.clientId);
           }
-          callbacks.onMessage(incomingMessage);
+          callbacks.onEvent(incomingMessage);
+          return;
+        }
+
+        if (payload?.type === "typing") {
+          callbacks.onEvent(payload as IncomingTypingSocketMessage);
+          return;
+        }
+
+        if (payload?.type === "conversation.read") {
+          callbacks.onEvent(payload as IncomingConversationReadSocketMessage);
           return;
         }
 
@@ -226,6 +258,21 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
     });
   };
 
+  const sendTyping = (conversationId: number, isTyping: boolean) => {
+    sendJson({
+      type: "typing",
+      conversationId,
+      isTyping,
+    });
+  };
+
+  const markConversationRead = (conversationId: number) => {
+    sendJson({
+      type: "conversation.read",
+      conversationId,
+    });
+  };
+
   const sendMessage = (message: OutgoingChatSocketMessage) =>
     new Promise<{ serverId: string }>((resolve, reject) => {
       const timeoutId = window.setTimeout(() => {
@@ -257,7 +304,9 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
     close,
     connect,
     isOpen,
+    markConversationRead,
     sendMessage,
+    sendTyping,
     subscribe,
   };
 }

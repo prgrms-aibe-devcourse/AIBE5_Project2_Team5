@@ -8,13 +8,22 @@ import {
   markConversationRead,
 } from "../utils/notificationState";
 import {
+  deleteMessageConversationApi,
+  getConversationProcessesApi,
   getConversationMessagesApi,
   getMessageConversationsApi,
+  markConversationReadApi,
+  saveConversationProcessesApi,
   sendConversationMessageApi,
+  toggleMessageReactionApi,
   type ChatMessageResponse as ApiChatMessageResponse,
   type MessageConversationResponse as ApiMessageConversationResponse,
+  type MessageProcessResponse as ApiMessageProcessResponse,
 } from "../api/messageApi";
-import { createMessageSocket, type IncomingChatSocketMessage } from "../api/messageSocket";
+import {
+  uploadMessageAttachmentsApi,
+} from "../api/uploadApi";
+import { createMessageSocket, type IncomingMessageSocketEvent } from "../api/messageSocket";
 import { getCurrentUser } from "../utils/auth";
 
 type AttachmentUploadStatus = "uploading" | "ready" | "failed";
@@ -31,6 +40,8 @@ type MessageAttachment =
   | (MessageAttachmentBase & {
       type: "image";
       src: string;
+      size?: number;
+      mimeType?: string;
     })
   | (MessageAttachmentBase & {
       type: "icon";
@@ -40,6 +51,7 @@ type MessageAttachment =
       type: "file";
       size: number;
       mimeType: string;
+      url?: string;
     })
   | (MessageAttachmentBase & {
       type: "integration";
@@ -111,8 +123,10 @@ const PROCESS_CREATED_STORAGE_KEY = "pickxel:message-processes-created:v2";
 const MESSAGE_DRAFTS_STORAGE_KEY = "pickxel:message-drafts";
 const LEFT_CONVERSATIONS_STORAGE_KEY = "pickxel:left-message-conversations";
 const CONNECTED_CONVERSATION_POLL_INTERVAL = 5000;
-const CONNECTED_MESSAGE_POLL_INTERVAL = 3000;
+const CONNECTED_MESSAGE_POLL_INTERVAL = 1000;
+const CONNECTED_PROCESS_POLL_INTERVAL = 3000;
 const DISCONNECTED_POLL_INTERVAL = 1000;
+const TYPING_IDLE_DELAY = 1200;
 
 const createClientId = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -413,6 +427,212 @@ const mapConversationResponse = (
   };
 };
 
+const normalizeIncomingAttachments = (attachments: unknown): MessageAttachment[] => {
+  if (!Array.isArray(attachments)) {
+    return [];
+  }
+
+  return attachments.flatMap((attachment, index) => {
+    if (!attachment || typeof attachment !== "object") {
+      return [];
+    }
+
+    const item = attachment as Record<string, unknown>;
+    const id =
+      typeof item.id === "string" && item.id.trim()
+        ? item.id
+        : `attachment-${Date.now()}-${index}`;
+    const name =
+      typeof item.name === "string" && item.name.trim() ? item.name : "attachment";
+    const uploadStatus =
+      item.uploadStatus === "uploading" ||
+      item.uploadStatus === "ready" ||
+      item.uploadStatus === "failed"
+        ? item.uploadStatus
+        : undefined;
+    const uploadedUrl =
+      typeof item.uploadedUrl === "string" && item.uploadedUrl.trim()
+        ? item.uploadedUrl
+        : undefined;
+
+    switch (item.type) {
+      case "image": {
+        const srcCandidate =
+          typeof item.src === "string" && item.src.trim()
+            ? item.src
+            : typeof item.url === "string" && item.url.trim()
+              ? item.url
+              : uploadedUrl;
+        if (!srcCandidate) {
+          return [];
+        }
+
+        return [
+          {
+            id,
+            type: "image" as const,
+            name,
+            src: srcCandidate,
+            uploadedUrl: uploadedUrl ?? srcCandidate,
+            uploadStatus,
+            mimeType: typeof item.mimeType === "string" ? item.mimeType : undefined,
+            size: typeof item.size === "number" ? item.size : undefined,
+          },
+        ];
+      }
+      case "file": {
+        const url =
+          typeof item.url === "string" && item.url.trim()
+            ? item.url
+            : uploadedUrl;
+        return [
+          {
+            id,
+            type: "file" as const,
+            name,
+            size: typeof item.size === "number" ? item.size : 0,
+            mimeType:
+              typeof item.mimeType === "string" && item.mimeType.trim()
+                ? item.mimeType
+                : "application/octet-stream",
+            url,
+            uploadedUrl: uploadedUrl ?? url,
+            uploadStatus,
+          },
+        ];
+      }
+      case "integration": {
+        if (typeof item.url !== "string" || !item.url.trim()) {
+          return [];
+        }
+
+        const provider = item.provider;
+        if (
+          provider !== "figma" &&
+          provider !== "adobe" &&
+          provider !== "photoshop" &&
+          provider !== "pinterest"
+        ) {
+          return [];
+        }
+
+        return [
+          {
+            id,
+            type: "integration" as const,
+            provider,
+            url: item.url,
+            name,
+            uploadStatus,
+            previewTitle:
+              typeof item.previewTitle === "string" ? item.previewTitle : undefined,
+            previewDescription:
+              typeof item.previewDescription === "string"
+                ? item.previewDescription
+                : undefined,
+            host: typeof item.host === "string" ? item.host : undefined,
+          },
+        ];
+      }
+      case "icon": {
+        if (typeof item.value !== "string" || !item.value.trim()) {
+          return [];
+        }
+
+        return [
+          {
+            id,
+            type: "icon" as const,
+            value: item.value,
+            name,
+            uploadStatus,
+          },
+        ];
+      }
+      default:
+        return [];
+    }
+  });
+};
+
+const buildOutgoingAttachmentsPayload = (attachments: MessageAttachment[]) =>
+  attachments.flatMap((attachment) => {
+    switch (attachment.type) {
+      case "image": {
+        const src = attachment.uploadedUrl ?? attachment.src;
+        if (!src) {
+          return [];
+        }
+
+        return [
+          {
+            id: attachment.id,
+            type: "image" as const,
+            name: attachment.name,
+            src,
+            mimeType: attachment.mimeType,
+            size: attachment.size,
+          },
+        ];
+      }
+      case "file": {
+        const url = attachment.uploadedUrl ?? attachment.url;
+        if (!url) {
+          return [];
+        }
+
+        return [
+          {
+            id: attachment.id,
+            type: "file" as const,
+            name: attachment.name,
+            size: attachment.size,
+            mimeType: attachment.mimeType,
+            url,
+          },
+        ];
+      }
+      case "integration":
+        return [
+          {
+            id: attachment.id,
+            type: "integration" as const,
+            provider: attachment.provider,
+            url: attachment.url,
+            name: attachment.name,
+            previewTitle: attachment.previewTitle,
+            previewDescription: attachment.previewDescription,
+            host: attachment.host,
+          },
+        ];
+      case "icon":
+        return [
+          {
+            id: attachment.id,
+            type: "icon" as const,
+            value: attachment.value,
+            name: attachment.name,
+          },
+        ];
+      default:
+        return [];
+    }
+  });
+
+const readFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("File preview could not be created."));
+    };
+    reader.onerror = () => reject(new Error("File preview could not be created."));
+    reader.readAsDataURL(file);
+  });
+
 const mapChatMessageResponse = (
   message: ApiChatMessageResponse,
   currentUserId?: number
@@ -431,10 +651,28 @@ const mapChatMessageResponse = (
     time: formatMessageTime(message.createdAt),
     createdAt: message.createdAt,
     isSelf,
-    status: "sent",
-    attachments: (message.attachments ?? []) as MessageAttachment[],
+    status: isSelf && message.readByPartner ? "read" : "sent",
+    attachments: normalizeIncomingAttachments(message.attachments ?? []),
+    reactions: message.reactions ?? [],
   };
 };
+
+const mapProcessResponse = (
+  process: ApiMessageProcessResponse
+): ProjectProcess => ({
+  id: process.id,
+  title: process.title,
+  status: process.status,
+  confirmations: {
+    designer: process.confirmations?.designer ?? false,
+    client: process.confirmations?.client ?? false,
+  },
+  tasks: (process.tasks ?? []).map((task) => ({
+    id: task.id,
+    text: task.text,
+    completed: task.completed,
+  })),
+});
 
 const messages: ChatMessage[] = [];
 
@@ -558,7 +796,6 @@ export default function Messages() {
   const currentUser = getCurrentUser();
   const currentUserId = currentUser?.userId;
   const requestedConversationId = Number(searchParams.get("conversationId") ?? 0);
-  const storedProcessesRef = useRef<ProjectProcess[] | null>(readStoredProcesses());
   const storedMessageDraftsRef = useRef<Record<string, string>>(readStoredMessageDrafts());
   const [serverConversations, setServerConversations] = useState<Conversation[]>([]);
   const [isConversationsLoading, setIsConversationsLoading] = useState(true);
@@ -578,13 +815,9 @@ export default function Messages() {
   const [activeConversationId, setActiveConversationId] = useState(0);
   const [mobileView, setMobileView] = useState<"list" | "chat" | "detail">("list");
   const [conversationSearch, setConversationSearch] = useState("");
-  const [processes, setProcesses] = useState<ProjectProcess[]>(
-    () => storedProcessesRef.current ?? initialProcesses
-  );
+  const [processes, setProcesses] = useState<ProjectProcess[]>(initialProcesses);
   const [expandedProcess, setExpandedProcess] = useState<number | null>(2);
-  const [processCreated, setProcessCreated] = useState(
-    () => readStoredProcessCreated()
-  );
+  const [processCreated, setProcessCreated] = useState(false);
   const [isProcessModalOpen, setIsProcessModalOpen] = useState(false);
   const [draftProcesses, setDraftProcesses] = useState<ProjectProcess[]>(createDefaultProcessDraft);
   const [processDraftSnapshot, setProcessDraftSnapshot] =
@@ -630,6 +863,9 @@ export default function Messages() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageSocketRef = useRef<ReturnType<typeof createMessageSocket> | null>(null);
   const activeConversationIdRef = useRef(activeConversationId);
+  const typingTimeoutRef = useRef<number | null>(null);
+  const typingConversationRef = useRef<number | null>(null);
+  const partnerTypingTimeoutRef = useRef<number | null>(null);
   const activeConversation =
     allConversations.find((conversation) => conversation.id === activeConversationId) ??
     allConversations[0] ??
@@ -637,6 +873,124 @@ export default function Messages() {
   const activeMessages = activeConversation
     ? chatMessages.filter((message) => message.conversationId === activeConversation.id)
     : [];
+
+  function clearOwnTypingTimeout() {
+    if (typingTimeoutRef.current !== null) {
+      window.clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+  }
+
+  function stopOwnTyping(conversationId = typingConversationRef.current) {
+    clearOwnTypingTimeout();
+
+    if (!conversationId) {
+      typingConversationRef.current = null;
+      return;
+    }
+
+    const socket = messageSocketRef.current;
+    if (socket?.isOpen()) {
+      try {
+        socket.sendTyping(conversationId, false);
+      } catch {
+        // Ignore transient typing send failures.
+      }
+    }
+
+    if (typingConversationRef.current === conversationId) {
+      typingConversationRef.current = null;
+    }
+  }
+
+  function syncProcessState(nextProcesses: ProjectProcess[], preferredExpandedId?: number | null) {
+    setProcesses(nextProcesses);
+    setProcessCreated(nextProcesses.length > 0);
+    setExpandedProcess((current) => {
+      const candidate = preferredExpandedId ?? current;
+      if (nextProcesses.length === 0) {
+        return null;
+      }
+
+      return candidate && nextProcesses.some((process) => process.id === candidate)
+        ? candidate
+        : nextProcesses[0].id;
+    });
+  }
+
+  function normalizeProcessesForSave(source: ProjectProcess[]) {
+    return source.map((process) => {
+      const confirmations = process.confirmations ?? createEmptyProcessConfirmations();
+      const tasks = process.tasks.map((task) => ({
+        ...task,
+        text: task.text.trim(),
+      }));
+
+      return {
+        ...process,
+        title: process.title.trim(),
+        confirmations,
+        status: getProcessStatusFromState(tasks, confirmations),
+        tasks,
+      };
+    });
+  }
+
+  async function persistProcesses(
+    nextProcesses: ProjectProcess[],
+    options?: {
+      successMessage?: string;
+      optimistic?: boolean;
+      preferredExpandedId?: number | null;
+    }
+  ) {
+    if (!activeConversation) return null;
+
+    const conversationId = activeConversation.id;
+    const normalizedProcesses = normalizeProcessesForSave(nextProcesses);
+    const previousProcesses = cloneProcesses(processes);
+    const previousExpandedId = expandedProcess;
+    const preferredExpandedId = options?.preferredExpandedId ?? expandedProcess;
+
+    if (options?.optimistic) {
+      syncProcessState(normalizedProcesses, preferredExpandedId);
+    }
+
+    try {
+      const savedResponses = await saveConversationProcessesApi(
+        conversationId,
+        normalizedProcesses.map((process) => ({
+          id: process.id,
+          title: process.title,
+          confirmations: process.confirmations,
+          tasks: process.tasks.map((task) => ({
+            id: task.id,
+            text: task.text,
+            completed: task.completed,
+          })),
+        }))
+      );
+
+      const savedProcesses = savedResponses.map(mapProcessResponse);
+      if (activeConversationIdRef.current === conversationId) {
+        syncProcessState(savedProcesses, preferredExpandedId);
+        if (options?.successMessage) {
+          showProcessToast(options.successMessage);
+        }
+      }
+
+      return savedProcesses;
+    } catch (error) {
+      if (options?.optimistic && activeConversationIdRef.current === conversationId) {
+        syncProcessState(previousProcesses, previousExpandedId);
+      }
+
+      setConversationError(
+        error instanceof Error ? error.message : "작업 프로세스를 저장하지 못했습니다."
+      );
+      return null;
+    }
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -741,8 +1095,80 @@ export default function Messages() {
   }, [activeConversation?.id, currentUserId, isSocketConnected]);
 
   useEffect(() => {
+    if (!activeConversation) {
+      setProcesses([]);
+      setProcessCreated(false);
+      return;
+    }
+
+    let mounted = true;
+    const conversationId = activeConversation.id;
+
+    async function loadProcesses(silent = false) {
+      try {
+        const processResponses = await getConversationProcessesApi(conversationId);
+        if (!mounted || activeConversationIdRef.current !== conversationId) return;
+
+        const nextProcesses = processResponses.map(mapProcessResponse);
+        setProcesses(nextProcesses);
+        setProcessCreated(nextProcesses.length > 0);
+        if (nextProcesses.length > 0) {
+          setExpandedProcess((current) =>
+            current && nextProcesses.some((process) => process.id === current)
+              ? current
+              : nextProcesses[0].id
+          );
+        } else {
+          setExpandedProcess(null);
+        }
+      } catch (error) {
+        if (!mounted || silent) return;
+        setConversationError(
+          error instanceof Error ? error.message : "작업 프로세스를 불러오지 못했습니다."
+        );
+      }
+    }
+
+    void loadProcesses();
+    const pollInterval = window.setInterval(() => {
+      void loadProcesses(true);
+    }, isSocketConnected ? CONNECTED_PROCESS_POLL_INTERVAL : DISCONNECTED_POLL_INTERVAL);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(pollInterval);
+    };
+  }, [activeConversation?.id, isSocketConnected]);
+
+  useEffect(() => {
+    if (!activeConversation) return;
+
+    const conversationId = activeConversation.id;
+    const socket = messageSocketRef.current;
+
+    if (socket?.isOpen()) {
+      try {
+        socket.markConversationRead(conversationId);
+        return;
+      } catch {
+        // Fall through to REST when the socket is temporarily unavailable.
+      }
+    }
+
+    void markConversationReadApi(conversationId).catch(() => {
+      // Best-effort read acknowledgement fallback.
+    });
+  }, [activeConversation?.id, activeMessages.length, isSocketConnected]);
+
+  useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
+
+  useEffect(() => {
+    return () => {
+      stopOwnTyping();
+    };
+  }, [activeConversation?.id]);
 
   useEffect(() => {
     const conversationIds = messageSocketConversationIds
@@ -758,7 +1184,53 @@ export default function Messages() {
           socket.subscribe(conversationIds);
         }
       },
-      onMessage: (incomingMessage: IncomingChatSocketMessage) => {
+      onEvent: (event: IncomingMessageSocketEvent) => {
+        if (event.type === "typing") {
+          if (event.senderUserId !== currentUserId) {
+            if (partnerTypingTimeoutRef.current !== null) {
+              window.clearTimeout(partnerTypingTimeoutRef.current);
+              partnerTypingTimeoutRef.current = null;
+            }
+
+            if (event.isTyping) {
+              setTypingConversationId(event.conversationId);
+              partnerTypingTimeoutRef.current = window.setTimeout(() => {
+                setTypingConversationId((current) =>
+                  current === event.conversationId ? null : current
+                );
+                partnerTypingTimeoutRef.current = null;
+              }, TYPING_IDLE_DELAY + 800);
+            } else {
+              setTypingConversationId((current) =>
+                current === event.conversationId ? null : current
+              );
+            }
+          }
+          return;
+        }
+
+        if (event.type === "conversation.read") {
+          if (event.readerUserId !== currentUserId) {
+            setChatMessages((prev) =>
+              prev.map((message) =>
+                message.conversationId === event.conversationId && message.isSelf
+                  ? {
+                      ...message,
+                      status:
+                        typeof event.lastReadMessageId === "number" &&
+                        Number(message.serverId ?? message.id) <= event.lastReadMessageId
+                          ? "read"
+                          : message.status,
+                    }
+                  : message
+              )
+            );
+            setConversationReloadKey((key) => key + 1);
+          }
+          return;
+        }
+
+        const incomingMessage = event;
         const isSelfMessage = currentUserId === incomingMessage.senderUserId;
         const nextMessage: ChatMessage = {
           id: incomingMessage.serverId,
@@ -771,8 +1243,9 @@ export default function Messages() {
           time: formatMessageTime(incomingMessage.createdAt),
           createdAt: incomingMessage.createdAt,
           isSelf: isSelfMessage,
-          status: "sent",
-          attachments: (incomingMessage.attachments ?? []) as MessageAttachment[],
+          status: isSelfMessage && incomingMessage.readByPartner ? "read" : "sent",
+          attachments: normalizeIncomingAttachments(incomingMessage.attachments ?? []),
+          reactions: incomingMessage.reactions ?? [],
         };
 
         setChatMessages((prev) => {
@@ -790,9 +1263,14 @@ export default function Messages() {
                   ...message,
                   id: nextMessage.id,
                   serverId: nextMessage.serverId,
-                  status: "sent",
+                  senderId: nextMessage.senderId,
+                  sender: nextMessage.sender,
+                  message: nextMessage.message,
+                  status: nextMessage.status,
                   createdAt: nextMessage.createdAt,
                   time: nextMessage.time,
+                  attachments: nextMessage.attachments,
+                  reactions: nextMessage.reactions,
                 }
               : message
           );
@@ -812,6 +1290,13 @@ export default function Messages() {
       },
       onClose: () => {
         setIsSocketConnected(false);
+        setTypingConversationId(null);
+        if (partnerTypingTimeoutRef.current !== null) {
+          window.clearTimeout(partnerTypingTimeoutRef.current);
+          partnerTypingTimeoutRef.current = null;
+        }
+        clearOwnTypingTimeout();
+        typingConversationRef.current = null;
       },
     });
 
@@ -832,6 +1317,9 @@ export default function Messages() {
     JSON.stringify(draftProcesses) !== JSON.stringify(processDraftSnapshot);
   const hasUploadingAttachments = pendingAttachments.some(
     (attachment) => attachment.uploadStatus === "uploading"
+  );
+  const hasFailedAttachments = pendingAttachments.some(
+    (attachment) => attachment.uploadStatus === "failed"
   );
   const integrationModalMeta = integrationModalProvider
     ? integrationProviderMeta[integrationModalProvider]
@@ -944,11 +1432,6 @@ export default function Messages() {
   }, [activeConversation?.id, clearingUnreadConversationId, mobileView]);
 
   useEffect(() => {
-    writeJsonToStorage(PROCESS_STORAGE_KEY, processes);
-    writeJsonToStorage(PROCESS_CREATED_STORAGE_KEY, processCreated);
-  }, [processCreated, processes]);
-
-  useEffect(() => {
     writeJsonToStorage(MESSAGE_DRAFTS_STORAGE_KEY, messageDrafts);
   }, [messageDrafts]);
 
@@ -965,19 +1448,24 @@ export default function Messages() {
   }, [activeConversation?.id]);
 
   const toggleTask = (processId: number, taskId: number) => {
-    setProcesses(prev => prev.map(process => {
-      if (process.id === processId) {
-        const tasks = process.tasks.map(task =>
-          task.id === taskId ? { ...task, completed: !task.completed } : task
-        );
-        return {
-          ...process,
-          status: getProcessStatusFromState(tasks, process.confirmations),
-          tasks,
-        };
-      }
-      return process;
-    }));
+    const nextProcesses = processes.map((process) => {
+      if (process.id !== processId) return process;
+
+      const tasks = process.tasks.map((task) =>
+        task.id === taskId ? { ...task, completed: !task.completed } : task
+      );
+
+      return {
+        ...process,
+        status: getProcessStatusFromState(tasks, process.confirmations),
+        tasks,
+      };
+    });
+
+    void persistProcesses(nextProcesses, {
+      optimistic: true,
+      preferredExpandedId: processId,
+    });
   };
 
   const toggleProcessConfirmation = (
@@ -987,22 +1475,28 @@ export default function Messages() {
     const targetProcess = processes.find((process) => process.id === processId);
     const isConfirming = targetProcess ? !targetProcess.confirmations[role] : false;
 
-    setProcesses((prev) =>
-      prev.map((process) => {
-        if (process.id !== processId) return process;
+    const nextProcesses = processes.map((process) => {
+      if (process.id !== processId) return process;
 
-        const confirmations = {
-          ...process.confirmations,
-          [role]: !process.confirmations[role],
-        };
+      const confirmations = {
+        ...process.confirmations,
+        [role]: !process.confirmations[role],
+      };
 
-        return {
-          ...process,
-          confirmations,
-          status: getProcessStatusFromState(process.tasks, confirmations),
-        };
-      })
-    );
+      return {
+        ...process,
+        confirmations,
+        status: getProcessStatusFromState(process.tasks, confirmations),
+      };
+    });
+
+    const roleLabel = role === "designer" ? "디자이너" : "클라이언트";
+    void persistProcesses(nextProcesses, {
+      optimistic: true,
+      preferredExpandedId: processId,
+      successMessage: isConfirming ? `${roleLabel} 확인이 기록되었습니다.` : undefined,
+    });
+    return;
 
     if (isConfirming) {
       const roleLabel = role === "designer" ? "디자이너" : "클라이언트";
@@ -1151,10 +1645,25 @@ export default function Messages() {
     setDraggingDraftTask(null);
   };
 
-  const applyProcessDraft = () => {
+  const applyProcessDraft = async () => {
     if (draftValidationMessage) return;
 
-    const normalizedProcesses = draftProcesses.map((process) => {
+    const normalizedProcesses = normalizeProcessesForSave(draftProcesses);
+    const savedProcesses = await persistProcesses(normalizedProcesses, {
+      preferredExpandedId: normalizedProcesses[0]?.id ?? null,
+    });
+
+    if (!savedProcesses) return;
+
+    setDraftProcesses(cloneProcesses(savedProcesses));
+    setProcessDraftSnapshot(cloneProcesses(savedProcesses));
+    setActiveTab("process");
+    setIsProcessModalOpen(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+    return;
+
+    const legacyNormalizedProcesses = draftProcesses.map((process) => {
       const tasks = process.tasks.map((task) => ({
         ...task,
         text: task.text.trim(),
@@ -1172,11 +1681,11 @@ export default function Messages() {
       };
     });
 
-    setProcesses(normalizedProcesses);
+    setProcesses(legacyNormalizedProcesses);
     setProcessCreated(true);
     setActiveTab("process");
-    setExpandedProcess(normalizedProcesses[0]?.id ?? null);
-    setProcessDraftSnapshot(cloneProcesses(normalizedProcesses));
+    setExpandedProcess(legacyNormalizedProcesses[0]?.id ?? null);
+    setProcessDraftSnapshot(cloneProcesses(legacyNormalizedProcesses));
     setIsProcessModalOpen(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -1265,6 +1774,8 @@ export default function Messages() {
   };
 
   const handleSelectConversation = (conversationId: number) => {
+    stopOwnTyping();
+
     if (unreadConversationIds.includes(conversationId)) {
       setClearingUnreadConversationId(conversationId);
       window.setTimeout(() => {
@@ -1285,8 +1796,9 @@ export default function Messages() {
     setTypingConversationId(null);
   };
 
-  const handleLeaveConversation = () => {
+  const handleLeaveConversation = async () => {
     if (!activeConversation) return;
+    stopOwnTyping(activeConversation.id);
     const conversationId = activeConversation.id;
     const shouldLeave = window.confirm(
       `${activeConversation.name} 대화방에서 나갈까요? 메시지 목록에서 이 대화가 사라집니다.`
@@ -1324,6 +1836,57 @@ export default function Messages() {
     }
   };
 
+  const handleDeleteConversation = async () => {
+    if (!activeConversation) return;
+    stopOwnTyping(activeConversation.id);
+
+    const conversationId = activeConversation.id;
+    const shouldDelete = window.confirm(
+      "정말 채팅창을 삭제하시겠어요? 모든 데이터가 사라질 수 있습니다."
+    );
+
+    if (!shouldDelete) return;
+
+    try {
+      await deleteMessageConversationApi(conversationId);
+    } catch (error) {
+      window.alert(
+        error instanceof Error ? error.message : "채팅창을 삭제하지 못했습니다."
+      );
+      return;
+    }
+
+    const nextLeftConversationIds = Array.from(
+      new Set([...leftConversationIds, conversationId])
+    );
+    const nextConversations = rawConversations.filter(
+      (conversation) => !nextLeftConversationIds.includes(conversation.id)
+    );
+    const nextConversation = nextConversations[0];
+
+    setLeftConversationIds(nextLeftConversationIds);
+    setUnreadConversationIds(markConversationRead(conversationId));
+    setMessageDrafts((prev) => {
+      const nextDrafts = { ...prev };
+      delete nextDrafts[String(conversationId)];
+      return nextDrafts;
+    });
+    setPendingAttachments([]);
+    setIsAttachMenuOpen(false);
+    setIsIconPickerOpen(false);
+    setReactionPickerMessageId(null);
+    setTypingConversationId(null);
+    setActiveTab("profile");
+    setConversationReloadKey((current) => current + 1);
+
+    if (nextConversation) {
+      setActiveConversationId(nextConversation.id);
+      setMobileView("chat");
+    } else {
+      setMobileView("list");
+    }
+  };
+
   const updateMessageText = (value: string) => {
     if (!activeConversation) return;
     setMessageText(value);
@@ -1331,6 +1894,45 @@ export default function Messages() {
       ...prev,
       [String(activeConversation.id)]: value,
     }));
+
+    const conversationId = activeConversation.id;
+    const socket = messageSocketRef.current;
+    const trimmedValue = value.trim();
+
+    if (!socket?.isOpen()) {
+      if (!trimmedValue && typingConversationRef.current === conversationId) {
+        typingConversationRef.current = null;
+      }
+      clearOwnTypingTimeout();
+      return;
+    }
+
+    if (!trimmedValue) {
+      if (typingConversationRef.current === conversationId) {
+        stopOwnTyping(conversationId);
+      } else {
+        clearOwnTypingTimeout();
+      }
+      return;
+    }
+
+    if (typingConversationRef.current !== conversationId) {
+      if (typingConversationRef.current !== null) {
+        stopOwnTyping(typingConversationRef.current);
+      }
+
+      try {
+        socket.sendTyping(conversationId, true);
+        typingConversationRef.current = conversationId;
+      } catch {
+        return;
+      }
+    }
+
+    clearOwnTypingTimeout();
+    typingTimeoutRef.current = window.setTimeout(() => {
+      stopOwnTyping(conversationId);
+    }, TYPING_IDLE_DELAY);
   };
 
   const getCurrentTime = () => {
@@ -1341,7 +1943,69 @@ export default function Messages() {
     }).format(new Date());
   };
 
-  const markAttachmentReady = (attachmentId: string, delay = 650) => {
+  const uploadPendingMessageAttachments = async (
+    conversationId: number,
+    files: File[],
+    attachmentIds: string[],
+  ) => {
+    try {
+      const response = await uploadMessageAttachmentsApi(conversationId, files);
+
+      setPendingAttachments((prev) =>
+        prev.map((attachment) => {
+          const attachmentIndex = attachmentIds.indexOf(attachment.id);
+          if (attachmentIndex < 0) {
+            return attachment;
+          }
+
+          const uploadedAttachment = response.attachments[attachmentIndex];
+          if (!uploadedAttachment) {
+            return {
+              ...attachment,
+              uploadStatus: "failed",
+            };
+          }
+
+          if (attachment.type === "image" && uploadedAttachment.type === "image") {
+            return {
+              ...attachment,
+              src: uploadedAttachment.url,
+              uploadedUrl: uploadedAttachment.url,
+              mimeType: uploadedAttachment.contentType,
+              size: uploadedAttachment.size,
+              uploadStatus: "ready",
+            };
+          }
+
+          if (attachment.type === "file" && uploadedAttachment.type === "file") {
+            return {
+              ...attachment,
+              url: uploadedAttachment.url,
+              uploadedUrl: uploadedAttachment.url,
+              mimeType: uploadedAttachment.contentType,
+              size: uploadedAttachment.size,
+              uploadStatus: "ready",
+            };
+          }
+
+          return {
+            ...attachment,
+            uploadStatus: "failed",
+          };
+        }),
+      );
+    } catch {
+      setPendingAttachments((prev) =>
+        prev.map((attachment) =>
+          attachmentIds.includes(attachment.id)
+            ? { ...attachment, uploadStatus: "failed" }
+            : attachment,
+        ),
+      );
+    }
+  };
+
+  const markAttachmentReady = (attachmentId: string, delayMs = 0) => {
     window.setTimeout(() => {
       setPendingAttachments((prev) =>
         prev.map((attachment) =>
@@ -1350,16 +2014,19 @@ export default function Messages() {
             : attachment
         )
       );
-    }, delay);
+    }, delayMs);
   };
 
   const handleSendMessage = () => {
     if (!activeConversation) return;
     const trimmedMessage = messageText.trim();
     if (!trimmedMessage && pendingAttachments.length === 0) return;
-    if (hasUploadingAttachments) return;
+    if (hasUploadingAttachments || hasFailedAttachments) return;
+
+    stopOwnTyping(activeConversation.id);
 
     const clientId = createClientId("msg");
+    const serializedAttachments = buildOutgoingAttachmentsPayload(pendingAttachments);
     const outgoingMessage: ChatMessage = {
       id: clientId,
       clientId,
@@ -1389,7 +2056,7 @@ export default function Messages() {
       sendConversationMessageApi(outgoingMessage.conversationId, {
         clientId: outgoingMessage.clientId,
         message: outgoingMessage.message,
-        attachments: outgoingMessage.attachments,
+        attachments: serializedAttachments,
       }).then((savedMessage) => ({
         serverId: String(savedMessage.id),
         createdAt: savedMessage.createdAt,
@@ -1401,7 +2068,7 @@ export default function Messages() {
             clientId: outgoingMessage.clientId,
             conversationId: outgoingMessage.conversationId,
             message: outgoingMessage.message,
-            attachments: outgoingMessage.attachments,
+            attachments: serializedAttachments,
             createdAt: outgoingMessage.createdAt,
           })
           .catch(() => sendMessageWithRestFallback())
@@ -1424,15 +2091,6 @@ export default function Messages() {
           )
         );
         setConversationReloadKey((key) => key + 1);
-        window.setTimeout(() => {
-          setChatMessages((prev) =>
-            prev.map((message) =>
-              message.clientId === clientId && message.status === "sent"
-                ? { ...message, status: "read" }
-                : message
-            )
-          );
-        }, 900);
       })
       .catch(() => {
         setChatMessages((prev) =>
@@ -1452,38 +2110,40 @@ export default function Messages() {
     }
   };
 
-  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []).filter((file) =>
       file.type.startsWith("image/")
     );
-    if (files.length === 0) return;
-
-    files.forEach((file, index) => {
-      const attachmentId = createClientId(`image-${index}`);
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result !== "string") return;
-        setPendingAttachments((prev) => [
-          ...prev,
-          {
-            id: attachmentId,
-            type: "image",
-            src: reader.result,
-            name: file.name,
-            uploadStatus: "uploading",
-          },
-        ]);
-        markAttachmentReady(attachmentId, 560 + index * 120);
-      };
-      reader.readAsDataURL(file);
-    });
-
     event.target.value = "";
+
+    if (!activeConversation || files.length === 0) return;
+
+    const previewSources = await Promise.all(
+      files.map((file) => readFileAsDataUrl(file).catch(() => ""))
+    );
+    const attachments = files.map((file, index) => ({
+      id: createClientId(`image-${index}`),
+      type: "image" as const,
+      src: previewSources[index] || "",
+      name: file.name,
+      size: file.size,
+      mimeType: file.type || "application/octet-stream",
+      uploadStatus: "uploading" as const,
+    }));
+
+    setPendingAttachments((prev) => [...prev, ...attachments]);
+    void uploadPendingMessageAttachments(
+      activeConversation.id,
+      files,
+      attachments.map((attachment) => attachment.id),
+    );
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
-    if (files.length === 0) return;
+    event.target.value = "";
+
+    if (!activeConversation || files.length === 0) return;
 
     const attachments = files.map((file) => ({
       id: createClientId("file"),
@@ -1495,11 +2155,12 @@ export default function Messages() {
     }));
 
     setPendingAttachments((prev) => [...prev, ...attachments]);
-    attachments.forEach((attachment, index) => {
-      markAttachmentReady(attachment.id, 520 + index * 140);
-    });
+    void uploadPendingMessageAttachments(
+      activeConversation.id,
+      files,
+      attachments.map((attachment) => attachment.id),
+    );
     setIsAttachMenuOpen(false);
-    event.target.value = "";
   };
 
   const handleAttachIcon = (icon: string) => {
@@ -1571,15 +2232,14 @@ export default function Messages() {
         provider,
         url: normalizedUrl,
         name: `${label} 작업 링크`,
-        uploadStatus: "uploading",
+        uploadStatus: "ready",
         ...preview,
       },
     ]);
-    markAttachmentReady(attachmentId, 620);
     closeIntegrationModal();
   };
 
-  const handleToggleReaction = (messageClientId: string, emoji: string) => {
+  const handleToggleReaction = async (messageClientId: string, emoji: string) => {
     const targetMessage = chatMessages.find(
       (message) => message.clientId === messageClientId
     );
@@ -1587,6 +2247,7 @@ export default function Messages() {
       (reaction) => reaction.emoji === emoji
     );
     const shouldBounceCount = !targetReaction || !targetReaction.reactedByMe;
+    const messageId = Number(targetMessage?.serverId ?? targetMessage?.id);
 
     setReactionAnimation({
       messageClientId,
@@ -1594,46 +2255,27 @@ export default function Messages() {
       key: Date.now(),
       shouldBounceCount,
     });
-
-    setChatMessages((prev) =>
-      prev.map((message) => {
-        if (message.clientId !== messageClientId) return message;
-
-        const reactions = message.reactions ?? [];
-        const existingReaction = reactions.find((reaction) => reaction.emoji === emoji);
-
-        if (!existingReaction) {
-          return {
-            ...message,
-            reactions: [...reactions, { emoji, count: 1, reactedByMe: true }],
-          };
-        }
-
-        if (existingReaction.reactedByMe) {
-          const nextCount = existingReaction.count - 1;
-          return {
-            ...message,
-            reactions: reactions
-              .map((reaction) =>
-                reaction.emoji === emoji
-                  ? { ...reaction, count: nextCount, reactedByMe: false }
-                  : reaction
-              )
-              .filter((reaction) => reaction.count > 0),
-          };
-        }
-
-        return {
-          ...message,
-          reactions: reactions.map((reaction) =>
-            reaction.emoji === emoji
-              ? { ...reaction, count: reaction.count + 1, reactedByMe: true }
-              : reaction
-          ),
-        };
-      })
-    );
     setReactionPickerMessageId(null);
+
+    if (!activeConversation || !Number.isFinite(messageId)) return;
+
+    try {
+      const response = await toggleMessageReactionApi(activeConversation.id, messageId, emoji);
+      setChatMessages((prev) =>
+        prev.map((message) =>
+          message.clientId === messageClientId || Number(message.serverId ?? message.id) === response.messageId
+            ? {
+                ...message,
+                reactions: response.reactions,
+              }
+            : message
+        )
+      );
+    } catch (error) {
+      setConversationError(
+        error instanceof Error ? error.message : "메시지 반응을 저장하지 못했습니다."
+      );
+    }
   };
 
   const handleRemoveAttachment = (attachmentId: string) => {
@@ -1759,12 +2401,8 @@ export default function Messages() {
     removable = false
   ) => {
     const meta = getFileAttachmentMeta(attachment);
-
-    return (
-      <div
-        key={attachment.id}
-        className="relative flex max-w-72 items-center gap-2 rounded-lg border border-white/70 bg-white/80 px-3 py-2 pr-8 text-left shadow-sm"
-      >
+    const cardContent = (
+      <>
         <span
           className={`flex size-10 shrink-0 items-center justify-center rounded-lg text-[10px] font-black ${meta.className}`}
         >
@@ -1779,6 +2417,29 @@ export default function Messages() {
             {renderAttachmentStatus(attachment)}
           </div>
         </div>
+      </>
+    );
+
+    if (!removable && attachment.url) {
+      return (
+        <a
+          key={attachment.id}
+          href={attachment.url}
+          target="_blank"
+          rel="noreferrer"
+          className="relative flex max-w-72 items-center gap-2 rounded-lg border border-white/70 bg-white/80 px-3 py-2 pr-8 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white"
+        >
+          {cardContent}
+        </a>
+      );
+    }
+
+    return (
+      <div
+        key={attachment.id}
+        className="relative flex max-w-72 items-center gap-2 rounded-lg border border-white/70 bg-white/80 px-3 py-2 pr-8 text-left shadow-sm"
+      >
+        {cardContent}
         {removable && (
           <button
             type="button"
@@ -2753,6 +3414,7 @@ export default function Messages() {
                 onClick={handleSendMessage}
                 disabled={
                   hasUploadingAttachments ||
+                  hasFailedAttachments ||
                   (!messageText.trim() && pendingAttachments.length === 0)
                 }
                 title={hasUploadingAttachments ? "첨부가 완료되면 전송할 수 있어요." : undefined}
@@ -2883,7 +3545,7 @@ export default function Messages() {
                       </div>
                       <button
                         type="button"
-                        onClick={handleLeaveConversation}
+                        onClick={handleDeleteConversation}
                         className="text-[0px] font-semibold text-[#FF5C3A] hover:text-[#FF5C3A]/80 transition-colors [&>span]:text-sm"
                       >
                         <span>대화방 나가기</span>
