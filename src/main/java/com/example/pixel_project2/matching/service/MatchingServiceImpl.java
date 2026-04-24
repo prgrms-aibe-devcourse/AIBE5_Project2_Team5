@@ -11,6 +11,7 @@ import com.example.pixel_project2.common.entity.enums.PostType;
 import com.example.pixel_project2.common.entity.enums.ProjectState;
 import com.example.pixel_project2.common.repository.PostRepository;
 import com.example.pixel_project2.common.repository.UserRepository;
+import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.matching.dto.ApplyProjectRequest;
 import com.example.pixel_project2.matching.dto.CreateProjectRequest;
 import com.example.pixel_project2.matching.dto.MyApplicationItemResponse;
@@ -24,6 +25,7 @@ import com.example.pixel_project2.matching.repository.JobSkillRepository;
 import com.example.pixel_project2.matching.repository.ProjectRepository;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,7 @@ import java.text.NumberFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -233,11 +236,29 @@ public class MatchingServiceImpl implements MatchingService {
     }
 
     @Override
+    @Transactional
     public List<MyPostItemResponse> getMyPosts() {
-        return List.of(
-                new MyPostItemResponse(101L, "My Project 1", 3000000, "OPEN", "2026-05-15T18:00:00"),
-                new MyPostItemResponse(103L, "My Project 2", 1500000, "OPEN", "2026-05-03T18:00:00")
-        );
+        // 1. 현재 인증된 사용자 ID 추출 (SecurityContextHolder 활용 가정)
+        AuthenticatedUser user = (AuthenticatedUser) SecurityContextHolder.getContext()
+                .getAuthentication().getPrincipal();
+        Long userId = user.id();
+
+        // 2. 리포지토리에서 해당 유저의 프로젝트 공고 조회
+        // PostType.java에 정의된 JOB_POST(매칭공고) 타입을 기준으로 조회합니다.
+        List<Project> myProjects = projectRepository.findAllByUserIdAndPostType(userId, PostType.JOB_POST);
+
+        // 3. MyPostItemResponse DTO로 매핑하여 반환
+        return myProjects.stream()
+                .map(project -> new MyPostItemResponse(
+                        project.getPost_id(),                  // postId (PK)
+                        project.getPost().getTitle(),          // 제목 (Post 엔티티)
+                        project.getOverview(),                 // 프로젝트 개요
+                        project.getPost().getCategory().getLabel(),// 카테고리 (Post 엔티티)
+                        project.getProjectState().name(),      // 모집상태 (OPEN/CLOSED)
+                        project.getJobState().getLabel(),      // 기간 (단기/중기/장기)
+                        project.getDeadline().toString()       // 마감일
+                ))
+                .collect(Collectors.toList());
     }
 
     @Override
