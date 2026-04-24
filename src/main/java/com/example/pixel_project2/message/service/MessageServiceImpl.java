@@ -38,6 +38,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -52,6 +53,7 @@ import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class MessageServiceImpl implements MessageService {
     private final UserRepository userRepository;
     private final MessageConversationRepository conversationRepository;
@@ -93,13 +95,21 @@ public class MessageServiceImpl implements MessageService {
         MessageConversation conversation = findConversationForUser(conversationId, currentUser.id());
         User partner = conversation.getOtherParticipant(currentUser.id());
         messagePresenceTracker.touchUser(currentUser.id());
-
-        return new MessageConversationPresenceResponse(
+        MessageConversationPresenceResponse response = new MessageConversationPresenceResponse(
                 conversation.getId(),
                 partner.getId(),
                 messagePresenceTracker.isUserAvailable(partner.getId()),
                 messagePresenceTracker.isTyping(conversation.getId(), partner.getId())
         );
+        log.info(
+                "message presence fetched conversationId={} requesterUserId={} partnerUserId={} partnerAvailable={} partnerTyping={}",
+                conversationId,
+                currentUser.id(),
+                partner.getId(),
+                response.partnerAvailable(),
+                response.partnerTyping()
+        );
+        return response;
     }
 
     @Override
@@ -113,13 +123,22 @@ public class MessageServiceImpl implements MessageService {
         User partner = conversation.getOtherParticipant(currentUser.id());
         messagePresenceTracker.touchUser(currentUser.id());
         messagePresenceTracker.updateTyping(conversationId, currentUser.id(), request.isTyping());
-
-        return new MessageConversationPresenceResponse(
+        MessageConversationPresenceResponse response = new MessageConversationPresenceResponse(
                 conversation.getId(),
                 partner.getId(),
                 messagePresenceTracker.isUserAvailable(partner.getId()),
                 messagePresenceTracker.isTyping(conversation.getId(), partner.getId())
         );
+        log.info(
+                "message typing updated via api conversationId={} senderUserId={} partnerUserId={} isTyping={} partnerAvailable={} partnerTyping={}",
+                conversationId,
+                currentUser.id(),
+                partner.getId(),
+                request.isTyping(),
+                response.partnerAvailable(),
+                response.partnerTyping()
+        );
+        return response;
     }
 
     @Override

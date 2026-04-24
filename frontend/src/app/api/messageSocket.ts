@@ -83,6 +83,13 @@ const MESSAGE_SOCKET_RECONNECT_BASE_DELAY = 1000;
 const MESSAGE_SOCKET_RECONNECT_MAX_DELAY = 5000;
 const MESSAGE_SOCKET_HEARTBEAT_INTERVAL = 15000;
 const MESSAGE_SOCKET_HEARTBEAT_TIMEOUT = 10000;
+const DEBUG_MESSAGE_SOCKET = import.meta.env.DEV;
+
+const debugMessageSocket = (...args: unknown[]) => {
+  if (DEBUG_MESSAGE_SOCKET) {
+    console.debug("[MessageSocket]", ...args);
+  }
+};
 
 const getWebSocketOrigin = () => {
   const configuredOrigin = import.meta.env.VITE_WS_ORIGIN ?? import.meta.env.VITE_API_ORIGIN;
@@ -225,6 +232,7 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
         }
 
         if (payload?.type === "typing") {
+          debugMessageSocket("received typing", payload);
           callbacks.onEvent(payload as IncomingTypingSocketMessage);
           return;
         }
@@ -235,11 +243,13 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
         }
 
         if (payload?.type === "presence.snapshot") {
+          debugMessageSocket("received presence.snapshot", payload);
           callbacks.onEvent(payload as IncomingPresenceSnapshotSocketMessage);
           return;
         }
 
         if (payload?.type === "presence.update") {
+          debugMessageSocket("received presence.update", payload);
           callbacks.onEvent(payload as IncomingPresenceUpdateSocketMessage);
           return;
         }
@@ -289,6 +299,7 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
   };
 
   const sendTyping = (conversationId: number, isTyping: boolean) => {
+    debugMessageSocket("send typing", { conversationId, isTyping });
     sendJson({
       type: "typing",
       conversationId,

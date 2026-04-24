@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -22,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class MessageSocketHandler extends TextWebSocketHandler {
     private static final String TYPE_SUBSCRIBE = "subscribe";
     private static final String TYPE_CHAT_MESSAGE = "chat.message";
@@ -224,6 +226,12 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         boolean isTyping = payload.path("isTyping").asBoolean(false);
         outbound.put("isTyping", isTyping);
         messagePresenceTracker.updateTyping(conversationId, sender.id(), isTyping);
+        log.info(
+                "message typing socket event conversationId={} senderUserId={} isTyping={}",
+                conversationId,
+                sender.id(),
+                isTyping
+        );
 
         broadcast(conversationId, session.getId(), messageService.getConversationParticipantIds(conversationId), outbound);
     }

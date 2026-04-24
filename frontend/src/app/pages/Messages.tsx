@@ -134,6 +134,13 @@ const CONNECTED_PROCESS_POLL_INTERVAL = 3000;
 const DISCONNECTED_POLL_INTERVAL = 1000;
 const TYPING_IDLE_DELAY = 1200;
 const TYPING_SYNC_INTERVAL = 800;
+const DEBUG_MESSAGE_TYPING = import.meta.env.DEV;
+
+const debugMessageTyping = (...args: unknown[]) => {
+  if (DEBUG_MESSAGE_TYPING) {
+    console.debug("[MessagesTyping]", ...args);
+  }
+};
 
 const createClientId = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1027,8 +1034,10 @@ export default function Messages() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageSocketRef = useRef<ReturnType<typeof createMessageSocket> | null>(null);
   const activeConversationIdRef = useRef(activeConversationId);
+  const onlineByConversationIdRef = useRef<Record<number, boolean>>({});
   const typingTimeoutRef = useRef<number | null>(null);
   const typingConversationRef = useRef<number | null>(null);
+  const partnerTypingConversationIdRef = useRef<number | null>(null);
   const lastTypingSyncAtRef = useRef<Record<number, number>>({});
   const partnerTypingTimeoutRef = useRef<number | null>(null);
   const activeConversation =
@@ -1063,6 +1072,7 @@ export default function Messages() {
           next[state.conversationId] = state.isOnline;
         }
       });
+      onlineByConversationIdRef.current = next;
       return next;
     });
     setServerConversations((prev) =>
@@ -1081,7 +1091,7 @@ export default function Messages() {
           return conversation;
         }
 
-        const isTyping = conversation.statusText === "입력 중...";
+        const isTyping = partnerTypingConversationIdRef.current === conversation.id;
         return {
           ...conversation,
           online: nextState.isOnline,
@@ -1109,10 +1119,18 @@ export default function Messages() {
       partnerTyping: boolean;
     }
   ) {
-    setOnlineByConversationId((prev) => ({
-      ...prev,
-      [conversationId]: presence.partnerAvailable,
-    }));
+    debugMessageTyping("applyConversationPresence", {
+      conversationId,
+      presence,
+    });
+    setOnlineByConversationId((prev) => {
+      const next = {
+        ...prev,
+        [conversationId]: presence.partnerAvailable,
+      };
+      onlineByConversationIdRef.current = next;
+      return next;
+    });
     setServerConversations((prev) =>
       prev.map((conversation) =>
         conversation.id === conversationId
@@ -1129,15 +1147,22 @@ export default function Messages() {
       )
     );
     setTypingConversationId((current) => {
-      if (presence.partnerTyping) {
-        return conversationId;
-      }
-
-      return current === conversationId ? null : current;
+      const nextTypingConversationId = presence.partnerTyping
+        ? conversationId
+        : current === conversationId
+          ? null
+          : current;
+      partnerTypingConversationIdRef.current = nextTypingConversationId;
+      return nextTypingConversationId;
     });
   }
 
   function notifyTypingState(conversationId: number, isTyping: boolean) {
+    debugMessageTyping("notifyTypingState", {
+      conversationId,
+      isTyping,
+      currentUserId,
+    });
     const now = Date.now();
     if (isTyping) {
       const lastSyncedAt = lastTypingSyncAtRef.current[conversationId] ?? 0;
@@ -1286,8 +1311,9 @@ export default function Messages() {
         if (!mounted) return;
 
         const nextConversations = conversationResponses.map(mapConversationResponse).map((conversation) => {
-          const isOnline = onlineByConversationId[conversation.id] ?? conversation.online;
-          const isTyping = typingConversationRef.current === conversation.id;
+          const isOnline =
+            onlineByConversationIdRef.current[conversation.id] ?? conversation.online;
+          const isTyping = partnerTypingConversationIdRef.current === conversation.id;
 
           return {
             ...conversation,
@@ -1405,6 +1431,11 @@ export default function Messages() {
         const presence = await getConversationPresenceApi(conversationId);
         if (!mounted || activeConversationIdRef.current !== conversationId) return;
 
+        debugMessageTyping("presence api", {
+          conversationId,
+          silent,
+          presence,
+        });
         applyConversationPresence(conversationId, presence);
       } catch (error) {
         if (!mounted || silent) return;
@@ -1496,6 +1527,14 @@ export default function Messages() {
   }, [activeConversationId]);
 
   useEffect(() => {
+    onlineByConversationIdRef.current = onlineByConversationId;
+  }, [onlineByConversationId]);
+
+  useEffect(() => {
+    partnerTypingConversationIdRef.current = typingConversationId;
+  }, [typingConversationId]);
+
+  useEffect(() => {
     return () => {
       stopOwnTyping();
     };
@@ -1517,6 +1556,11 @@ export default function Messages() {
       },
       onEvent: (event: IncomingMessageSocketEvent) => {
         if (event.type === "typing") {
+          debugMessageTyping("socket typing event", {
+            event,
+            currentUserId,
+            activeConversationId: activeConversationIdRef.current,
+          });
           if (event.senderUserId !== currentUserId) {
             if (partnerTypingTimeoutRef.current !== null) {
               window.clearTimeout(partnerTypingTimeoutRef.current);
@@ -1653,6 +1697,7 @@ export default function Messages() {
       onClose: () => {
         setIsSocketConnected(false);
         setTypingConversationId(null);
+        partnerTypingConversationIdRef.current = null;
         if (partnerTypingTimeoutRef.current !== null) {
           window.clearTimeout(partnerTypingTimeoutRef.current);
           partnerTypingTimeoutRef.current = null;
@@ -2280,6 +2325,11 @@ export default function Messages() {
 
   const updateMessageText = (value: string) => {
     if (!activeConversation) return;
+    debugMessageTyping("updateMessageText", {
+      conversationId: activeConversation.id,
+      valueLength: value.length,
+      hasTrimmedValue: Boolean(value.trim()),
+    });
     setMessageText(value);
     setMessageDrafts((prev) => ({
       ...prev,
@@ -4011,8 +4061,10 @@ export default function Messages() {
                           progress === 100 && hasBothConfirmations(process.confirmations);
                         const approvalBadge = getProcessApprovalBadge(process, progress);
                         const approvalSummary = getProcessApprovalSummary(process, progress);
-                        const canEditDesignerConfirmation = isProcessConfirmationEditable("designer");
-                        const canEditClientConfirmation = isProcessConfirmationEditable("client");
+                        const confirmationRoles: Array<keyof ProcessConfirmations> = [
+                          "client",
+                          "designer",
+                        ];
 
                         return (
                           <div
@@ -4119,92 +4171,83 @@ export default function Messages() {
                                 </span>
                               </div>
                               <div className="grid grid-cols-2 gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (!canEditDesignerConfirmation) return;
-                                    toggleProcessConfirmation(process.id, "designer");
-                                  }}
-                                  disabled={!canEditDesignerConfirmation}
-                                  aria-pressed={process.confirmations.designer}
-                                  aria-disabled={!canEditDesignerConfirmation}
-                                  className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-all ${
-                                    process.confirmations.designer
-                                      ? "border-[#9EE7D0] bg-white text-[#12382D] shadow-[0_8px_20px_rgba(0,201,167,0.12)] ring-1 ring-[#DDF8EC]"
-                                      : canEditDesignerConfirmation
-                                        ? "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
-                                        : "border-gray-200 bg-[#F3F4F6] text-gray-400"
-                                  }`}
-                                >
-                                  <span className="flex items-center justify-center gap-2">
-                                    <span
-                                      className={`flex size-6 shrink-0 items-center justify-center rounded-full border transition-all ${
-                                        process.confirmations.designer
-                                          ? "border-[#00C9A7] bg-[#00C9A7] text-white"
-                                          : "border-gray-300 bg-white text-transparent"
+                                {confirmationRoles.map((role) => {
+                                  const isCurrentParticipant = role === "designer";
+                                  const canEditConfirmation =
+                                    isProcessConfirmationEditable(role);
+                                  const isConfirmed = process.confirmations[role];
+
+                                  return (
+                                    <button
+                                      key={`${process.id}-${role}`}
+                                      type="button"
+                                      onClick={() => {
+                                        if (!canEditConfirmation) return;
+                                        toggleProcessConfirmation(process.id, role);
+                                      }}
+                                      disabled={!canEditConfirmation}
+                                      aria-pressed={isConfirmed}
+                                      aria-disabled={!canEditConfirmation}
+                                      className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-all ${
+                                        isConfirmed
+                                          ? "border-[#9EE7D0] bg-white text-[#12382D] shadow-[0_8px_20px_rgba(0,201,167,0.12)] ring-1 ring-[#DDF8EC]"
+                                          : canEditConfirmation
+                                            ? "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
+                                            : "border-gray-200 bg-[#F3F4F6] text-gray-400"
                                       }`}
                                     >
-                                      <CheckCircle className="size-4" />
-                                    </span>
-                                    <span className="text-left leading-tight">
-                                      <span className="block">
-                                        {getProcessParticipantDisplayLabel("designer")}
-                                      </span>
                                       <span
-                                        className={`block text-[11px] font-bold ${
-                                          process.confirmations.designer
-                                            ? "text-[#007E68]"
-                                            : "text-gray-400"
+                                        className={`flex items-center gap-2 ${
+                                          isCurrentParticipant
+                                            ? "justify-end text-right"
+                                            : "justify-start text-left"
                                         }`}
                                       >
-                                        {process.confirmations.designer ? "확인 완료" : "확인 대기"}
+                                        {isCurrentParticipant && (
+                                          <span className="leading-tight">
+                                            <span className="block">
+                                              {getProcessParticipantDisplayLabel(role)}
+                                            </span>
+                                            <span
+                                              className={`block text-[11px] font-bold ${
+                                                isConfirmed
+                                                  ? "text-[#007E68]"
+                                                  : "text-gray-400"
+                                              }`}
+                                            >
+                                              {isConfirmed ? "확인 완료" : "확인 대기"}
+                                            </span>
+                                          </span>
+                                        )}
+                                        <span
+                                          className={`flex size-6 shrink-0 items-center justify-center rounded-full border transition-all ${
+                                            isConfirmed
+                                              ? "border-[#00C9A7] bg-[#00C9A7] text-white"
+                                              : "border-gray-300 bg-white text-transparent"
+                                          }`}
+                                        >
+                                          <CheckCircle className="size-4" />
+                                        </span>
+                                        {!isCurrentParticipant && (
+                                          <span className="leading-tight">
+                                            <span className="block">
+                                              {getProcessParticipantDisplayLabel(role)}
+                                            </span>
+                                            <span
+                                              className={`block text-[11px] font-bold ${
+                                                isConfirmed
+                                                  ? "text-[#007E68]"
+                                                  : "text-gray-400"
+                                              }`}
+                                            >
+                                              {isConfirmed ? "확인 완료" : "확인 대기"}
+                                            </span>
+                                          </span>
+                                        )}
                                       </span>
-                                    </span>
-                                  </span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (!canEditClientConfirmation) return;
-                                    toggleProcessConfirmation(process.id, "client");
-                                  }}
-                                  disabled={!canEditClientConfirmation}
-                                  aria-pressed={process.confirmations.client}
-                                  aria-disabled={!canEditClientConfirmation}
-                                  className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-all ${
-                                    process.confirmations.client
-                                      ? "border-[#9EE7D0] bg-white text-[#12382D] shadow-[0_8px_20px_rgba(0,201,167,0.12)] ring-1 ring-[#DDF8EC]"
-                                      : canEditClientConfirmation
-                                        ? "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
-                                        : "border-gray-200 bg-[#F3F4F6] text-gray-400"
-                                  }`}
-                                >
-                                  <span className="flex items-center justify-center gap-2">
-                                    <span
-                                      className={`flex size-6 shrink-0 items-center justify-center rounded-full border transition-all ${
-                                        process.confirmations.client
-                                          ? "border-[#00C9A7] bg-[#00C9A7] text-white"
-                                          : "border-gray-300 bg-white text-transparent"
-                                      }`}
-                                    >
-                                      <CheckCircle className="size-4" />
-                                    </span>
-                                    <span className="text-left leading-tight">
-                                      <span className="block">
-                                        {getProcessParticipantDisplayLabel("client")}
-                                      </span>
-                                      <span
-                                        className={`block text-[11px] font-bold ${
-                                          process.confirmations.client
-                                            ? "text-[#007E68]"
-                                            : "text-gray-400"
-                                        }`}
-                                      >
-                                        {process.confirmations.client ? "확인 완료" : "확인 대기"}
-                                      </span>
-                                    </span>
-                                  </span>
-                                </button>
+                                    </button>
+                                  );
+                                })}
                               </div>
                             </div>
                           </div>
