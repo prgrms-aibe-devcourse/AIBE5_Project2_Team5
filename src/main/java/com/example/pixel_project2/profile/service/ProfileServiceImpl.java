@@ -15,11 +15,17 @@ import com.example.pixel_project2.common.repository.FollowRepository;
 import com.example.pixel_project2.common.repository.PostRepository;
 import com.example.pixel_project2.common.repository.UserRepository;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
+import com.example.pixel_project2.message.entity.MessageReview;
+import com.example.pixel_project2.message.repository.MessageReviewRepository;
+import com.example.pixel_project2.profile.dto.CreateProfileReviewRequest;
 import com.example.pixel_project2.profile.dto.ProfileFeedResponse;
 import com.example.pixel_project2.profile.dto.ProfileResponse;
 import com.example.pixel_project2.profile.dto.ProfileReviewResponse;
 import com.example.pixel_project2.profile.dto.UpdateDesignerProfileRequest;
 import com.example.pixel_project2.profile.dto.UpdateProfileRequest;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +43,8 @@ public class ProfileServiceImpl implements ProfileService {
     private final CommentRepository commentRepository;
     private final FollowRepository followRepository;
     private final DesignerRepository designerRepository;
+    private final MessageReviewRepository messageReviewRepository;
+    private final ObjectMapper objectMapper;
 
     @Override
     public ProfileResponse getMyProfile(AuthenticatedUser currentUser) {
@@ -68,6 +76,35 @@ public class ProfileServiceImpl implements ProfileService {
     @Override
     public List<ProfileReviewResponse> getProfileReviews(String profileKey, AuthenticatedUser currentUser) {
         return getProjectReviews(resolveProfileUser(profileKey, currentUser));
+    }
+
+    @Override
+    @Transactional
+    public ProfileReviewResponse createProfileReview(AuthenticatedUser currentUser, CreateProfileReviewRequest request) {
+        User reviewer = findUserById(currentUser.id());
+        User reviewee = findUserById(request.revieweeId());
+
+        if (reviewer.getId().equals(reviewee.getId())) {
+            throw new IllegalArgumentException("본인에게 후기를 작성할 수 없습니다.");
+        }
+
+        MessageReview review = messageReviewRepository
+                .findByConversationIdAndReviewerId(request.conversationId(), reviewer.getId())
+                .orElseGet(() -> MessageReview.builder().build());
+
+        review.setConversationId(request.conversationId());
+        review.setReviewer(reviewer);
+        review.setReviewee(reviewee);
+        review.setProjectTitle(request.projectTitle().trim());
+        review.setRating(request.rating());
+        review.setContent(request.content().trim());
+        review.setWorkCategoriesJson(writeStringList(request.workCategories()));
+        review.setComplimentTagsJson(writeStringList(request.complimentTags()));
+        review.setCreatedMessageReview(review.getCreatedMessageReview() == null ? java.time.LocalDateTime.now() : review.getCreatedMessageReview());
+
+        MessageReview savedReview = messageReviewRepository.save(review);
+        updateDesignerRating(reviewee);
+        return toProfileReviewResponse(savedReview);
     }
 
     @Override
@@ -124,7 +161,10 @@ public class ProfileServiceImpl implements ProfileService {
     }
 
     private List<ProfileReviewResponse> getProjectReviews(User user) {
-        return List.of();
+        return messageReviewRepository.findByRevieweeIdOrderByCreatedMessageReviewDesc(user.getId())
+                .stream()
+                .map(this::toProfileReviewResponse)
+                .toList();
     }
 
     private ProfileResponse toProfileResponse(User user, AuthenticatedUser currentUser) {
@@ -182,6 +222,82 @@ public class ProfileServiceImpl implements ProfileService {
                 .tags(categoryLabel == null ? List.of() : List.of("#" + categoryLabel))
                 .createdAt(post.getCreatedAt())
                 .build();
+    }
+
+    private ProfileReviewResponse toProfileReviewResponse(MessageReview review) {
+        User reviewer = review.getReviewer();
+        return ProfileReviewResponse.builder()
+                .reviewId(review.getReviewId())
+                .projectId(review.getConversationId())
+                .projectTitle(review.getProjectTitle())
+                .reviewerId(reviewer == null ? null : reviewer.getId())
+                .reviewerName(reviewer == null ? null : reviewer.getName())
+                .reviewerNickname(reviewer == null ? null : reviewer.getNickname())
+                .reviewerProfileImage(reviewer == null ? null : reviewer.getProfileImage())
+                .rating(review.getRating())
+                .content(review.getContent())
+                .workCategories(readStringList(review.getWorkCategoriesJson()))
+                .complimentTags(readStringList(review.getComplimentTagsJson()))
+                .createdAt(review.getCreatedMessageReview())
+                .build();
+    }
+
+    private void updateDesignerRating(User reviewee) {
+        if (reviewee.getRole() != UserRole.DESIGNER) {
+            return;
+        }
+
+        Double averageRating = messageReviewRepository.findAverageRatingByRevieweeId(reviewee.getId());
+        float normalizedRating = averageRating == null
+                ? 0.0F
+                : Math.round(averageRating.floatValue() * 10.0F) / 10.0F;
+
+        Designer designer = designerRepository.findById(reviewee.getId())
+                .orElseGet(() -> Designer.builder()
+                        .user(reviewee)
+                        .rating(normalizedRating)
+                        .build());
+        designer.setRating(normalizedRating);
+        Designer savedDesigner = designerRepository.save(designer);
+        reviewee.setDesigner(savedDesigner);
+    }
+
+    private String writeStringList(List<String> values) {
+        List<String> normalizedValues = normalizeStringList(values);
+        if (normalizedValues.isEmpty()) {
+            return null;
+        }
+
+        try {
+            return objectMapper.writeValueAsString(normalizedValues);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("후기 태그를 저장하지 못했습니다.", exception);
+        }
+    }
+
+    private List<String> readStringList(String rawJson) {
+        if (rawJson == null || rawJson.isBlank()) {
+            return List.of();
+        }
+
+        try {
+            return objectMapper.readValue(rawJson, new TypeReference<List<String>>() {});
+        } catch (JsonProcessingException exception) {
+            return List.of();
+        }
+    }
+
+    private List<String> normalizeStringList(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+
+        return values.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .toList();
     }
 
     private User resolveProfileUser(String profileKey, AuthenticatedUser currentUser) {

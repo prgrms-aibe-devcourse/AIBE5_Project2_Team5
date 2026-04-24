@@ -1,4 +1,4 @@
-import Navigation from "../components/Navigation";
+﻿import Navigation from "../components/Navigation";
 import { Edit, Search, Info, Send, Image, Smile, AtSign, Sparkles, Calendar, FileText, CheckCircle, Circle, ChevronDown, ChevronUp, ThumbsUp, XCircle, Paperclip, Figma, ExternalLink, Plus, Clock, Check, CheckCheck, Trash2, GripVertical, Eye, ArrowLeft, Bookmark } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
@@ -129,8 +129,9 @@ const PROCESS_CREATED_STORAGE_KEY = "pickxel:message-processes-created:v2";
 const MESSAGE_DRAFTS_STORAGE_KEY = "pickxel:message-drafts";
 const LEFT_CONVERSATIONS_STORAGE_KEY = "pickxel:left-message-conversations";
 const CONNECTED_CONVERSATION_POLL_INTERVAL = 5000;
-const CONNECTED_MESSAGE_POLL_INTERVAL = 1000;
-const CONNECTED_PROCESS_POLL_INTERVAL = 1000;
+const CONNECTED_MESSAGE_POLL_INTERVAL = 3000;
+const CONNECTED_PRESENCE_POLL_INTERVAL = 5000;
+const CONNECTED_PROCESS_POLL_INTERVAL = 3000;
 const DISCONNECTED_POLL_INTERVAL = 1000;
 const TYPING_IDLE_DELAY = 1200;
 const TYPING_SYNC_INTERVAL = 800;
@@ -434,11 +435,7 @@ const mapConversationResponse = (
     unread: conversation.unreadCount > 0,
     unreadCount: conversation.unreadCount,
     online: conversation.partnerAvailable,
-    statusText: conversation.partnerTyping
-      ? "입력 중..."
-      : conversation.partnerAvailable
-        ? "메시지 가능"
-        : "자리비움",
+    statusText: conversation.partnerAvailable ? "메시지 가능" : "자리비움",
     avatar:
       conversation.partnerProfileImage ||
       `https://i.pravatar.cc/150?u=message-${conversation.partnerUserId}`,
@@ -964,12 +961,7 @@ export default function Messages() {
   const [typingConversationId, setTypingConversationId] = useState<number | null>(null);
   const rawConversations = [...serverConversations, ...conversations].map((conversation) => {
     const isOnline = onlineByConversationId[conversation.id] ?? conversation.online;
-    const statusText =
-      typingConversationId === conversation.id
-        ? "입력 중..."
-        : isOnline
-          ? "메시지 가능"
-          : "자리비움";
+    const statusText = isOnline ? "메시지 가능" : "자리비움";
 
     return {
       ...conversation,
@@ -1091,15 +1083,10 @@ export default function Messages() {
           return conversation;
         }
 
-        const isTyping = partnerTypingConversationIdRef.current === conversation.id;
         return {
           ...conversation,
           online: nextState.isOnline,
-          statusText: isTyping
-            ? "입력 중..."
-            : nextState.isOnline
-              ? "메시지 가능"
-              : "자리비움",
+          statusText: nextState.isOnline ? "메시지 가능" : "자리비움",
         };
       })
     );
@@ -1137,11 +1124,7 @@ export default function Messages() {
           ? {
               ...conversation,
               online: presence.partnerAvailable,
-              statusText: presence.partnerTyping
-                ? "입력 중..."
-                : presence.partnerAvailable
-                  ? "메시지 가능"
-                  : "자리비움",
+              statusText: presence.partnerAvailable ? "메시지 가능" : "자리비움",
             }
           : conversation
       )
@@ -1313,12 +1296,10 @@ export default function Messages() {
         const nextConversations = conversationResponses.map(mapConversationResponse).map((conversation) => {
           const isOnline =
             onlineByConversationIdRef.current[conversation.id] ?? conversation.online;
-          const isTyping = partnerTypingConversationIdRef.current === conversation.id;
-
           return {
             ...conversation,
             online: isOnline,
-            statusText: isTyping ? "입력 중..." : isOnline ? "메시지 가능" : "자리비움",
+            statusText: isOnline ? "메시지 가능" : "자리비움",
           };
         });
         setServerConversations(nextConversations);
@@ -1412,7 +1393,7 @@ export default function Messages() {
     void loadConversationMessages();
     const pollInterval = window.setInterval(() => {
       void loadConversationMessages(true);
-    }, isSocketConnected ? CONNECTED_MESSAGE_POLL_INTERVAL : DISCONNECTED_POLL_INTERVAL);
+    }, isSocketConnected ? CONNECTED_PRESENCE_POLL_INTERVAL : DISCONNECTED_POLL_INTERVAL);
 
     return () => {
       mounted = false;
@@ -3402,7 +3383,7 @@ export default function Messages() {
                       activeConversation.online ? "bg-[#72CDBD]" : "bg-gray-300"
                     }`}
                   />
-                  {isPartnerTyping ? "입력 중..." : activeConversation.statusText}
+                  {activeConversation.online ? "메시지 가능" : "자리비움"}
                 </p>
               </div>
             </div>
@@ -3956,7 +3937,7 @@ export default function Messages() {
                   <p className="text-sm text-gray-600">
                     {activeConversation.title}
                     <span className="mx-1.5 text-gray-300">·</span>
-                    {isPartnerTyping ? "입력 중..." : activeConversation.statusText}
+                    {activeConversation.online ? "메시지 가능" : "자리비움"}
                   </p>
                 </div>
 

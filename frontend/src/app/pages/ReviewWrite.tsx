@@ -2,11 +2,33 @@ import Navigation from "../components/Navigation";
 import { CheckCircle, Star, Send, ThumbsUp, MessageSquare, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
+import { createProfileReviewApi } from "../api/profileApi";
 import { matchingCategories } from "../utils/matchingCategories";
+
+const LEFT_CONVERSATIONS_STORAGE_KEY = "pickxel:left-message-conversations";
+
+const rememberHiddenConversation = (conversationId: number) => {
+  if (typeof window === "undefined" || !conversationId) return;
+
+  try {
+    const rawValue = window.localStorage.getItem(LEFT_CONVERSATIONS_STORAGE_KEY);
+    const currentIds = rawValue ? (JSON.parse(rawValue) as number[]) : [];
+    const nextIds = Array.from(new Set([...currentIds, conversationId]));
+    window.localStorage.setItem(
+      LEFT_CONVERSATIONS_STORAGE_KEY,
+      JSON.stringify(nextIds),
+    );
+  } catch {
+    // Hiding the conversation locally is best-effort only.
+  }
+};
 
 export default function ReviewWrite() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const profileKey = searchParams.get("profileKey") || searchParams.get("revieweeId") || "";
+  const conversationId = Number(searchParams.get("conversationId") || 0);
+  const revieweeId = Number(searchParams.get("revieweeId") || 0);
   const clientName = searchParams.get("client") || "김민재";
   const projectName = searchParams.get("project") || "브랜드 아이덴티티 프로젝트";
 
@@ -18,6 +40,7 @@ export default function ReviewWrite() {
   const [selectedImprovements, setSelectedImprovements] = useState<string[]>([]);
   const [isThankYouOpen, setIsThankYouOpen] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const ratingOptions = [
     {
@@ -126,11 +149,43 @@ export default function ReviewWrite() {
   };
 
   const handleGoToProfileReviews = () => {
-    navigate("/profile/jieun?tab=reviews");
+    if (!profileKey) {
+      navigate("/messages");
+      return;
+    }
+    navigate(`/profile/${encodeURIComponent(profileKey)}?tab=reviews`);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!isReviewReady || hasSubmitted) return;
+
+    if (!conversationId || !revieweeId) {
+      setSubmitError("후기 대상을 확인하지 못했습니다. 메시지 화면에서 다시 시도해주세요.");
+      return;
+    }
+
+    try {
+      setSubmitError("");
+      setHasSubmitted(true);
+      await createProfileReviewApi({
+        conversationId,
+        revieweeId,
+        projectTitle: projectName,
+        rating,
+        content: review.trim(),
+        workCategories: selectedWorkCategories,
+        complimentTags: shouldShowImprovements ? selectedImprovements : selectedCompliments,
+      });
+      rememberHiddenConversation(conversationId);
+      setIsThankYouOpen(true);
+      return;
+    } catch (error) {
+      setHasSubmitted(false);
+      setSubmitError(
+        error instanceof Error ? error.message : "후기를 저장하지 못했습니다."
+      );
+      return;
+    }
 
     // 실제로는 여기서 API 호출하여 후기 저장
     const reviewData = {
@@ -412,7 +467,7 @@ export default function ReviewWrite() {
               취소
             </button>
             <button
-              onClick={handleSubmit}
+              onClick={() => void handleSubmit()}
               disabled={!isReviewReady || hasSubmitted}
               className={`flex-1 py-3 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
                 !isReviewReady || hasSubmitted
@@ -424,6 +479,9 @@ export default function ReviewWrite() {
               {hasSubmitted ? "후기 등록 중..." : submitButtonLabel}
             </button>
           </div>
+          {submitError && (
+            <p className="mt-3 text-sm font-medium text-[#D64928]">{submitError}</p>
+          )}
         </div>
       </div>
 
