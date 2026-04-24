@@ -18,6 +18,7 @@ public record FeedDetailResponse(
         String portfolioUrl,
         LocalDateTime createdAt,
         List<String> imageUrls,
+        boolean picked,
         boolean mine
 ) {
 }

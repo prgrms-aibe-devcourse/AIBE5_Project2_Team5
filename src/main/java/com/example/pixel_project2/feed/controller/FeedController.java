@@ -8,6 +8,7 @@ import com.example.pixel_project2.feed.dto.CreateFeedResponse;
 import com.example.pixel_project2.feed.dto.DeleteFeedResponse;
 import com.example.pixel_project2.feed.dto.FeedDetailResponse;
 import com.example.pixel_project2.feed.dto.FeedListResponse;
+import com.example.pixel_project2.feed.dto.FeedPickResponse;
 import com.example.pixel_project2.feed.service.FeedService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -30,9 +31,10 @@ public class FeedController {
 
     @GetMapping
     public ApiResponse<FeedListResponse> getFeeds(
+            @AuthenticationPrincipal AuthenticatedUser currentUser,
             @RequestParam(required = false) PostType postType
     ) {
-        return ApiResponse.ok("피드 목록을 조회했습니다.", feedService.getFeeds(postType));
+        return ApiResponse.ok("피드 목록을 조회했습니다.", feedService.getFeeds(postType, currentUser.id()));
     }
 
     @GetMapping("/{feedId}")
@@ -44,6 +46,14 @@ public class FeedController {
                 "피드 상세를 조회했습니다.",
                 feedService.getFeedDetail(feedId, currentUser.id())
         );
+    }
+
+    @PostMapping("/{feedId}/like")
+    public ApiResponse<FeedPickResponse> toggleFeedPick(
+            @PathVariable Long feedId,
+            @AuthenticationPrincipal AuthenticatedUser currentUser
+    ) {
+        return ApiResponse.ok("피드 좋아요 상태를 변경했습니다.", feedService.toggleFeedPick(feedId, currentUser.id()));
     }
 
     @PostMapping
