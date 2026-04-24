@@ -1,0 +1,480 @@
+import {
+  Bookmark,
+  Heart,
+  MessageCircle,
+  MoreVertical,
+  Send,
+  Share2,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Figma,
+  Sparkles,
+  ExternalLink,
+} from "lucide-react";
+import { Link } from "react-router";
+import { ImageWithFallback } from "../figma/ImageWithFallback";
+import type { BaseFeedItem, FeedCardItem, FeedComment } from "../../types/feed";
+
+type FeedDetailModalProps = {
+  selectedFeed: FeedCardItem;
+  activeModalImage: string;
+  selectedFeedImages: string[];
+  modalImageIndex: number;
+  savedItemIds: Set<number>;
+  selectedFeedComments: FeedComment[];
+  isFeedDetailLoading: boolean;
+  feedDetailError: string | null;
+  commentSubmitError: string | null;
+  commentLoadError: string | null;
+  isCommentsLoading: boolean;
+  editingCommentId: string | null;
+  editingCommentText: string;
+  isUpdatingComment: boolean;
+  isDeletingCommentId: string | null;
+  commentText: string;
+  isSubmittingComment: boolean;
+  currentUserAvatar: string;
+  currentUserName: string;
+  commentInputRef: React.RefObject<HTMLInputElement | null>;
+  formatFeedDateTime: (value?: string) => string | null;
+  isFeedLiked: (item: BaseFeedItem) => boolean;
+  getLikeCount: (item: BaseFeedItem) => number;
+  getCommentCount: (item: BaseFeedItem) => number;
+  onClose: () => void;
+  onMoveModalCarousel: (direction: -1 | 1, e?: React.MouseEvent) => void;
+  onSetModalImageIndex: (index: number, e: React.MouseEvent) => void;
+  onToggleLike: (item: BaseFeedItem, e?: React.MouseEvent) => void;
+  onOpenCollectionModal: (item: FeedCardItem, e?: React.MouseEvent) => void;
+  onShare: (item: BaseFeedItem, e?: React.MouseEvent) => void;
+  onProposalClick: (item: FeedCardItem, e?: React.MouseEvent) => void;
+  onToggleCommentLike: (feedId: number, commentId: string) => void;
+  onStartEditingComment: (comment: FeedComment) => void;
+  onEditingCommentTextChange: (value: string) => void;
+  onUpdateComment: () => void;
+  onCancelEditingComment: () => void;
+  onDeleteComment: (commentId: string) => void;
+  onCommentTextChange: (value: string) => void;
+  onCommentKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
+  onSubmitComment: () => void;
+};
+
+export function FeedDetailModal({
+  selectedFeed,
+  activeModalImage,
+  selectedFeedImages,
+  modalImageIndex,
+  savedItemIds,
+  selectedFeedComments,
+  isFeedDetailLoading,
+  feedDetailError,
+  commentSubmitError,
+  commentLoadError,
+  isCommentsLoading,
+  editingCommentId,
+  editingCommentText,
+  isUpdatingComment,
+  isDeletingCommentId,
+  commentText,
+  isSubmittingComment,
+  currentUserAvatar,
+  currentUserName,
+  commentInputRef,
+  formatFeedDateTime,
+  isFeedLiked,
+  getLikeCount,
+  getCommentCount,
+  onClose,
+  onMoveModalCarousel,
+  onSetModalImageIndex,
+  onToggleLike,
+  onOpenCollectionModal,
+  onShare,
+  onProposalClick,
+  onToggleCommentLike,
+  onStartEditingComment,
+  onEditingCommentTextChange,
+  onUpdateComment,
+  onCancelEditingComment,
+  onDeleteComment,
+  onCommentTextChange,
+  onCommentKeyDown,
+  onSubmitComment,
+}: FeedDetailModalProps) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[90vh] w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex h-[90vh]">
+          <div className="relative flex flex-1 items-center justify-center bg-[#0F0F0F]">
+            <ImageWithFallback
+              src={activeModalImage}
+              alt={selectedFeed.title}
+              className="max-h-full max-w-full object-contain"
+            />
+
+            {selectedFeedImages.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => onMoveModalCarousel(-1, e)}
+                  className="absolute left-4 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-lg border border-white/20 bg-black/50 text-white transition-all hover:bg-black/70"
+                  aria-label="이전 이미지"
+                >
+                  <ChevronLeft className="size-6" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => onMoveModalCarousel(1, e)}
+                  className="absolute right-4 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-lg border border-white/20 bg-black/50 text-white transition-all hover:bg-black/70"
+                  aria-label="다음 이미지"
+                >
+                  <ChevronRight className="size-6" />
+                </button>
+                <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-white/15 bg-black/45 px-3 py-2 backdrop-blur-md">
+                  {selectedFeedImages.map((image, index) => (
+                    <button
+                      key={`modal-${selectedFeed.feedKey}-${image}`}
+                      type="button"
+                      onClick={(e) => onSetModalImageIndex(index, e)}
+                      className={`h-2 rounded-full transition-all ${
+                        modalImageIndex === index ? "w-6 bg-white" : "w-2 bg-white/50"
+                      }`}
+                      aria-label={`${index + 1}번째 이미지 보기`}
+                    />
+                  ))}
+                </div>
+                <div className="absolute right-4 top-4 rounded-lg border border-white/15 bg-black/50 px-3 py-1.5 text-sm font-semibold text-white backdrop-blur-md">
+                  {modalImageIndex + 1}/{selectedFeedImages.length}
+                </div>
+              </>
+            )}
+
+            <button
+              onClick={onClose}
+              className="absolute left-4 top-4 rounded-full border border-white/20 bg-black/50 p-2 text-white transition-all hover:bg-black/70"
+              aria-label="닫기"
+            >
+              <X className="size-6" />
+            </button>
+          </div>
+
+          <div className="flex w-[400px] flex-col bg-white">
+            <div className="border-b border-gray-200 p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <Link
+                  to={`/profile/${encodeURIComponent(selectedFeed.author.profileKey ?? selectedFeed.author.name)}`}
+                  className="flex items-center gap-3 transition-opacity hover:opacity-80"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClose();
+                  }}
+                >
+                  <ImageWithFallback
+                    src={selectedFeed.author.avatar}
+                    alt={selectedFeed.author.name}
+                    className="size-12 rounded-full ring-2 ring-[#00C9A7]"
+                  />
+                  <div>
+                    <h4 className="text-sm font-bold">{selectedFeed.author.name}</h4>
+                    <p className="text-xs text-gray-500">{selectedFeed.author.role}</p>
+                    {formatFeedDateTime(selectedFeed.createdAt) && (
+                      <p className="mt-1 text-[11px] text-gray-400">
+                        {formatFeedDateTime(selectedFeed.createdAt)}
+                      </p>
+                    )}
+                  </div>
+                </Link>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(event) => onProposalClick(selectedFeed, event)}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#FFB6A6] bg-[#FF5C3A] px-3.5 font-bold text-white shadow-[0_8px_18px_rgba(255,92,58,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#E94F2F] hover:shadow-[0_10px_22px_rgba(255,92,58,0.28)] focus:outline-none focus:ring-2 focus:ring-[#FFB6A6] focus:ring-offset-2"
+                  >
+                    <Send className="size-3.5" />
+                    <span className="text-xs">프로젝트 제안</span>
+                  </button>
+                  <button className="rounded-full p-2 transition-colors hover:bg-gray-100" aria-label="더보기">
+                    <MoreVertical className="size-5 text-gray-600" />
+                  </button>
+                </div>
+              </div>
+
+              <h2 className="mb-2 text-xl font-bold">{selectedFeed.title}</h2>
+              <p className="mb-3 text-sm text-gray-600">
+                {selectedFeed.description || "등록된 상세 설명이 없습니다."}
+              </p>
+
+              {selectedFeed.category && (
+                <div className="mb-3">
+                  <span className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-1.5 text-xs font-bold text-[#B13A21]">
+                    {selectedFeed.category}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2">
+                {selectedFeed.tags.map((tag, index) => (
+                  <span
+                    key={index}
+                    className="cursor-pointer rounded-full border border-[#00C9A7]/20 bg-[#A8F0E4]/30 px-3 py-1 text-xs font-medium text-[#00A88C] transition-all hover:bg-[#00C9A7]/90 hover:text-white"
+                  >
+                    {tag.startsWith("#") ? tag : `#${tag}`}
+                  </span>
+                ))}
+              </div>
+
+              {selectedFeed.integrations && selectedFeed.integrations.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selectedFeed.integrations.map((integration) => (
+                    <a
+                      key={`${selectedFeed.feedKey}-${integration.provider}`}
+                      href={integration.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(event) => event.stopPropagation()}
+                      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                        integration.provider === "figma"
+                          ? "border-[#BDEFD8] bg-[#F5FFFB] text-[#007E68]"
+                          : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
+                      }`}
+                    >
+                      {integration.provider === "figma" ? (
+                        <Figma className="size-4" />
+                      ) : (
+                        <Sparkles className="size-4" />
+                      )}
+                      {integration.label} 연동
+                      <ExternalLink className="size-3.5" />
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="border-b border-gray-200 p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={(e) => onToggleLike(selectedFeed, e)}
+                    className={`flex items-center gap-2 transition-colors ${
+                      isFeedLiked(selectedFeed) ? "text-[#FF5C3A]" : "text-gray-600 hover:text-[#FF5C3A]"
+                    }`}
+                    aria-pressed={isFeedLiked(selectedFeed)}
+                  >
+                    <Heart className={`size-6 ${isFeedLiked(selectedFeed) ? "fill-[#FF5C3A]" : ""}`} />
+                    <span className="font-semibold">{getLikeCount(selectedFeed)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => commentInputRef.current?.focus()}
+                    className="flex items-center gap-2 text-gray-600 transition-colors hover:text-[#00C9A7]"
+                  >
+                    <MessageCircle className="size-6" />
+                    <span className="font-semibold">{getCommentCount(selectedFeed)}</span>
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => onOpenCollectionModal(selectedFeed, e)}
+                    className={`rounded-lg p-2 transition-all ${
+                      savedItemIds.has(selectedFeed.id)
+                        ? "border border-white/30 bg-[#00C9A7]/90 text-white"
+                        : "text-gray-600 hover:bg-[#A8F0E4]/20 hover:text-[#00A88C]"
+                    }`}
+                    aria-label="컬렉션에 저장"
+                    title="컬렉션에 저장"
+                  >
+                    <Bookmark className={`size-5 ${savedItemIds.has(selectedFeed.id) ? "fill-white" : ""}`} />
+                  </button>
+                  <button
+                    onClick={(e) => onShare(selectedFeed, e)}
+                    className="rounded-lg p-2 text-gray-600 transition-colors hover:bg-[#A8F0E4]/20 hover:text-[#00A88C]"
+                    aria-label="공유"
+                  >
+                    <Share2 className="size-5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 space-y-4 overflow-y-auto p-4">
+              {isFeedDetailLoading && (
+                <div className="rounded-lg bg-[#F7F7F5] px-3 py-2 text-sm text-gray-500">
+                  피드 상세를 불러오는 중입니다...
+                </div>
+              )}
+              {feedDetailError && (
+                <div className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-2 text-sm text-[#B13A21]">
+                  {feedDetailError}
+                </div>
+              )}
+              {commentSubmitError && (
+                <div className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-2 text-sm text-[#B13A21]">
+                  {commentSubmitError}
+                </div>
+              )}
+              {commentLoadError && (
+                <div className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-2 text-sm text-[#B13A21]">
+                  {commentLoadError}
+                </div>
+              )}
+              {isCommentsLoading && selectedFeedComments.length === 0 && (
+                <div className="rounded-lg bg-[#F7F7F5] px-3 py-2 text-sm text-gray-500">
+                  댓글 목록을 불러오는 중입니다...
+                </div>
+              )}
+              {!isCommentsLoading && !commentLoadError && selectedFeedComments.length === 0 && (
+                <div className="rounded-lg bg-[#F7F7F5] px-3 py-2 text-sm text-gray-500">
+                  첫 댓글을 남겨보세요.
+                </div>
+              )}
+
+              {selectedFeedComments.map((comment) => (
+                <div key={comment.id} className="flex gap-3">
+                  <Link
+                    to={`/profile/${encodeURIComponent(comment.author.profileKey ?? comment.author.name)}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onClose();
+                    }}
+                    className="flex-shrink-0 transition-opacity hover:opacity-80"
+                  >
+                    <ImageWithFallback
+                      src={comment.author.avatar}
+                      alt={comment.author.name}
+                      className="size-10 rounded-full ring-2 ring-[#A8F0E4]/30"
+                    />
+                  </Link>
+                  <div className="flex-1">
+                    <div className="rounded-lg bg-[#F7F7F5] p-3">
+                      <div className="mb-1 flex items-center justify-between">
+                        <Link
+                          to={`/profile/${encodeURIComponent(comment.author.profileKey ?? comment.author.name)}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onClose();
+                          }}
+                          className="text-sm font-semibold transition-colors hover:text-[#00A88C]"
+                        >
+                          {comment.author.name}
+                        </Link>
+                        <span className="text-[10px] text-gray-500">{comment.time}</span>
+                      </div>
+                      <p className="mb-2 text-xs text-gray-500">{comment.author.role}</p>
+                      {editingCommentId === comment.id ? (
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={editingCommentText}
+                            onChange={(e) => onEditingCommentTextChange(e.target.value)}
+                            className="w-full rounded-lg border border-[#BDEFD8] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7]"
+                          />
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={onUpdateComment}
+                              disabled={!editingCommentText.trim() || isUpdatingComment}
+                              className="rounded-md bg-[#00C9A7] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                            >
+                              수정
+                            </button>
+                            <button
+                              type="button"
+                              onClick={onCancelEditingComment}
+                              className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600"
+                            >
+                              취소
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-800">{comment.content}</p>
+                      )}
+                    </div>
+                    <div className="ml-3 mt-1 flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => onToggleCommentLike(selectedFeed.id, comment.id)}
+                        className={`inline-flex items-center gap-1.5 text-xs transition-colors ${
+                          comment.likedByMe
+                            ? "font-semibold text-[#FF5C3A]"
+                            : "text-gray-500 hover:text-[#00C9A7]"
+                        }`}
+                        aria-pressed={Boolean(comment.likedByMe)}
+                        aria-label={`댓글 좋아요 ${comment.likes}개`}
+                      >
+                        <Heart
+                          className={`size-4 ${
+                            comment.likedByMe ? "fill-[#FF5C3A]" : ""
+                          }`}
+                        />
+                        <span>{comment.likes}</span>
+                      </button>
+                      {comment.isMine && editingCommentId !== comment.id && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => onStartEditingComment(comment)}
+                            className="text-xs text-gray-500 hover:text-[#00A88C]"
+                          >
+                            수정
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onDeleteComment(comment.id)}
+                            disabled={isDeletingCommentId === comment.id}
+                            className="text-xs text-gray-500 hover:text-[#FF5C3A] disabled:opacity-50"
+                          >
+                            삭제
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="border-t border-gray-200 p-4">
+              <div className="flex items-center gap-3">
+                <ImageWithFallback
+                  src={currentUserAvatar}
+                  alt={currentUserName}
+                  className="size-10 rounded-full ring-2 ring-[#00C9A7]"
+                />
+                <div className="relative flex-1">
+                  <input
+                    ref={commentInputRef}
+                    type="text"
+                    value={commentText}
+                    onChange={(e) => onCommentTextChange(e.target.value)}
+                    onKeyDown={onCommentKeyDown}
+                    placeholder="댓글을 입력해주세요..."
+                    className="w-full rounded-full bg-[#F7F7F5] px-4 py-3 pr-12 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-[#00C9A7]"
+                  />
+                  <button
+                    type="button"
+                    onClick={onSubmitComment}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full border border-white/30 bg-gradient-to-r from-[#00C9A7]/90 to-[#00A88C]/90 p-2 text-white transition-all hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!commentText.trim() || isSubmittingComment}
+                    aria-label="댓글 등록"
+                  >
+                    <Send className="size-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -5,6 +5,7 @@ public record CreateCommentResponse(
         Long postId,
         Long userId,
         String nickname,
+        String profileImageUrl,
         String description
 ) {
 }

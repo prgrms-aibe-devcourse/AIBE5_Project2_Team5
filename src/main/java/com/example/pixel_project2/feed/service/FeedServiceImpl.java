@@ -12,6 +12,7 @@ import com.example.pixel_project2.common.entity.enums.UserRole;
 import com.example.pixel_project2.common.repository.CollectionRepository;
 import com.example.pixel_project2.common.repository.CommentRepository;
 import com.example.pixel_project2.common.repository.FeedRepository;
+import com.example.pixel_project2.common.repository.FollowRepository;
 import com.example.pixel_project2.common.repository.PickCountRepository;
 import com.example.pixel_project2.common.repository.PostImageRepository;
 import com.example.pixel_project2.common.repository.PostRepository;
@@ -34,9 +35,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -48,11 +52,30 @@ public class FeedServiceImpl implements FeedService {
     private final PickCountRepository pickCountRepository;
     private final PostImageRepository postImageRepository;
     private final CollectionRepository collectionRepository;
+    private final FollowRepository followRepository;
 
     @Override
+    @Transactional(readOnly = true)
     public FeedListResponse getFeeds(PostType postType, Long userId) {
         PostType resolvedPostType = postType == null ? PostType.PORTFOLIO : postType;
         List<Post> posts = postRepository.findAllByTypeWithDetails(resolvedPostType);
+        List<Long> followingUserIds = followRepository.findFollowingUserIds(userId);
+
+        if (!followingUserIds.isEmpty()) {
+            Set<Long> priorityUserIds = new LinkedHashSet<>(followingUserIds);
+            priorityUserIds.add(userId);
+
+            List<Post> prioritizedPosts = new ArrayList<>();
+
+            for (Post post : posts) {
+                if (priorityUserIds.contains(post.getUser().getId())) {
+                    prioritizedPosts.add(post);
+                }
+            }
+
+            posts = prioritizedPosts;
+        }
+
         List<FeedItemResponse> feeds = posts.stream()
                 .map(post -> toFeedItemResponse(post, userId))
                 .toList();
@@ -78,7 +101,9 @@ public class FeedServiceImpl implements FeedService {
                 post.getTitle(),
                 feed != null && feed.getDescription() != null ? feed.getDescription() : "",
                 post.getUser().getNickname(),
+                resolveProfileKey(post.getUser()),
                 post.getUser().getProfileImage(),
+                resolveDisplayJob(post),
                 post.getUser().getRole().name(),
                 post.getPostType().name(),
                 post.getCategory().name(),
@@ -164,6 +189,7 @@ public class FeedServiceImpl implements FeedService {
                 post.getId(),
                 user.getId(),
                 user.getNickname(),
+                user.getProfileImage(),
                 savedComment.getDescription()
         );
     }
@@ -338,6 +364,10 @@ public class FeedServiceImpl implements FeedService {
                 post.getUser().getId(),
                 post.getTitle(),
                 post.getUser().getNickname(),
+                resolveProfileKey(post.getUser()),
+                post.getUser().getProfileImage(),
+                resolveDisplayJob(post),
+                post.getUser().getRole().name(),
                 thumbnailUrl,
                 post.getPickCount(),
                 Math.toIntExact(commentRepository.countByPostId(post.getId())),
@@ -345,5 +375,25 @@ public class FeedServiceImpl implements FeedService {
                 post.getCategory().name(),
                 pickCountRepository.existsByUserIdAndPostId(userId, post.getId())
         );
+    }
+
+    private String resolveDisplayJob(Post post) {
+        if (post.getUser().getDesigner() != null) {
+            String job = post.getUser().getDesigner().getJob();
+            if (job != null && !job.isBlank()) {
+                return job;
+            }
+        }
+        return post.getUser().getRole().name();
+    }
+
+    private String resolveProfileKey(User user) {
+        if (user.getLoginId() != null && !user.getLoginId().isBlank()) {
+            return user.getLoginId();
+        }
+        if (user.getNickname() != null && !user.getNickname().isBlank()) {
+            return user.getNickname();
+        }
+        return String.valueOf(user.getId());
     }
 }
