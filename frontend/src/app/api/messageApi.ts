@@ -72,7 +72,9 @@ export type MessageProcessResponse = {
 export async function getMessageConversationsApi() {
   return apiRequest<MessageConversationResponse[]>(
     "/api/messages/conversations",
-    {},
+    {
+      cache: "no-store",
+    },
     "Failed to load conversations.",
   );
 }
@@ -91,7 +93,9 @@ export async function createMessageConversationApi(partnerUserId: number) {
 export async function getConversationMessagesApi(conversationId: number) {
   return apiRequest<ChatMessageResponse[]>(
     `/api/messages/conversations/${conversationId}/messages`,
-    {},
+    {
+      cache: "no-store",
+    },
     "Failed to load messages.",
   );
 }
@@ -121,8 +125,24 @@ export async function sendConversationMessageApi(
 export async function getConversationPresenceApi(conversationId: number) {
   return apiRequest<MessageConversationPresenceResponse>(
     `/api/messages/conversations/${conversationId}/presence`,
-    {},
+    {
+      cache: "no-store",
+    },
     "Failed to load conversation presence.",
+  );
+}
+
+export async function updateConversationTypingApi(
+  conversationId: number,
+  isTyping: boolean,
+) {
+  return apiRequest<MessageConversationPresenceResponse>(
+    `/api/messages/conversations/${conversationId}/typing`,
+    {
+      method: "POST",
+      body: JSON.stringify({ isTyping }),
+    },
+    "Failed to update conversation typing.",
   );
 }
 
@@ -158,7 +178,9 @@ export async function toggleMessageReactionApi(
 export async function getConversationProcessesApi(conversationId: number) {
   return apiRequest<MessageProcessResponse[]>(
     `/api/messages/conversations/${conversationId}/processes`,
-    {},
+    {
+      cache: "no-store",
+    },
     "Failed to load processes.",
   );
 }

@@ -10,6 +10,7 @@ import com.example.pixel_project2.message.dto.MessagePolicyResponse;
 import com.example.pixel_project2.message.dto.MessageProcessResponse;
 import com.example.pixel_project2.message.dto.MessageReactionUpdateResponse;
 import com.example.pixel_project2.message.dto.MessageReadReceiptResponse;
+import com.example.pixel_project2.message.dto.MessageTypingRequest;
 import com.example.pixel_project2.message.dto.SaveMessageProcessesRequest;
 import com.example.pixel_project2.message.dto.SendMessageRequest;
 import com.example.pixel_project2.message.dto.ToggleMessageReactionRequest;
@@ -70,6 +71,18 @@ public class MessageController {
         return ApiResponse.ok(
                 "Conversation presence loaded.",
                 messageService.getConversationPresence(currentUser, conversationId)
+        );
+    }
+
+    @PostMapping("/conversations/{conversationId}/typing")
+    public ApiResponse<MessageConversationPresenceResponse> updateConversationTyping(
+            @AuthenticationPrincipal AuthenticatedUser currentUser,
+            @PathVariable Long conversationId,
+            @RequestBody MessageTypingRequest request
+    ) {
+        return ApiResponse.ok(
+                "Conversation typing updated.",
+                messageService.updateConversationTyping(currentUser, conversationId, request)
         );
     }
 

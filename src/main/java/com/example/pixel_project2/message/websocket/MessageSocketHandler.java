@@ -110,6 +110,11 @@ public class MessageSocketHandler extends TextWebSocketHandler {
     }
 
     private void handleSubscribe(WebSocketSession session, JsonNode payload) throws IOException {
+        AuthenticatedUser currentUser = authenticatedUser(session);
+        if (currentUser != null) {
+            messagePresenceTracker.touchUser(currentUser.id());
+        }
+
         JsonNode conversationIdsNode = payload.path("conversationIds");
         if (!conversationIdsNode.isArray()) {
             sendError(session, "conversationIds must be an array.");
@@ -133,6 +138,11 @@ public class MessageSocketHandler extends TextWebSocketHandler {
     }
 
     private void handlePing(WebSocketSession session) throws IOException {
+        AuthenticatedUser currentUser = authenticatedUser(session);
+        if (currentUser != null) {
+            messagePresenceTracker.touchUser(currentUser.id());
+        }
+
         ObjectNode pong = objectMapper.createObjectNode();
         pong.put("type", TYPE_PONG);
         sendJson(session, pong);
@@ -361,7 +371,7 @@ public class MessageSocketHandler extends TextWebSocketHandler {
             ObjectNode state = objectMapper.createObjectNode();
             state.put("conversationId", conversationId);
             state.put("userId", partnerUserId);
-            state.put("isOnline", messagePresenceTracker.isUserOnline(partnerUserId));
+            state.put("isOnline", messagePresenceTracker.isUserAvailable(partnerUserId));
             states.add(state);
         }
 

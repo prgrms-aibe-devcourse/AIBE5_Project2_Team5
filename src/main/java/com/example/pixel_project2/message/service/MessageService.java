@@ -9,6 +9,7 @@ import com.example.pixel_project2.message.dto.MessagePolicyResponse;
 import com.example.pixel_project2.message.dto.MessageProcessResponse;
 import com.example.pixel_project2.message.dto.MessageReactionUpdateResponse;
 import com.example.pixel_project2.message.dto.MessageReadReceiptResponse;
+import com.example.pixel_project2.message.dto.MessageTypingRequest;
 import com.example.pixel_project2.message.dto.SaveMessageProcessesRequest;
 import com.example.pixel_project2.message.dto.SendMessageRequest;
 import com.example.pixel_project2.message.dto.ToggleMessageReactionRequest;
@@ -24,6 +25,12 @@ public interface MessageService {
     MessageConversationResponse createConversation(AuthenticatedUser currentUser, CreateConversationRequest request);
 
     MessageConversationPresenceResponse getConversationPresence(AuthenticatedUser currentUser, Long conversationId);
+
+    MessageConversationPresenceResponse updateConversationTyping(
+            AuthenticatedUser currentUser,
+            Long conversationId,
+            MessageTypingRequest request
+    );
 
     List<ChatMessageResponse> getMessages(AuthenticatedUser currentUser, Long conversationId);
 

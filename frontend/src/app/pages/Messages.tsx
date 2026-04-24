@@ -17,6 +17,7 @@ import {
   saveConversationProcessesApi,
   sendConversationMessageApi,
   toggleMessageReactionApi,
+  updateConversationTypingApi,
   type ChatMessageResponse as ApiChatMessageResponse,
   type MessageConversationResponse as ApiMessageConversationResponse,
   type MessageProcessResponse as ApiMessageProcessResponse,
@@ -132,6 +133,7 @@ const CONNECTED_MESSAGE_POLL_INTERVAL = 1000;
 const CONNECTED_PROCESS_POLL_INTERVAL = 3000;
 const DISCONNECTED_POLL_INTERVAL = 1000;
 const TYPING_IDLE_DELAY = 1200;
+const TYPING_SYNC_INTERVAL = 800;
 
 const createClientId = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -554,7 +556,7 @@ const normalizeIncomingAttachments = (attachments: unknown): MessageAttachment[]
           {
             id,
             type: "icon" as const,
-            value: item.value,
+            value: normalizeMessageIconValue(item.value),
             name,
             uploadStatus,
           },
@@ -621,7 +623,7 @@ const buildOutgoingAttachmentsPayload = (attachments: MessageAttachment[]) =>
           {
             id: attachment.id,
             type: "icon" as const,
-            value: attachment.value,
+            value: toMessageIconStorageValue(attachment.value),
             name: attachment.name,
           },
         ];
@@ -659,9 +661,79 @@ const reactionEmojiAliases: Record<string, string> = {
   rocket: "🚀",
 };
 
+const messageIconDisplayByKey: Record<string, string> = {
+  thumbs_up: "👍",
+  clap: "👏",
+  raising_hands: "🙌",
+  ok_hand: "👌",
+  pray: "🙏",
+  smile: "😊",
+  slight_smile: "🙂",
+  grin: "😄",
+  thinking: "🤔",
+  eyes: "👀",
+  sparkles: "✨",
+  fire: "🔥",
+  palette: "🎨",
+  framed_picture: "🖼️",
+  idea: "💡",
+  pin: "📌",
+  check: "✅",
+  memo: "📝",
+  rocket: "🚀",
+  speech_balloon: "💬",
+  heart: "❤️",
+  star: "⭐",
+  coffee: "☕",
+  target: "🎯",
+};
+
+const messageIconKeyByAlias = Object.entries(messageIconDisplayByKey).reduce(
+  (accumulator, [key, emoji]) => {
+    const normalizedKey = key.trim().replace(/\uFE0F/g, "").toLowerCase();
+    const normalizedEmoji = emoji.trim().replace(/\uFE0F/g, "").toLowerCase();
+    accumulator[normalizedKey] = key;
+    accumulator[`:${normalizedKey}:`] = key;
+    accumulator[normalizedEmoji] = key;
+    return accumulator;
+  },
+  {
+    thumbsup: "thumbs_up",
+    "thumbs-up": "thumbs_up",
+    "thumbs up": "thumbs_up",
+    raise_hands: "raising_hands",
+    raised_hands: "raising_hands",
+    ok: "ok_hand",
+    bulb: "idea",
+    light_bulb: "idea",
+    pushpin: "pin",
+    comment: "speech_balloon",
+    speech: "speech_balloon",
+    dart: "target",
+    picture: "framed_picture",
+    frame: "framed_picture",
+    art: "palette",
+    tick: "check",
+    check_mark: "check",
+    note: "memo",
+  } as Record<string, string>
+);
+
 const normalizeReactionEmoji = (emoji: string) => {
   const normalizedKey = emoji.trim().replace(/\uFE0F/g, "").replace(/-/g, "_").toLowerCase();
   return reactionEmojiAliases[normalizedKey] ?? emoji;
+};
+
+const normalizeMessageIconValue = (value: string) => {
+  const normalizedValue = value.trim().replace(/\uFE0F/g, "").toLowerCase();
+  const iconKey = messageIconKeyByAlias[normalizedValue];
+  return iconKey ? (messageIconDisplayByKey[iconKey] ?? value) : value;
+};
+
+const toMessageIconStorageValue = (value: string) => {
+  const normalizedValue = value.trim().replace(/\uFE0F/g, "").toLowerCase();
+  const iconKey = messageIconKeyByAlias[normalizedValue];
+  return iconKey ? `:${iconKey}:` : value;
 };
 
 const normalizeMessageReactions = (reactions: MessageReaction[] = []) =>
@@ -882,12 +954,20 @@ export default function Messages() {
   const [onlineByConversationId, setOnlineByConversationId] = useState<Record<number, boolean>>(
     {}
   );
+  const [typingConversationId, setTypingConversationId] = useState<number | null>(null);
   const rawConversations = [...serverConversations, ...conversations].map((conversation) => {
     const isOnline = onlineByConversationId[conversation.id] ?? conversation.online;
+    const statusText =
+      typingConversationId === conversation.id
+        ? "입력 중..."
+        : isOnline
+          ? "메시지 가능"
+          : "자리비움";
+
     return {
       ...conversation,
       online: isOnline,
-      statusText: isOnline ? "메시지 가능" : conversation.statusText,
+      statusText,
     };
   });
   const allConversations = rawConversations.filter(
@@ -939,7 +1019,6 @@ export default function Messages() {
     key: number;
     shouldBounceCount: boolean;
   } | null>(null);
-  const [typingConversationId, setTypingConversationId] = useState<number | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ src: string; name: string } | null>(null);
   const [processToast, setProcessToast] = useState<ProcessToast | null>(null);
@@ -950,6 +1029,7 @@ export default function Messages() {
   const activeConversationIdRef = useRef(activeConversationId);
   const typingTimeoutRef = useRef<number | null>(null);
   const typingConversationRef = useRef<number | null>(null);
+  const lastTypingSyncAtRef = useRef<Record<number, number>>({});
   const partnerTypingTimeoutRef = useRef<number | null>(null);
   const activeConversation =
     allConversations.find((conversation) => conversation.id === activeConversationId) ??
@@ -985,6 +1065,34 @@ export default function Messages() {
       });
       return next;
     });
+    setServerConversations((prev) =>
+      prev.map((conversation) => {
+        const nextState = states.find((state) => {
+          const partnerUserId = partnerUserIdByConversationId.get(state.conversationId);
+          return (
+            state.conversationId === conversation.id &&
+            (partnerUserId === state.userId ||
+              ((partnerUserId === null || partnerUserId === undefined) &&
+                state.userId !== currentUserId))
+          );
+        });
+
+        if (!nextState) {
+          return conversation;
+        }
+
+        const isTyping = conversation.statusText === "입력 중...";
+        return {
+          ...conversation,
+          online: nextState.isOnline,
+          statusText: isTyping
+            ? "입력 중..."
+            : nextState.isOnline
+              ? "메시지 가능"
+              : "자리비움",
+        };
+      })
+    );
   }
 
   function clearOwnTypingTimeout() {
@@ -992,6 +1100,67 @@ export default function Messages() {
       window.clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = null;
     }
+  }
+
+  function applyConversationPresence(
+    conversationId: number,
+    presence: {
+      partnerAvailable: boolean;
+      partnerTyping: boolean;
+    }
+  ) {
+    setOnlineByConversationId((prev) => ({
+      ...prev,
+      [conversationId]: presence.partnerAvailable,
+    }));
+    setServerConversations((prev) =>
+      prev.map((conversation) =>
+        conversation.id === conversationId
+          ? {
+              ...conversation,
+              online: presence.partnerAvailable,
+              statusText: presence.partnerTyping
+                ? "입력 중..."
+                : presence.partnerAvailable
+                  ? "메시지 가능"
+                  : "자리비움",
+            }
+          : conversation
+      )
+    );
+    setTypingConversationId((current) => {
+      if (presence.partnerTyping) {
+        return conversationId;
+      }
+
+      return current === conversationId ? null : current;
+    });
+  }
+
+  function notifyTypingState(conversationId: number, isTyping: boolean) {
+    const now = Date.now();
+    if (isTyping) {
+      const lastSyncedAt = lastTypingSyncAtRef.current[conversationId] ?? 0;
+      if (now - lastSyncedAt < TYPING_SYNC_INTERVAL) {
+        return;
+      }
+      lastTypingSyncAtRef.current[conversationId] = now;
+    } else {
+      delete lastTypingSyncAtRef.current[conversationId];
+    }
+
+    const socket = messageSocketRef.current;
+    if (socket?.isOpen()) {
+      try {
+        socket.sendTyping(conversationId, isTyping);
+      } catch {
+        // REST fallback below still updates typing state.
+      }
+    }
+
+    void updateConversationTypingApi(conversationId, isTyping).catch(() => {
+      // Presence polling will retry shortly; ignore transient typing sync failures.
+    });
   }
 
   function stopOwnTyping(conversationId = typingConversationRef.current) {
@@ -1002,14 +1171,7 @@ export default function Messages() {
       return;
     }
 
-    const socket = messageSocketRef.current;
-    if (socket?.isOpen()) {
-      try {
-        socket.sendTyping(conversationId, false);
-      } catch {
-        // Ignore transient typing send failures.
-      }
-    }
+    notifyTypingState(conversationId, false);
 
     if (typingConversationRef.current === conversationId) {
       typingConversationRef.current = null;
@@ -1123,7 +1285,16 @@ export default function Messages() {
 
         if (!mounted) return;
 
-        const nextConversations = conversationResponses.map(mapConversationResponse);
+        const nextConversations = conversationResponses.map(mapConversationResponse).map((conversation) => {
+          const isOnline = onlineByConversationId[conversation.id] ?? conversation.online;
+          const isTyping = typingConversationRef.current === conversation.id;
+
+          return {
+            ...conversation,
+            online: isOnline,
+            statusText: isTyping ? "입력 중..." : isOnline ? "메시지 가능" : "자리비움",
+          };
+        });
         setServerConversations(nextConversations);
         const socket = messageSocketRef.current;
         if (socket?.isOpen() && nextConversations.length > 0) {
@@ -1234,32 +1405,7 @@ export default function Messages() {
         const presence = await getConversationPresenceApi(conversationId);
         if (!mounted || activeConversationIdRef.current !== conversationId) return;
 
-        setOnlineByConversationId((prev) => ({
-          ...prev,
-          [conversationId]: presence.partnerAvailable,
-        }));
-        setServerConversations((prev) =>
-          prev.map((conversation) =>
-            conversation.id === conversationId
-              ? {
-                  ...conversation,
-                  online: presence.partnerAvailable,
-                  statusText: presence.partnerTyping
-                    ? "입력 중..."
-                    : presence.partnerAvailable
-                      ? "메시지 가능"
-                      : "자리비움",
-                }
-              : conversation
-          )
-        );
-        setTypingConversationId((current) => {
-          if (presence.partnerTyping) {
-            return conversationId;
-          }
-
-          return current === conversationId ? null : current;
-        });
+        applyConversationPresence(conversationId, presence);
       } catch (error) {
         if (!mounted || silent) return;
         setConversationError(
@@ -1377,18 +1523,27 @@ export default function Messages() {
               partnerTypingTimeoutRef.current = null;
             }
 
+            const currentConversation = allConversations.find(
+              (conversation) => conversation.id === event.conversationId
+            );
+
             if (event.isTyping) {
-              setTypingConversationId(event.conversationId);
+              applyConversationPresence(event.conversationId, {
+                partnerAvailable: currentConversation?.online ?? true,
+                partnerTyping: true,
+              });
               partnerTypingTimeoutRef.current = window.setTimeout(() => {
-                setTypingConversationId((current) =>
-                  current === event.conversationId ? null : current
-                );
+                applyConversationPresence(event.conversationId, {
+                  partnerAvailable: currentConversation?.online ?? true,
+                  partnerTyping: false,
+                });
                 partnerTypingTimeoutRef.current = null;
               }, TYPING_IDLE_DELAY + 800);
             } else {
-              setTypingConversationId((current) =>
-                current === event.conversationId ? null : current
-              );
+              applyConversationPresence(event.conversationId, {
+                partnerAvailable: currentConversation?.online ?? true,
+                partnerTyping: false,
+              });
             }
           }
           return;
@@ -1588,14 +1743,15 @@ export default function Messages() {
 
     if (!lastMessage) return fallbackConversation?.message ?? "";
 
-    const hasText = Boolean(lastMessage.message.trim());
+    const messageText = typeof lastMessage.message === "string" ? lastMessage.message : "";
+    const hasText = Boolean(messageText.trim());
     const hasAttachments = Boolean(lastMessage.attachments?.length);
 
     if (!hasText && hasAttachments && lastMessage.attachments) {
       return getAttachmentConversationPreview(lastMessage.attachments);
     }
 
-    return lastMessage.message || fallbackConversation?.message || "";
+    return messageText || fallbackConversation?.message || "";
   };
 
   const getConversationUnreadCount = (conversation: Conversation) =>
@@ -2131,16 +2287,7 @@ export default function Messages() {
     }));
 
     const conversationId = activeConversation.id;
-    const socket = messageSocketRef.current;
     const trimmedValue = value.trim();
-
-    if (!socket?.isOpen()) {
-      if (!trimmedValue && typingConversationRef.current === conversationId) {
-        typingConversationRef.current = null;
-      }
-      clearOwnTypingTimeout();
-      return;
-    }
 
     if (!trimmedValue) {
       if (typingConversationRef.current === conversationId) {
@@ -2156,12 +2303,10 @@ export default function Messages() {
         stopOwnTyping(typingConversationRef.current);
       }
 
-      try {
-        socket.sendTyping(conversationId, true);
-        typingConversationRef.current = conversationId;
-      } catch {
-        return;
-      }
+      notifyTypingState(conversationId, true);
+      typingConversationRef.current = conversationId;
+    } else {
+      notifyTypingState(conversationId, true);
     }
 
     clearOwnTypingTimeout();
@@ -2405,7 +2550,7 @@ export default function Messages() {
         id: createClientId("icon"),
         type: "icon",
         value: icon,
-        name: `${icon} 아이콘`,
+        name: "메시지 이모티콘",
         uploadStatus: "ready",
       },
     ]);

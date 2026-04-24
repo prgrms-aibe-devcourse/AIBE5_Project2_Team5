@@ -18,6 +18,7 @@ import com.example.pixel_project2.message.dto.MessagePolicyResponse;
 import com.example.pixel_project2.message.dto.MessageReactionSummaryResponse;
 import com.example.pixel_project2.message.dto.MessageReactionUpdateResponse;
 import com.example.pixel_project2.message.dto.MessageReadReceiptResponse;
+import com.example.pixel_project2.message.dto.MessageTypingRequest;
 import com.example.pixel_project2.message.dto.SaveMessageProcessesRequest;
 import com.example.pixel_project2.message.dto.SendMessageRequest;
 import com.example.pixel_project2.message.dto.ToggleMessageReactionRequest;
@@ -69,6 +70,7 @@ public class MessageServiceImpl implements MessageService {
     @Override
     @Transactional(readOnly = true)
     public List<MessageConversationResponse> getConversations(AuthenticatedUser currentUser) {
+        messagePresenceTracker.touchUser(currentUser.id());
         return conversationRepository.findAllByParticipant(currentUser.id())
                 .stream()
                 .map(conversation -> toConversationResponse(conversation, currentUser.id(), conversation.getLastReadMessageId(currentUser.id())))
@@ -90,11 +92,32 @@ public class MessageServiceImpl implements MessageService {
     public MessageConversationPresenceResponse getConversationPresence(AuthenticatedUser currentUser, Long conversationId) {
         MessageConversation conversation = findConversationForUser(conversationId, currentUser.id());
         User partner = conversation.getOtherParticipant(currentUser.id());
+        messagePresenceTracker.touchUser(currentUser.id());
 
         return new MessageConversationPresenceResponse(
                 conversation.getId(),
                 partner.getId(),
-                messagePresenceTracker.isUserOnline(partner.getId()),
+                messagePresenceTracker.isUserAvailable(partner.getId()),
+                messagePresenceTracker.isTyping(conversation.getId(), partner.getId())
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public MessageConversationPresenceResponse updateConversationTyping(
+            AuthenticatedUser currentUser,
+            Long conversationId,
+            MessageTypingRequest request
+    ) {
+        MessageConversation conversation = findConversationForUser(conversationId, currentUser.id());
+        User partner = conversation.getOtherParticipant(currentUser.id());
+        messagePresenceTracker.touchUser(currentUser.id());
+        messagePresenceTracker.updateTyping(conversationId, currentUser.id(), request.isTyping());
+
+        return new MessageConversationPresenceResponse(
+                conversation.getId(),
+                partner.getId(),
+                messagePresenceTracker.isUserAvailable(partner.getId()),
                 messagePresenceTracker.isTyping(conversation.getId(), partner.getId())
         );
     }
@@ -103,6 +126,7 @@ public class MessageServiceImpl implements MessageService {
     @Transactional
     public List<ChatMessageResponse> getMessages(AuthenticatedUser currentUser, Long conversationId) {
         MessageConversation conversation = findConversationForUser(conversationId, currentUser.id());
+        messagePresenceTracker.touchUser(currentUser.id());
         List<ChatMessage> messages = chatMessageRepository.findAllByConversationId(conversationId);
         Long partnerLastReadMessageId = conversation.getPartnerLastReadMessageId(currentUser.id());
 
@@ -121,11 +145,13 @@ public class MessageServiceImpl implements MessageService {
             SendMessageRequest request
     ) {
         MessageConversation conversation = findConversationForUser(conversationId, currentUser.id());
+        messagePresenceTracker.touchUser(currentUser.id());
         User sender = userRepository.findById(currentUser.id())
                 .orElseThrow(() -> new IllegalArgumentException("User not found."));
 
         JsonNode attachments = sanitizeAttachments(normalizeAttachments(request.attachments()));
         String message = request.message() == null ? "" : request.message().trim();
+        String storedMessage = MessageTextCodec.encode(message);
         String normalizedClientId = normalizeClientId(request.clientId());
         if (message.isBlank() && attachments.isEmpty()) {
             throw new IllegalArgumentException("메시지 내용 또는 첨부파일을 입력해주세요.");
@@ -148,7 +174,7 @@ public class MessageServiceImpl implements MessageService {
                 .conversation(conversation)
                 .sender(sender)
                 .clientId(normalizedClientId)
-                .message(message)
+                .message(storedMessage)
                 .attachmentsJson(writeAttachments(attachments))
                 .build();
         ChatMessage savedMessage = chatMessageRepository.save(chatMessage);
@@ -166,6 +192,7 @@ public class MessageServiceImpl implements MessageService {
     @Transactional
     public MessageReadReceiptResponse markConversationRead(AuthenticatedUser currentUser, Long conversationId) {
         MessageConversation conversation = findConversationForUser(conversationId, currentUser.id());
+        messagePresenceTracker.touchUser(currentUser.id());
         List<ChatMessage> messages = chatMessageRepository.findAllByConversationId(conversationId);
 
         Long lastReadMessageId = messages.isEmpty() ? null : messages.get(messages.size() - 1).getId();
@@ -364,10 +391,10 @@ public class MessageServiceImpl implements MessageService {
                 designer == null ? null : designer.getJob(),
                 designer == null ? null : designer.getIntroduction(),
                 partner.getUrl(),
-                conversation.getLastMessagePreview(),
+                MessageTextCodec.decode(conversation.getLastMessagePreview()),
                 conversation.getLastMessageAt(),
                 chatMessageRepository.countUnreadMessages(conversation.getId(), currentUserId, lastReadMessageId),
-                messagePresenceTracker.isUserOnline(partner.getId()),
+                messagePresenceTracker.isUserAvailable(partner.getId()),
                 messagePresenceTracker.isTyping(conversation.getId(), partner.getId())
         );
     }
@@ -418,7 +445,7 @@ public class MessageServiceImpl implements MessageService {
                 message.getConversation().getId(),
                 message.getSender().getId(),
                 message.getSender().getNickname(),
-                message.getMessage() == null ? "" : message.getMessage(),
+                MessageTextCodec.decode(message.getMessage()),
                 readAttachments(message.getAttachmentsJson()),
                 message.getCreatedAt() == null ? LocalDateTime.now() : message.getCreatedAt(),
                 reactions,
@@ -581,8 +608,8 @@ public class MessageServiceImpl implements MessageService {
                     ObjectNode iconAttachment = objectMapper.createObjectNode();
                     putIfPresent(iconAttachment, "id", jsonText(attachment, "id"));
                     iconAttachment.put("type", "icon");
-                    iconAttachment.put("value", value);
-                    iconAttachment.put("name", defaultAttachmentName(jsonText(attachment, "name"), "icon"));
+                    iconAttachment.put("value", MessageAttachmentIconCodec.toStorageValue(value));
+                    iconAttachment.put("name", defaultAttachmentName(jsonText(attachment, "name"), "message-icon"));
                     sanitizedAttachments.add(iconAttachment);
                 }
                 default -> {
@@ -614,7 +641,29 @@ public class MessageServiceImpl implements MessageService {
         }
 
         try {
-            return objectMapper.readTree(attachmentsJson);
+            JsonNode parsed = objectMapper.readTree(attachmentsJson);
+            if (!parsed.isArray()) {
+                return objectMapper.createArrayNode();
+            }
+
+            ArrayNode decodedAttachments = objectMapper.createArrayNode();
+            parsed.forEach(attachment -> {
+                if (!attachment.isObject()) {
+                    return;
+                }
+
+                ObjectNode normalizedAttachment = ((ObjectNode) attachment).deepCopy();
+                String type = jsonText(normalizedAttachment, "type");
+                if ("icon".equals(type)) {
+                    String value = jsonText(normalizedAttachment, "value");
+                    if (value != null) {
+                        normalizedAttachment.put("value", MessageAttachmentIconCodec.toDisplayEmoji(value));
+                    }
+                }
+                decodedAttachments.add(normalizedAttachment);
+            });
+
+            return decodedAttachments;
         } catch (JsonProcessingException e) {
             return objectMapper.createArrayNode();
         }
@@ -623,9 +672,9 @@ public class MessageServiceImpl implements MessageService {
     private String createPreview(String message, JsonNode attachments) {
         String preview = message.isBlank() ? "첨부파일" : message;
         if (preview.length() <= 500) {
-            return preview;
+            return MessageTextCodec.encode(preview);
         }
-        return preview.substring(0, 500);
+        return MessageTextCodec.encode(preview.substring(0, 500));
     }
 
     private void deleteOptionalConversationChildren(Long conversationId) {

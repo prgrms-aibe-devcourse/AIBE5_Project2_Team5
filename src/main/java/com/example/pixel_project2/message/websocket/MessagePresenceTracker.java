@@ -7,14 +7,17 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public class MessagePresenceTracker {
+    private static final long ACTIVITY_TTL_MILLIS = 10_000L;
     private static final long TYPING_TTL_MILLIS = 3_000L;
 
     private final ConcurrentHashMap<Long, Set<String>> userSessions = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Long, Long> userActivityExpirations = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Long> typingExpirations = new ConcurrentHashMap<>();
 
     public boolean connectUser(Long userId, String sessionId) {
         Set<String> activeSessions = userSessions.computeIfAbsent(userId, ignored -> ConcurrentHashMap.newKeySet());
         boolean added = activeSessions.add(sessionId);
+        touchUser(userId);
         return added && activeSessions.size() == 1;
     }
 
@@ -32,15 +35,39 @@ public class MessagePresenceTracker {
         }
 
         userSessions.remove(userId);
+        userActivityExpirations.remove(userId);
         return true;
     }
 
-    public boolean isUserOnline(Long userId) {
+    public void touchUser(Long userId) {
+        userActivityExpirations.put(userId, System.currentTimeMillis() + ACTIVITY_TTL_MILLIS);
+    }
+
+    public boolean isUserAvailable(Long userId) {
+        if (isUserOnline(userId)) {
+            return true;
+        }
+
+        Long expiration = userActivityExpirations.get(userId);
+        if (expiration == null) {
+            return false;
+        }
+
+        if (expiration < System.currentTimeMillis()) {
+            userActivityExpirations.remove(userId, expiration);
+            return false;
+        }
+
+        return true;
+    }
+
+    private boolean isUserOnline(Long userId) {
         Set<String> activeSessions = userSessions.get(userId);
         return activeSessions != null && !activeSessions.isEmpty();
     }
 
     public void updateTyping(Long conversationId, Long userId, boolean isTyping) {
+        touchUser(userId);
         String key = typingKey(conversationId, userId);
         if (!isTyping) {
             typingExpirations.remove(key);

@@ -67,7 +67,7 @@ class MessageFlowIntegrationTest {
 
         Map<String, Object> messageRequest = Map.of(
                 "clientId", "message-client-1",
-                "message", "hello from integration test",
+                "message", "hello 👍 from integration test",
                 "attachments", List.of(
                         Map.of(
                                 "id", "image-1",
@@ -92,7 +92,7 @@ class MessageFlowIntegrationTest {
                                 "id", "icon-1",
                                 "type", "icon",
                                 "name", "thumbs-up",
-                                "value", ":thumbs_up:"
+                                "value", "👍"
                         ),
                         Map.of(
                                 "id", "figma-1",
@@ -115,7 +115,7 @@ class MessageFlowIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.clientId").value("message-client-1"))
-                .andExpect(jsonPath("$.data.message").value("hello from integration test"))
+                .andExpect(jsonPath("$.data.message").value("hello 👍 from integration test"))
                 .andExpect(jsonPath("$.data.attachments[0].type").value("image"))
                 .andExpect(jsonPath("$.data.attachments[0].src").value("https://cdn.pickxel.test/messages/sample.png"))
                 .andExpect(jsonPath("$.data.attachments[0].uploadStatus").doesNotExist())
@@ -123,7 +123,7 @@ class MessageFlowIntegrationTest {
                 .andExpect(jsonPath("$.data.attachments[1].url").value("https://cdn.pickxel.test/messages/brief.pdf"))
                 .andExpect(jsonPath("$.data.attachments[1].uploadStatus").doesNotExist())
                 .andExpect(jsonPath("$.data.attachments[2].type").value("icon"))
-                .andExpect(jsonPath("$.data.attachments[2].value").value(":thumbs_up:"))
+                .andExpect(jsonPath("$.data.attachments[2].value").value("👍"))
                 .andExpect(jsonPath("$.data.attachments[3].type").value("integration"))
                 .andExpect(jsonPath("$.data.attachments[3].provider").value("figma"))
                 .andReturn();
@@ -143,8 +143,10 @@ class MessageFlowIntegrationTest {
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].id").value(messageId))
                 .andExpect(jsonPath("$.data[0].senderUserId").value(firstUserId))
+                .andExpect(jsonPath("$.data[0].message").value("hello 👍 from integration test"))
                 .andExpect(jsonPath("$.data[0].attachments[0].src").value("https://cdn.pickxel.test/messages/sample.png"))
-                .andExpect(jsonPath("$.data[0].attachments[1].url").value("https://cdn.pickxel.test/messages/brief.pdf"));
+                .andExpect(jsonPath("$.data[0].attachments[1].url").value("https://cdn.pickxel.test/messages/brief.pdf"))
+                .andExpect(jsonPath("$.data[0].attachments[2].value").value("👍"));
 
         mockMvc.perform(post("/api/messages/conversations/{conversationId}/messages/{messageId}/reactions/toggle",
                         conversationId, messageId)
@@ -283,13 +285,76 @@ class MessageFlowIntegrationTest {
         mockMvc.perform(get("/api/messages/conversations/{conversationId}/presence", conversationId)
                         .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.partnerAvailable").value(false))
+                .andExpect(jsonPath("$.data.partnerAvailable").value(true))
                 .andExpect(jsonPath("$.data.partnerTyping").value(false))
                 .andExpect(jsonPath("$.data.partnerUserId").value(secondUserId));
 
         mockMvc.perform(delete("/api/messages/conversations/{conversationId}", conversationId)
                         .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void usersCanSyncPresenceAndTypingThroughApis() throws Exception {
+        String uniqueSuffix = String.valueOf(System.nanoTime());
+        String shortSuffix = uniqueSuffix.substring(Math.max(0, uniqueSuffix.length() - 6));
+        String firstLoginId = "pa" + shortSuffix + "@t.io";
+        String secondLoginId = "pb" + shortSuffix + "@t.io";
+
+        JsonNode firstUser = signUp(firstLoginId, "Presence API A", "pA" + shortSuffix, "DESIGNER");
+        JsonNode secondUser = signUp(secondLoginId, "Presence API B", "pB" + shortSuffix, "CLIENT");
+
+        String firstToken = login(firstLoginId, "testPass1!");
+        String secondToken = login(secondLoginId, "testPass1!");
+
+        long secondUserId = secondUser.path("userId").asLong();
+
+        MvcResult createConversationResult = mockMvc.perform(post("/api/messages/conversations")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("partnerUserId", secondUserId))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andReturn();
+
+        long conversationId = readData(createConversationResult).path("id").asLong();
+
+        mockMvc.perform(get("/api/messages/conversations")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + secondToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/messages/conversations/{conversationId}/presence", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.partnerUserId").value(secondUserId))
+                .andExpect(jsonPath("$.data.partnerAvailable").value(true))
+                .andExpect(jsonPath("$.data.partnerTyping").value(false));
+
+        mockMvc.perform(post("/api/messages/conversations/{conversationId}/typing", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + secondToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("isTyping", true))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.partnerAvailable").value(true))
+                .andExpect(jsonPath("$.data.partnerTyping").value(false));
+
+        mockMvc.perform(get("/api/messages/conversations/{conversationId}/presence", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.partnerAvailable").value(true))
+                .andExpect(jsonPath("$.data.partnerTyping").value(true));
+
+        mockMvc.perform(post("/api/messages/conversations/{conversationId}/typing", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + secondToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("isTyping", false))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/messages/conversations/{conversationId}/presence", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.partnerAvailable").value(true))
+                .andExpect(jsonPath("$.data.partnerTyping").value(false));
     }
 
     private JsonNode signUp(String loginId, String name, String nickname, String role) throws Exception {
