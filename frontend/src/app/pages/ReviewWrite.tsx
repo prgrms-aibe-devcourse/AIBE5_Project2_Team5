@@ -1,7 +1,7 @@
 import Navigation from "../components/Navigation";
 import { CheckCircle, Star, Send, ThumbsUp, MessageSquare, Sparkles } from "lucide-react";
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { createProfileReviewApi } from "../api/profileApi";
 import { matchingCategories } from "../utils/matchingCategories";
 
@@ -24,13 +24,30 @@ const rememberHiddenConversation = (conversationId: number) => {
 };
 
 export default function ReviewWrite() {
+  const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const profileKey = searchParams.get("profileKey") || searchParams.get("revieweeId") || "";
-  const conversationId = Number(searchParams.get("conversationId") || 0);
-  const revieweeId = Number(searchParams.get("revieweeId") || 0);
-  const clientName = searchParams.get("client") || "김민재";
-  const projectName = searchParams.get("project") || "브랜드 아이덴티티 프로젝트";
+  const navigationState = (location.state as {
+    profileKey?: string;
+    conversationId?: number;
+    revieweeId?: number;
+    clientName?: string;
+    projectName?: string;
+  } | null) ?? null;
+  const profileKey =
+    searchParams.get("profileKey") ||
+    navigationState?.profileKey ||
+    searchParams.get("revieweeId") ||
+    "";
+  const conversationId = Number(
+    searchParams.get("conversationId") || navigationState?.conversationId || 0
+  );
+  const revieweeId = Number(
+    searchParams.get("revieweeId") || navigationState?.revieweeId || 0
+  );
+  const clientName = searchParams.get("client") || navigationState?.clientName || "client";
+  const projectName =
+    searchParams.get("project") || navigationState?.projectName || "프로젝트";
 
   const [rating, setRating] = useState(0);
   const [hoveredRating, setHoveredRating] = useState(0);

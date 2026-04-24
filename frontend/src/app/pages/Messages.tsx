@@ -2227,8 +2227,19 @@ export default function Messages() {
 
   const handleCompleteWork = () => {
     if (!activeConversation) return;
+    const revieweeId = Number(activeConversation.partnerId);
+    const profileKey = activeConversation.username || activeConversation.partnerId;
     navigate(
-      `/review/write?client=${encodeURIComponent(activeConversation.name)}&project=${encodeURIComponent(activeConversation.role)}`
+      `/review/write?client=${encodeURIComponent(activeConversation.name)}&project=${encodeURIComponent(activeConversation.role)}&conversationId=${activeConversation.id}&revieweeId=${encodeURIComponent(String(revieweeId))}&profileKey=${encodeURIComponent(profileKey)}`,
+      {
+        state: {
+          conversationId: activeConversation.id,
+          revieweeId,
+          profileKey,
+          clientName: activeConversation.name,
+          projectName: activeConversation.role,
+        },
+      }
     );
   };
 
@@ -3316,12 +3327,6 @@ export default function Messages() {
                         src={conv.avatar}
                         alt={conv.name}
                         className="size-12 rounded-full object-cover ring-2 ring-white shadow-sm"
-                      />
-                      <span
-                        className={`absolute bottom-0 right-0 size-2.5 rounded-full border-2 border-white ${
-                          conv.online ? "bg-[#72CDBD]" : "bg-gray-300"
-                        }`}
-                        aria-label={conv.online ? "온라인" : "오프라인"}
                       />
                     </div>
                     <div className="min-w-0 flex-1">
