@@ -52,6 +52,7 @@ out/
 node_modules/
 .pnpm-store/
 .firebase/
+firebase-debug.log*
 dist/
 out/
 /.env
@@ -70,3 +71,8 @@ Thumbs.db
 
 api/
 api_temp/
+
+### Firebase local-only files ###
+frontend/.firebase/
+frontend/.firebaserc
+frontend/.env.production
