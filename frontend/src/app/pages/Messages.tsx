@@ -424,7 +424,7 @@ const mapConversationResponse = (
     unread: conversation.unreadCount > 0,
     unreadCount: conversation.unreadCount,
     online: false,
-    statusText: "메시지 가능",
+    statusText: "자리비움",
     avatar:
       conversation.partnerProfileImage ||
       `https://i.pravatar.cc/150?u=message-${conversation.partnerUserId}`,
@@ -882,7 +882,7 @@ export default function Messages() {
     return {
       ...conversation,
       online: isOnline,
-      statusText: isOnline ? "온라인" : conversation.statusText,
+      statusText: isOnline ? "메시지 가능" : conversation.statusText,
     };
   });
   const allConversations = rawConversations.filter(
@@ -966,11 +966,15 @@ export default function Messages() {
       const next = { ...prev };
       states.forEach((state) => {
         const partnerUserId = partnerUserIdByConversationId.get(state.conversationId);
-        if (partnerUserId === null || partnerUserId === undefined) {
+        if (partnerUserId === state.userId) {
+          next[state.conversationId] = state.isOnline;
           return;
         }
 
-        if (partnerUserId === state.userId) {
+        if (
+          (partnerUserId === null || partnerUserId === undefined) &&
+          state.userId !== currentUserId
+        ) {
           next[state.conversationId] = state.isOnline;
         }
       });
@@ -1111,6 +1115,14 @@ export default function Messages() {
 
         const nextConversations = conversationResponses.map(mapConversationResponse);
         setServerConversations(nextConversations);
+        const socket = messageSocketRef.current;
+        if (socket?.isOpen() && nextConversations.length > 0) {
+          try {
+            socket.subscribe(nextConversations.map((conversation) => conversation.id));
+          } catch {
+            // Ignore transient subscribe refresh failures.
+          }
+        }
 
         const requestedId = Number.isFinite(requestedConversationId)
           ? requestedConversationId
@@ -3657,7 +3669,7 @@ export default function Messages() {
                   <p className="text-sm text-gray-600">
                     {activeConversation.title}
                     <span className="mx-1.5 text-gray-300">·</span>
-                    {activeConversation.online ? "접속 중" : "오프라인"}
+                    {activeConversation.statusText}
                   </p>
                 </div>
 

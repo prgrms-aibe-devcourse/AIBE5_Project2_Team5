@@ -57,6 +57,13 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         if (becameOnline) {
             broadcastPresenceForUser(user.id(), true);
         }
+
+        try {
+            sendPresenceSnapshot(session, messageService.getConversationIdsForUser(user.id()));
+        } catch (IOException ignored) {
+            cleanupSession(session);
+            closeQuietly(session);
+        }
     }
 
     @Override
