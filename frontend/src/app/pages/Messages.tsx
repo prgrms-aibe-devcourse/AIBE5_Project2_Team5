@@ -665,11 +665,49 @@ const normalizeMessageReactions = (reactions: MessageReaction[] = []) =>
     emoji: normalizeReactionEmoji(reaction.emoji),
   }));
 
+const toNumericUserId = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : null;
+  }
+
+  return null;
+};
+
+const isCurrentUsersMessage = (
+  senderUserId: unknown,
+  options: {
+    currentUserId?: number;
+    partnerUserId?: string | number | null;
+  }
+) => {
+  const normalizedSenderUserId = toNumericUserId(senderUserId);
+  const normalizedCurrentUserId = toNumericUserId(options.currentUserId);
+
+  if (normalizedSenderUserId !== null && normalizedCurrentUserId !== null) {
+    return normalizedSenderUserId === normalizedCurrentUserId;
+  }
+
+  const normalizedPartnerUserId = toNumericUserId(options.partnerUserId);
+  if (normalizedSenderUserId !== null && normalizedPartnerUserId !== null) {
+    return normalizedSenderUserId !== normalizedPartnerUserId;
+  }
+
+  return false;
+};
+
 const mapChatMessageResponse = (
   message: ApiChatMessageResponse,
-  currentUserId?: number
+  options: {
+    currentUserId?: number;
+    partnerUserId?: string | number | null;
+  }
 ): ChatMessage => {
-  const isSelf = currentUserId === message.senderUserId;
+  const isSelf = isCurrentUsersMessage(message.senderUserId, options);
   const messageId = String(message.id);
 
   return {
@@ -917,12 +955,24 @@ export default function Messages() {
     : [];
 
   function applyPresenceStates(states: MessagePresenceState[]) {
-    const partnerStates = states.filter((state) => state.userId !== currentUserId);
-    if (partnerStates.length === 0) return;
+    const partnerUserIdByConversationId = new Map(
+      allConversations.map((conversation) => [
+        conversation.id,
+        toNumericUserId(conversation.partnerId),
+      ])
+    );
+
     setOnlineByConversationId((prev) => {
       const next = { ...prev };
-      partnerStates.forEach((state) => {
-        next[state.conversationId] = state.isOnline;
+      states.forEach((state) => {
+        const partnerUserId = partnerUserIdByConversationId.get(state.conversationId);
+        if (partnerUserId === null || partnerUserId === undefined) {
+          return;
+        }
+
+        if (partnerUserId === state.userId) {
+          next[state.conversationId] = state.isOnline;
+        }
       });
       return next;
     });
@@ -1111,7 +1161,10 @@ export default function Messages() {
         if (!mounted || activeConversationIdRef.current !== conversationId) return;
 
         const nextMessages = messageResponses.map((message) =>
-          mapChatMessageResponse(message, currentUserId)
+          mapChatMessageResponse(message, {
+            currentUserId,
+            partnerUserId: activeConversation.partnerId,
+          })
         );
 
         setChatMessages((prev) => {
@@ -1301,7 +1354,13 @@ export default function Messages() {
         }
 
         const incomingMessage = event;
-        const isSelfMessage = currentUserId === incomingMessage.senderUserId;
+        const partnerUserId = allConversations.find(
+          (conversation) => conversation.id === incomingMessage.conversationId
+        )?.partnerId;
+        const isSelfMessage = isCurrentUsersMessage(incomingMessage.senderUserId, {
+          currentUserId,
+          partnerUserId,
+        });
         const nextMessage: ChatMessage = {
           id: incomingMessage.serverId,
           clientId: incomingMessage.clientId || incomingMessage.serverId,
@@ -1560,7 +1619,7 @@ export default function Messages() {
       };
     });
 
-    const roleLabel = getProcessParticipantRoleLabel(role);
+    const roleLabel = getProcessParticipantDisplayLabel(role);
     void persistProcesses(nextProcesses, {
       optimistic: true,
       preferredExpandedId: processId,
@@ -1781,15 +1840,28 @@ export default function Messages() {
   const getPartnerParticipantRoleLabel = () =>
     activeConversation?.partnerRole === "CLIENT" ? "클라이언트" : "디자이너";
 
+  const getCurrentParticipantName = () =>
+    currentUser?.nickname?.trim() || currentUser?.name?.trim() || "나";
+
+  const getPartnerParticipantName = () =>
+    activeConversation?.profileName?.trim() || activeConversation?.name?.trim() || "상대방";
+
   const getProcessParticipantRoleLabel = (
     role: keyof ProcessConfirmations
   ) => (role === "designer" ? getCurrentParticipantRoleLabel() : getPartnerParticipantRoleLabel());
+
+  const getProcessParticipantDisplayLabel = (
+    role: keyof ProcessConfirmations
+  ) =>
+    role === "designer"
+      ? `${getCurrentParticipantName()} (${getCurrentParticipantRoleLabel()})`
+      : `${getPartnerParticipantName()} (${getPartnerParticipantRoleLabel()})`;
 
   const getConfirmationLabel = (
     role: keyof ProcessConfirmations,
     confirmations: ProcessConfirmations
   ) => {
-    const roleLabel = getProcessParticipantRoleLabel(role);
+    const roleLabel = getProcessParticipantDisplayLabel(role);
     return confirmations[role] ? `${roleLabel} 확인 완료` : `${roleLabel} 대기`;
   };
 
@@ -1916,7 +1988,7 @@ export default function Messages() {
     }
   };
 
-  const processCompletionGuideText = `${getCurrentParticipantRoleLabel()}와 ${getPartnerParticipantRoleLabel()}가 모두 확인해야 완료됩니다.`;
+  const processCompletionGuideText = `${getProcessParticipantDisplayLabel("designer")}와 ${getProcessParticipantDisplayLabel("client")}가 모두 확인해야 완료됩니다.`;
 
   const handleDeleteConversation = async () => {
     if (!activeConversation) return;
@@ -3573,8 +3645,20 @@ export default function Messages() {
                     alt={activeConversation.name}
                     className="mx-auto mb-4 size-24 rounded-full object-cover ring-4 ring-[#A8F0E4]/40 shadow-lg"
                   />
-                  <h3 className="font-bold text-lg mb-1">{activeConversation.profileName}</h3>
-                  <p className="text-sm text-gray-600">{activeConversation.title}</p>
+                  <div className="mb-1 flex items-center justify-center gap-2">
+                    <span
+                      className={`inline-flex size-2.5 rounded-full ${
+                        activeConversation.online ? "bg-[#00C853] shadow-[0_0_0_4px_rgba(0,200,83,0.14)]" : "bg-gray-300"
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <h3 className="font-bold text-lg">{activeConversation.profileName}</h3>
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    {activeConversation.title}
+                    <span className="mx-1.5 text-gray-300">·</span>
+                    {activeConversation.online ? "접속 중" : "오프라인"}
+                  </p>
                 </div>
 
                 <div className="space-y-3 mb-6">
@@ -3831,7 +3915,7 @@ export default function Messages() {
                                     </span>
                                     <span className="text-left leading-tight">
                                       <span className="block">
-                                        {getProcessParticipantRoleLabel("designer")}
+                                        {getProcessParticipantDisplayLabel("designer")}
                                       </span>
                                       <span
                                         className={`block text-[11px] font-bold ${
@@ -3869,7 +3953,7 @@ export default function Messages() {
                                     </span>
                                     <span className="text-left leading-tight">
                                       <span className="block">
-                                        {getProcessParticipantRoleLabel("client")}
+                                        {getProcessParticipantDisplayLabel("client")}
                                       </span>
                                       <span
                                         className={`block text-[11px] font-bold ${
