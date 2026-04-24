@@ -28,7 +28,9 @@ import {
 import { getCurrentUser } from "../utils/auth";
 import {
   getMyCollectionsApi,
+  getCollectionFolderApi,
   saveFeedToCollectionApi,
+  removeFeedFromCollectionApi,
   createCollectionFolderApi,
   type CollectionFolderResponse,
 } from "../api/collectionApi";
@@ -584,9 +586,11 @@ export default function Feed() {
   const [carouselIndexes, setCarouselIndexes] = useState<Record<number, number>>({});
   const [modalImageIndex, setModalImageIndex] = useState(0);
   const [collections, setCollections] = useState<CollectionFolderResponse[]>([]);
+  const [collectionPostIdsByFolder, setCollectionPostIdsByFolder] = useState<Record<number, number[]>>({});
   const [collectionModalFeed, setCollectionModalFeed] = useState<FeedCardItem | null>(null);
   const [newCollectionName, setNewCollectionName] = useState("");
   const [collectionSavedNotice, setCollectionSavedNotice] = useState("");
+  const [isCollectionSaving, setIsCollectionSaving] = useState(false);
   const [profileFeedItems] = useState<BaseFeedItem[]>(loadProfileFeedItems);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
   const shouldFocusCommentRef = useRef(false);
@@ -611,12 +615,10 @@ export default function Feed() {
     [apiFeedItems, profileFeedItems]
   );
 
-  const savedItemIds = useMemo(() => {
-    // Note: Since server response doesn't have all itemIds,
-    // we use a simplified version or fetch details if needed.
-    // For now, we rely on the modal fetch to show accurate saved status.
-    return new Set<number>();
-  }, []);
+  const savedItemIds = useMemo(
+    () => new Set(Object.values(collectionPostIdsByFolder).flat()),
+    [collectionPostIdsByFolder]
+  );
 
   const visibleFollowingProfiles = showAllFollowing ? followingProfiles : followingProfiles.slice(0, 3);
   const hiddenFollowingCount = Math.max(followingProfiles.length - 3, 0);
@@ -718,8 +720,17 @@ export default function Feed() {
 
   async function loadCollections() {
     try {
-      const data = await getMyCollectionsApi();
-      setCollections(data);
+      const folders = await getMyCollectionsApi();
+      setCollections(folders);
+
+      const folderDetails = await Promise.all(
+        folders.map(async (folder) => {
+          const detail = await getCollectionFolderApi(folder.folderId);
+          return [folder.folderId, detail.feeds.map((feed) => feed.postId)] as const;
+        })
+      );
+
+      setCollectionPostIdsByFolder(Object.fromEntries(folderDetails));
     } catch (error) {
       console.error("컬렉션 로딩 실패:", error);
     }
@@ -1184,6 +1195,7 @@ export default function Feed() {
     e?.stopPropagation();
     setCollectionModalFeed(item);
     setCollectionSavedNotice("");
+    setIsCollectionSaving(false);
     setNewCollectionName("");
     void loadCollections(); // 모달 열 때마다 최신화
   };
@@ -1191,13 +1203,38 @@ export default function Feed() {
   const saveToCollection = async (folderId: number) => {
     if (!collectionModalFeed) return;
 
+    const selectedFolder = collections.find((c) => c.folderId === folderId);
+    const savedPostIds = collectionPostIdsByFolder[folderId] ?? [];
+    if (savedPostIds.includes(collectionModalFeed.id)) {
+      try {
+        setIsCollectionSaving(true);
+        await removeFeedFromCollectionApi(folderId, collectionModalFeed.id);
+        setCollectionPostIdsByFolder((prev) => ({
+          ...prev,
+          [folderId]: (prev[folderId] ?? []).filter((postId) => postId !== collectionModalFeed.id),
+        }));
+        setCollectionSavedNotice(`${selectedFolder?.folderName ?? "컬렉션"}에서 제거했어요.`);
+        void loadCollections();
+      } catch (error) {
+        setCollectionSavedNotice("컬렉션에서 제거하는 중 오류가 발생했습니다.");
+      } finally {
+        setIsCollectionSaving(false);
+      }
+      return;
+    }
+
     try {
+      setIsCollectionSaving(true);
       await saveFeedToCollectionApi(folderId, collectionModalFeed.id);
-      const selectedFolder = collections.find((c) => c.folderId === folderId);
+      setCollectionPostIdsByFolder((prev) => ({
+        ...prev,
+        [folderId]: [...(prev[folderId] ?? []), collectionModalFeed.id],
+      }));
       setCollectionSavedNotice(`${selectedFolder?.folderName ?? "컬렉션"}에 저장했어요.`);
       void loadCollections();
     } catch (error) {
-      setCollectionSavedNotice("이미 저장되어 있거나 오류가 발생했습니다.");
+      setCollectionSavedNotice("컬렉션 저장 중 오류가 발생했습니다.");
+      setIsCollectionSaving(false);
     }
   };
 
@@ -1207,13 +1244,19 @@ export default function Feed() {
     if (!folderName) return;
 
     try {
+      setIsCollectionSaving(true);
       const newFolder = await createCollectionFolderApi(folderName);
       await saveFeedToCollectionApi(newFolder.folderId, collectionModalFeed.id);
+      setCollectionPostIdsByFolder((prev) => ({
+        ...prev,
+        [newFolder.folderId]: [collectionModalFeed.id],
+      }));
       setCollectionSavedNotice(`${folderName} 컬렉션을 만들고 저장했어요.`);
       setNewCollectionName("");
       void loadCollections();
     } catch (error) {
       setCollectionSavedNotice("컬렉션 생성 또는 저장 중 오류가 발생했습니다.");
+      setIsCollectionSaving(false);
     }
   };
 
@@ -1991,21 +2034,22 @@ export default function Feed() {
             <div className="p-5 space-y-4">
               <div className="space-y-2">
                 {collections.map((collection) => {
-                  // Note: In API mode, we don't know for sure if it's saved without details.
-                  // But we can assume it's NOT saved unless the user just saved it in this session,
-                  // or we can just show the list and handle it via API response.
-                  const isSavedInCollection = false;
+                  const isSavedInCollection = Boolean(
+                    collectionModalFeed &&
+                      collectionPostIdsByFolder[collection.folderId]?.includes(collectionModalFeed.id)
+                  );
 
                   return (
                     <button
                       key={collection.folderId}
                       type="button"
+                      disabled={isCollectionSaving}
                       onClick={() => saveToCollection(collection.folderId)}
                       className={`w-full p-3 rounded-lg border flex items-center justify-between gap-3 text-left transition-all ${
                         isSavedInCollection
                           ? "bg-[#E7FAF6] border-[#00C9A7] text-[#007D69]"
                           : "bg-white border-gray-200 hover:border-[#00C9A7] hover:bg-[#F2FFFC]"
-                      }`}
+                      } disabled:cursor-not-allowed disabled:opacity-75`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div
@@ -2021,7 +2065,7 @@ export default function Feed() {
                         </div>
                       </div>
                       {isSavedInCollection && (
-                        <span className="text-xs font-bold text-[#00A88C] shrink-0">저장됨</span>
+                        <span className="text-xs font-bold text-[#00A88C] shrink-0">저장됨 · 클릭 시 제거</span>
                       )}
                     </button>
                   );
@@ -2046,11 +2090,11 @@ export default function Feed() {
                   />
                   <button
                     type="submit"
-                    disabled={!newCollectionName.trim()}
+                    disabled={!newCollectionName.trim() || isCollectionSaving}
                     className="px-4 py-2.5 rounded-lg bg-[#0F0F0F] text-white text-sm font-semibold hover:bg-[#00A88C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
                   >
                     <FolderPlus className="size-4" />
-                    만들기
+                    {isCollectionSaving ? "저장 중" : "만들기"}
                   </button>
                 </div>
               </form>
