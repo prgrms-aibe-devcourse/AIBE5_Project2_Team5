@@ -176,15 +176,18 @@ public class MessageServiceImpl implements MessageService {
         User user = userRepository.findById(currentUser.id())
                 .orElseThrow(() -> new IllegalArgumentException("User not found."));
 
-        String emoji = request.emoji().trim();
-        chatMessageReactionRepository.findByChatMessageIdAndUserIdAndEmoji(messageId, currentUser.id(), emoji)
+        String reactionKey = MessageReactionEmojiCodec.toStorageKey(request.emoji());
+        chatMessageReactionRepository.findAllByChatMessageIdAndUserId(messageId, currentUser.id())
+                .stream()
+                .filter(reaction -> MessageReactionEmojiCodec.matchesStoredReaction(reaction.getEmoji(), reactionKey))
+                .findFirst()
                 .ifPresentOrElse(
                         chatMessageReactionRepository::delete,
                         () -> chatMessageReactionRepository.save(
                                 ChatMessageReaction.builder()
                                         .chatMessage(message)
                                         .user(user)
-                                        .emoji(emoji)
+                                        .emoji(reactionKey)
                                         .build()
                         )
                 );
@@ -413,12 +416,13 @@ public class MessageServiceImpl implements MessageService {
 
         Map<Long, LinkedHashMap<String, MessageReactionSummaryAccumulator>> groupedReactions = new LinkedHashMap<>();
         for (ChatMessageReaction reaction : reactions) {
+            String displayEmoji = MessageReactionEmojiCodec.toDisplayEmoji(reaction.getEmoji());
             LinkedHashMap<String, MessageReactionSummaryAccumulator> emojiMap = groupedReactions
                     .computeIfAbsent(reaction.getChatMessage().getId(), ignored -> new LinkedHashMap<>());
             MessageReactionSummaryAccumulator currentSummary = emojiMap
-                    .getOrDefault(reaction.getEmoji(), new MessageReactionSummaryAccumulator());
+                    .getOrDefault(displayEmoji, new MessageReactionSummaryAccumulator());
             emojiMap.put(
-                    reaction.getEmoji(),
+                    displayEmoji,
                     currentSummary.accumulate(reaction.getUser().getId().equals(currentUserId))
             );
         }
