@@ -54,6 +54,16 @@ export type ProfileReviewResponse = {
   createdAt: string | null;
 };
 
+export type CreateProfileReviewRequest = {
+  conversationId: number;
+  revieweeId: number;
+  projectTitle: string;
+  rating: number;
+  content: string;
+  workCategories: string[];
+  complimentTags: string[];
+};
+
 export async function getMyProfileApi() {
   return apiRequest<ProfileResponse>("/api/profiles/me", {}, "Failed to load profile.");
 }
@@ -95,6 +105,17 @@ export async function getProfileReviewsApi(profileKey: string) {
     `/api/profiles/${encodeURIComponent(profileKey)}/reviews`,
     {},
     "Failed to load profile reviews.",
+  );
+}
+
+export async function createProfileReviewApi(params: CreateProfileReviewRequest) {
+  return apiRequest<ProfileReviewResponse>(
+    "/api/profiles/reviews",
+    {
+      method: "POST",
+      body: JSON.stringify(params),
+    },
+    "Failed to create profile review.",
   );
 }
 

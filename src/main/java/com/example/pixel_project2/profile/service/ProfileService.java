@@ -4,6 +4,7 @@ import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.profile.dto.ProfileFeedResponse;
 import com.example.pixel_project2.profile.dto.ProfileResponse;
 import com.example.pixel_project2.profile.dto.ProfileReviewResponse;
+import com.example.pixel_project2.profile.dto.CreateProfileReviewRequest;
 import com.example.pixel_project2.profile.dto.UpdateDesignerProfileRequest;
 import com.example.pixel_project2.profile.dto.UpdateProfileRequest;
 
@@ -21,6 +22,8 @@ public interface ProfileService {
     List<ProfileReviewResponse> getMyProfileReviews(AuthenticatedUser currentUser);
 
     List<ProfileReviewResponse> getProfileReviews(String profileKey, AuthenticatedUser currentUser);
+
+    ProfileReviewResponse createProfileReview(AuthenticatedUser currentUser, CreateProfileReviewRequest request);
 
     ProfileResponse updateMyProfile(AuthenticatedUser currentUser, UpdateProfileRequest request);
 

@@ -764,6 +764,8 @@ export default function Profile() {
       setCheckedProfileNickname(result.nickname);
       setProfileNicknameCheckMessage("사용 가능한 닉네임입니다.");
     } catch (error) {
+      setApiProfile(previousProfile);
+      setEditWorkStatus(previousWorkStatus);
       setProfileEditError(error instanceof Error ? error.message : "닉네임 중복 확인에 실패했습니다.");
     } finally {
       setIsCheckingProfileNickname(false);
@@ -852,18 +854,26 @@ export default function Profile() {
       return;
     }
 
+    const previousProfile = apiProfile;
+    const previousWorkStatus = apiProfile.workStatus ?? "";
+
+    setApiProfile({
+      ...apiProfile,
+      workStatus,
+    });
+    setEditWorkStatus(workStatus);
     setIsSavingWorkStatus(true);
     setProfileError("");
 
     try {
       const updatedProfile = await updateMyDesignerProfileApi({
-        job: normalizeDesignerJobLabel(apiProfile.job) || undefined,
-        introduction: apiProfile.introduction ?? undefined,
+        job: normalizeDesignerJobLabel(previousProfile.job) || undefined,
+        introduction: previousProfile.introduction ?? undefined,
         workStatus,
-        workType: apiProfile.workType ?? undefined,
-        figmaUrl: apiProfile.figmaUrl ?? undefined,
-        photoshopUrl: apiProfile.photoshopUrl ?? undefined,
-        adobeUrl: apiProfile.adobeUrl ?? undefined,
+        workType: previousProfile.workType ?? undefined,
+        figmaUrl: previousProfile.figmaUrl ?? undefined,
+        photoshopUrl: previousProfile.photoshopUrl ?? undefined,
+        adobeUrl: previousProfile.adobeUrl ?? undefined,
       });
       setApiProfile(updatedProfile);
       setEditWorkStatus(updatedProfile.workStatus ?? "");

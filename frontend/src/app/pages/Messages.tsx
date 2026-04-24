@@ -1,4 +1,4 @@
-import Navigation from "../components/Navigation";
+﻿import Navigation from "../components/Navigation";
 import { Edit, Search, Info, Send, Image, Smile, AtSign, Sparkles, Calendar, FileText, CheckCircle, Circle, ChevronDown, ChevronUp, ThumbsUp, XCircle, Paperclip, Figma, ExternalLink, Plus, Clock, Check, CheckCheck, Trash2, GripVertical, Eye, ArrowLeft, Bookmark } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
@@ -129,8 +129,9 @@ const PROCESS_CREATED_STORAGE_KEY = "pickxel:message-processes-created:v2";
 const MESSAGE_DRAFTS_STORAGE_KEY = "pickxel:message-drafts";
 const LEFT_CONVERSATIONS_STORAGE_KEY = "pickxel:left-message-conversations";
 const CONNECTED_CONVERSATION_POLL_INTERVAL = 5000;
-const CONNECTED_MESSAGE_POLL_INTERVAL = 1000;
-const CONNECTED_PROCESS_POLL_INTERVAL = 1000;
+const CONNECTED_MESSAGE_POLL_INTERVAL = 3000;
+const CONNECTED_PRESENCE_POLL_INTERVAL = 5000;
+const CONNECTED_PROCESS_POLL_INTERVAL = 3000;
 const DISCONNECTED_POLL_INTERVAL = 1000;
 const TYPING_IDLE_DELAY = 1200;
 const TYPING_SYNC_INTERVAL = 800;
@@ -434,11 +435,7 @@ const mapConversationResponse = (
     unread: conversation.unreadCount > 0,
     unreadCount: conversation.unreadCount,
     online: conversation.partnerAvailable,
-    statusText: conversation.partnerTyping
-      ? "입력 중..."
-      : conversation.partnerAvailable
-        ? "메시지 가능"
-        : "자리비움",
+    statusText: conversation.partnerAvailable ? "메시지 가능" : "자리비움",
     avatar:
       conversation.partnerProfileImage ||
       `https://i.pravatar.cc/150?u=message-${conversation.partnerUserId}`,
@@ -964,12 +961,7 @@ export default function Messages() {
   const [typingConversationId, setTypingConversationId] = useState<number | null>(null);
   const rawConversations = [...serverConversations, ...conversations].map((conversation) => {
     const isOnline = onlineByConversationId[conversation.id] ?? conversation.online;
-    const statusText =
-      typingConversationId === conversation.id
-        ? "입력 중..."
-        : isOnline
-          ? "메시지 가능"
-          : "자리비움";
+    const statusText = isOnline ? "메시지 가능" : "자리비움";
 
     return {
       ...conversation,
@@ -1037,6 +1029,7 @@ export default function Messages() {
   const onlineByConversationIdRef = useRef<Record<number, boolean>>({});
   const typingTimeoutRef = useRef<number | null>(null);
   const typingConversationRef = useRef<number | null>(null);
+  const isMessageComposingRef = useRef(false);
   const partnerTypingConversationIdRef = useRef<number | null>(null);
   const lastTypingSyncAtRef = useRef<Record<number, number>>({});
   const partnerTypingTimeoutRef = useRef<number | null>(null);
@@ -1091,15 +1084,10 @@ export default function Messages() {
           return conversation;
         }
 
-        const isTyping = partnerTypingConversationIdRef.current === conversation.id;
         return {
           ...conversation,
           online: nextState.isOnline,
-          statusText: isTyping
-            ? "입력 중..."
-            : nextState.isOnline
-              ? "메시지 가능"
-              : "자리비움",
+          statusText: nextState.isOnline ? "메시지 가능" : "자리비움",
         };
       })
     );
@@ -1110,6 +1098,24 @@ export default function Messages() {
       window.clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = null;
     }
+  }
+
+  function startOwnTyping(conversationId: number) {
+    if (typingConversationRef.current !== conversationId) {
+      if (typingConversationRef.current !== null) {
+        stopOwnTyping(typingConversationRef.current);
+      }
+
+      notifyTypingState(conversationId, true);
+      typingConversationRef.current = conversationId;
+    } else {
+      notifyTypingState(conversationId, true);
+    }
+
+    clearOwnTypingTimeout();
+    typingTimeoutRef.current = window.setTimeout(() => {
+      stopOwnTyping(conversationId);
+    }, TYPING_IDLE_DELAY);
   }
 
   function applyConversationPresence(
@@ -1137,11 +1143,7 @@ export default function Messages() {
           ? {
               ...conversation,
               online: presence.partnerAvailable,
-              statusText: presence.partnerTyping
-                ? "입력 중..."
-                : presence.partnerAvailable
-                  ? "메시지 가능"
-                  : "자리비움",
+              statusText: presence.partnerAvailable ? "메시지 가능" : "자리비움",
             }
           : conversation
       )
@@ -1313,12 +1315,10 @@ export default function Messages() {
         const nextConversations = conversationResponses.map(mapConversationResponse).map((conversation) => {
           const isOnline =
             onlineByConversationIdRef.current[conversation.id] ?? conversation.online;
-          const isTyping = partnerTypingConversationIdRef.current === conversation.id;
-
           return {
             ...conversation,
             online: isOnline,
-            statusText: isTyping ? "입력 중..." : isOnline ? "메시지 가능" : "자리비움",
+            statusText: isOnline ? "메시지 가능" : "자리비움",
           };
         });
         setServerConversations(nextConversations);
@@ -1412,7 +1412,7 @@ export default function Messages() {
     void loadConversationMessages();
     const pollInterval = window.setInterval(() => {
       void loadConversationMessages(true);
-    }, isSocketConnected ? CONNECTED_MESSAGE_POLL_INTERVAL : DISCONNECTED_POLL_INTERVAL);
+    }, isSocketConnected ? CONNECTED_PRESENCE_POLL_INTERVAL : DISCONNECTED_POLL_INTERVAL);
 
     return () => {
       mounted = false;
@@ -2227,8 +2227,19 @@ export default function Messages() {
 
   const handleCompleteWork = () => {
     if (!activeConversation) return;
+    const revieweeId = Number(activeConversation.partnerId);
+    const profileKey = activeConversation.username || activeConversation.partnerId;
     navigate(
-      `/review/write?client=${encodeURIComponent(activeConversation.name)}&project=${encodeURIComponent(activeConversation.role)}`
+      `/review/write?client=${encodeURIComponent(activeConversation.name)}&project=${encodeURIComponent(activeConversation.role)}&conversationId=${activeConversation.id}&revieweeId=${encodeURIComponent(String(revieweeId))}&profileKey=${encodeURIComponent(profileKey)}`,
+      {
+        state: {
+          conversationId: activeConversation.id,
+          revieweeId,
+          profileKey,
+          clientName: activeConversation.name,
+          projectName: activeConversation.role,
+        },
+      }
     );
   };
 
@@ -2370,6 +2381,11 @@ export default function Messages() {
     const trimmedValue = value.trim();
 
     if (!trimmedValue) {
+      if (isMessageComposingRef.current) {
+        startOwnTyping(conversationId);
+        return;
+      }
+
       if (typingConversationRef.current === conversationId) {
         stopOwnTyping(conversationId);
       } else {
@@ -2378,21 +2394,7 @@ export default function Messages() {
       return;
     }
 
-    if (typingConversationRef.current !== conversationId) {
-      if (typingConversationRef.current !== null) {
-        stopOwnTyping(typingConversationRef.current);
-      }
-
-      notifyTypingState(conversationId, true);
-      typingConversationRef.current = conversationId;
-    } else {
-      notifyTypingState(conversationId, true);
-    }
-
-    clearOwnTypingTimeout();
-    typingTimeoutRef.current = window.setTimeout(() => {
-      stopOwnTyping(conversationId);
-    }, TYPING_IDLE_DELAY);
+    startOwnTyping(conversationId);
   };
 
   const getCurrentTime = () => {
@@ -2564,10 +2566,40 @@ export default function Messages() {
   };
 
   const handleMessageKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (
+      activeConversation &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      (event.key.length === 1 || event.key === "Backspace" || event.key === "Delete")
+    ) {
+      startOwnTyping(activeConversation.id);
+    }
+
     if (event.key === "Enter" && !event.nativeEvent.isComposing) {
       event.preventDefault();
       handleSendMessage();
     }
+  };
+
+  const handleMessageCompositionStart = () => {
+    if (!activeConversation) return;
+    isMessageComposingRef.current = true;
+    startOwnTyping(activeConversation.id);
+  };
+
+  const handleMessageCompositionUpdate = () => {
+    if (!activeConversation) return;
+    isMessageComposingRef.current = true;
+    startOwnTyping(activeConversation.id);
+  };
+
+  const handleMessageCompositionEnd = (
+    event: React.CompositionEvent<HTMLInputElement>
+  ) => {
+    if (!activeConversation) return;
+    isMessageComposingRef.current = false;
+    updateMessageText(event.currentTarget.value);
   };
 
   const handleImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -3296,12 +3328,6 @@ export default function Messages() {
                         alt={conv.name}
                         className="size-12 rounded-full object-cover ring-2 ring-white shadow-sm"
                       />
-                      <span
-                        className={`absolute bottom-0 right-0 size-2.5 rounded-full border-2 border-white ${
-                          conv.online ? "bg-[#72CDBD]" : "bg-gray-300"
-                        }`}
-                        aria-label={conv.online ? "온라인" : "오프라인"}
-                      />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex items-start justify-between gap-2">
@@ -3402,7 +3428,7 @@ export default function Messages() {
                       activeConversation.online ? "bg-[#72CDBD]" : "bg-gray-300"
                     }`}
                   />
-                  {isPartnerTyping ? "입력 중..." : activeConversation.statusText}
+                  {activeConversation.online ? "메시지 가능" : "자리비움"}
                 </p>
               </div>
             </div>
@@ -3628,13 +3654,14 @@ export default function Messages() {
 
           {/* Message Input */}
           <div className="border-t border-gray-200 bg-white p-3 sm:p-4">
-            <div className="mb-2 flex min-h-[18px] items-center gap-1.5 px-1">
+            <div className="mb-2 min-h-[34px] px-1">
               {isPartnerTyping && (
-                <>
-                  <div
-                    className="flex items-center gap-1"
-                    style={{ animation: "pickxelTypingBubbleIn 180ms ease-out both" }}
-                  >
+                <div
+                  aria-live="polite"
+                  className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#BDEFD8] bg-[#F3FFFB] px-3 py-1.5 text-sm font-medium text-[#0F6C5C] shadow-sm"
+                  style={{ animation: "pickxelTypingBubbleIn 180ms ease-out both" }}
+                >
+                  <div className="flex shrink-0 items-center gap-1">
                     {[0, 1, 2].map((index) => (
                       <span
                         key={index}
@@ -3646,10 +3673,10 @@ export default function Messages() {
                       />
                     ))}
                   </div>
-                  <p className="truncate text-xs text-gray-500">
+                  <p className="min-w-0 break-words leading-5">
                     {activeConversation.profileName}님이 입력 중...
                   </p>
-                </>
+                </div>
               )}
             </div>
             {pendingAttachments.length > 0 && (
@@ -3819,6 +3846,9 @@ export default function Messages() {
                   value={messageText}
                   onChange={(event) => updateMessageText(event.target.value)}
                   onKeyDown={handleMessageKeyDown}
+                  onCompositionStart={handleMessageCompositionStart}
+                  onCompositionUpdate={handleMessageCompositionUpdate}
+                  onCompositionEnd={handleMessageCompositionEnd}
                   placeholder={`${activeConversation.name}님에게 메시지 보내기...`}
                   className="min-w-0 flex-1 bg-transparent text-sm focus:outline-none"
                 />
@@ -3956,7 +3986,7 @@ export default function Messages() {
                   <p className="text-sm text-gray-600">
                     {activeConversation.title}
                     <span className="mx-1.5 text-gray-300">·</span>
-                    {isPartnerTyping ? "입력 중..." : activeConversation.statusText}
+                    {activeConversation.online ? "메시지 가능" : "자리비움"}
                   </p>
                 </div>
 

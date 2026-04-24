@@ -2,6 +2,7 @@ const AUTH_STORAGE_KEY = "pickxel:isLoggedIn";
 const CURRENT_USER_STORAGE_KEY = "pickxel:currentUser";
 const ACCESS_TOKEN_STORAGE_KEY = "pickxel:accessToken";
 const REFRESH_TOKEN_STORAGE_KEY = "pickxel:refreshToken";
+const CURRENT_USER_CHANGE_EVENT = "pickxel:current-user-change";
 
 export type UserRole = "designer" | "client";
 
@@ -13,6 +14,14 @@ export type CurrentUser = {
   role: UserRole;
   profileImage?: string | null;
 };
+
+function dispatchCurrentUserChange() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(new Event(CURRENT_USER_CHANGE_EVENT));
+}
 
 type JwtPayload = {
   userId?: number | string;
@@ -146,6 +155,7 @@ export function setAuthTokens(accessToken: string, refreshToken = "", remember =
   otherStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
   otherStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
   otherStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+  dispatchCurrentUserChange();
 }
 
 export function getAccessToken() {
@@ -215,6 +225,31 @@ export function setCurrentUser(user: CurrentUser) {
 
   activeStorage?.setItem(CURRENT_USER_STORAGE_KEY, JSON.stringify(user));
   otherStorage.removeItem(CURRENT_USER_STORAGE_KEY);
+  dispatchCurrentUserChange();
+}
+
+export function subscribeCurrentUser(listener: () => void) {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  const handleStorage = (event: StorageEvent) => {
+    if (
+      event.key === CURRENT_USER_STORAGE_KEY ||
+      event.key === ACCESS_TOKEN_STORAGE_KEY ||
+      event.key === AUTH_STORAGE_KEY
+    ) {
+      listener();
+    }
+  };
+
+  window.addEventListener(CURRENT_USER_CHANGE_EVENT, listener);
+  window.addEventListener("storage", handleStorage);
+
+  return () => {
+    window.removeEventListener(CURRENT_USER_CHANGE_EVENT, listener);
+    window.removeEventListener("storage", handleStorage);
+  };
 }
 
 export function getCurrentUserRole(defaultRole: UserRole = "designer") {
@@ -234,4 +269,5 @@ export function clearAuthenticated() {
   window.sessionStorage.removeItem(CURRENT_USER_STORAGE_KEY);
   window.sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
   window.sessionStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+  dispatchCurrentUserChange();
 }
