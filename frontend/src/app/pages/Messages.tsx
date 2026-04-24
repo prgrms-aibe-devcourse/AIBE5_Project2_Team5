@@ -836,6 +836,9 @@ export default function Messages() {
   const [leftConversationIds, setLeftConversationIds] = useState<number[]>(
     readLeftConversationIds
   );
+  const [onlineByConversationId, setOnlineByConversationId] = useState<Record<number, boolean>>(
+    {}
+  );
   const rawConversations = [...serverConversations, ...conversations].map((conversation) => {
     const isOnline = onlineByConversationId[conversation.id] ?? conversation.online;
     return {
@@ -893,9 +896,6 @@ export default function Messages() {
     key: number;
     shouldBounceCount: boolean;
   } | null>(null);
-  const [onlineByConversationId, setOnlineByConversationId] = useState<Record<number, boolean>>(
-    {}
-  );
   const [typingConversationId, setTypingConversationId] = useState<number | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ src: string; name: string } | null>(null);
