@@ -6,6 +6,7 @@ import com.example.pixel_project2.common.repository.UserRepository;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.message.dto.ChatMessageResponse;
 import com.example.pixel_project2.message.dto.CreateConversationRequest;
+import com.example.pixel_project2.message.dto.MessageConversationPresenceResponse;
 import com.example.pixel_project2.message.dto.MessageConversationResponse;
 import com.example.pixel_project2.message.dto.MessageProcessConfirmationsRequest;
 import com.example.pixel_project2.message.dto.MessageProcessConfirmationsResponse;
@@ -29,6 +30,7 @@ import com.example.pixel_project2.message.repository.ChatMessageReactionReposito
 import com.example.pixel_project2.message.repository.ChatMessageRepository;
 import com.example.pixel_project2.message.repository.MessageConversationRepository;
 import com.example.pixel_project2.message.repository.MessageProcessRepository;
+import com.example.pixel_project2.message.websocket.MessagePresenceTracker;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -57,6 +59,7 @@ public class MessageServiceImpl implements MessageService {
     private final MessageProcessRepository messageProcessRepository;
     private final ObjectMapper objectMapper;
     private final JdbcTemplate jdbcTemplate;
+    private final MessagePresenceTracker messagePresenceTracker;
 
     @Override
     public MessagePolicyResponse getMessagePolicy() {
@@ -80,6 +83,20 @@ public class MessageServiceImpl implements MessageService {
     ) {
         MessageConversation conversation = findOrCreateConversation(currentUser.id(), request.partnerUserId());
         return toConversationResponse(conversation, currentUser.id(), conversation.getLastReadMessageId(currentUser.id()));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public MessageConversationPresenceResponse getConversationPresence(AuthenticatedUser currentUser, Long conversationId) {
+        MessageConversation conversation = findConversationForUser(conversationId, currentUser.id());
+        User partner = conversation.getOtherParticipant(currentUser.id());
+
+        return new MessageConversationPresenceResponse(
+                conversation.getId(),
+                partner.getId(),
+                messagePresenceTracker.isUserOnline(partner.getId()),
+                messagePresenceTracker.isTyping(conversation.getId(), partner.getId())
+        );
     }
 
     @Override
@@ -349,7 +366,9 @@ public class MessageServiceImpl implements MessageService {
                 partner.getUrl(),
                 conversation.getLastMessagePreview(),
                 conversation.getLastMessageAt(),
-                chatMessageRepository.countUnreadMessages(conversation.getId(), currentUserId, lastReadMessageId)
+                chatMessageRepository.countUnreadMessages(conversation.getId(), currentUserId, lastReadMessageId),
+                messagePresenceTracker.isUserOnline(partner.getId()),
+                messagePresenceTracker.isTyping(conversation.getId(), partner.getId())
         );
     }
 

@@ -4,6 +4,7 @@ import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.message.dto.ChatMessageResponse;
 import com.example.pixel_project2.message.dto.CreateConversationRequest;
 import com.example.pixel_project2.message.dto.MessageConversationResponse;
+import com.example.pixel_project2.message.dto.MessageConversationPresenceResponse;
 import com.example.pixel_project2.message.dto.MessagePolicyResponse;
 import com.example.pixel_project2.message.dto.MessageProcessResponse;
 import com.example.pixel_project2.message.dto.MessageReactionUpdateResponse;
@@ -21,6 +22,8 @@ public interface MessageService {
     List<MessageConversationResponse> getConversations(AuthenticatedUser currentUser);
 
     MessageConversationResponse createConversation(AuthenticatedUser currentUser, CreateConversationRequest request);
+
+    MessageConversationPresenceResponse getConversationPresence(AuthenticatedUser currentUser, Long conversationId);
 
     List<ChatMessageResponse> getMessages(AuthenticatedUser currentUser, Long conversationId);
 

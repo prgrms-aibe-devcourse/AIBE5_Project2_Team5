@@ -17,6 +17,8 @@ public record MessageConversationResponse(
         String partnerUrl,
         String lastMessage,
         LocalDateTime lastMessageAt,
-        int unreadCount
+        int unreadCount,
+        boolean partnerAvailable,
+        boolean partnerTyping
 ) {
 }

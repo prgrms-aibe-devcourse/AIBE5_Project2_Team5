@@ -5,6 +5,7 @@ import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.message.dto.ChatMessageResponse;
 import com.example.pixel_project2.message.dto.CreateConversationRequest;
 import com.example.pixel_project2.message.dto.MessageConversationResponse;
+import com.example.pixel_project2.message.dto.MessageConversationPresenceResponse;
 import com.example.pixel_project2.message.dto.MessagePolicyResponse;
 import com.example.pixel_project2.message.dto.MessageProcessResponse;
 import com.example.pixel_project2.message.dto.MessageReactionUpdateResponse;
@@ -59,6 +60,17 @@ public class MessageController {
             @PathVariable Long conversationId
     ) {
         return ApiResponse.ok("Messages loaded.", messageService.getMessages(currentUser, conversationId));
+    }
+
+    @GetMapping("/conversations/{conversationId}/presence")
+    public ApiResponse<MessageConversationPresenceResponse> getConversationPresence(
+            @AuthenticationPrincipal AuthenticatedUser currentUser,
+            @PathVariable Long conversationId
+    ) {
+        return ApiResponse.ok(
+                "Conversation presence loaded.",
+                messageService.getConversationPresence(currentUser, conversationId)
+        );
     }
 
     @PostMapping("/conversations/{conversationId}/messages")

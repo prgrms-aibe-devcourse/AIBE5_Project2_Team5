@@ -34,11 +34,11 @@ public class MessageSocketHandler extends TextWebSocketHandler {
 
     private final ObjectMapper objectMapper;
     private final MessageService messageService;
+    private final MessagePresenceTracker messagePresenceTracker;
     private final ConcurrentHashMap<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Set<Long>> subscriptions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Object> sessionLocks = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Long> sessionUsers = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<Long, Set<String>> userSessions = new ConcurrentHashMap<>();
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
@@ -52,8 +52,7 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         }
 
         sessionUsers.put(session.getId(), user.id());
-        Set<String> activeUserSessions = userSessions.computeIfAbsent(user.id(), ignored -> ConcurrentHashMap.newKeySet());
-        boolean becameOnline = activeUserSessions.add(session.getId()) && activeUserSessions.size() == 1;
+        boolean becameOnline = messagePresenceTracker.connectUser(user.id(), session.getId());
         if (becameOnline) {
             broadcastPresenceForUser(user.id(), true);
         }
@@ -212,7 +211,9 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         outbound.put("type", TYPE_TYPING);
         outbound.put("conversationId", conversationId);
         outbound.put("senderUserId", sender.id());
-        outbound.put("isTyping", payload.path("isTyping").asBoolean(false));
+        boolean isTyping = payload.path("isTyping").asBoolean(false);
+        outbound.put("isTyping", isTyping);
+        messagePresenceTracker.updateTyping(conversationId, sender.id(), isTyping);
 
         broadcast(conversationId, session.getId(), messageService.getConversationParticipantIds(conversationId), outbound);
     }
@@ -313,14 +314,8 @@ public class MessageSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        Set<String> activeUserSessions = userSessions.get(userId);
-        if (activeUserSessions == null) {
-            return;
-        }
-
-        activeUserSessions.remove(session.getId());
-        if (activeUserSessions.isEmpty()) {
-            userSessions.remove(userId);
+        boolean becameOffline = messagePresenceTracker.disconnectUser(userId, session.getId());
+        if (becameOffline) {
             broadcastPresenceForUser(userId, false);
         }
     }
@@ -366,7 +361,7 @@ public class MessageSocketHandler extends TextWebSocketHandler {
             ObjectNode state = objectMapper.createObjectNode();
             state.put("conversationId", conversationId);
             state.put("userId", partnerUserId);
-            state.put("isOnline", isUserOnline(partnerUserId));
+            state.put("isOnline", messagePresenceTracker.isUserOnline(partnerUserId));
             states.add(state);
         }
 
@@ -386,8 +381,4 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    private boolean isUserOnline(Long userId) {
-        Set<String> activeSessions = userSessions.get(userId);
-        return activeSessions != null && !activeSessions.isEmpty();
-    }
 }

@@ -2,6 +2,7 @@ package com.example.pixel_project2.message;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.example.pixel_project2.message.websocket.MessagePresenceTracker;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -31,6 +32,9 @@ class MessageFlowIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private MessagePresenceTracker messagePresenceTracker;
 
     @Test
     void usersCanCreateSendFetchAndDeleteConversation() throws Exception {
@@ -221,6 +225,71 @@ class MessageFlowIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, BEARER + secondToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    void conversationPresenceReflectsAvailabilityAndTyping() throws Exception {
+        JsonNode firstUser = signUp("presence-a@test.io", "Presence A", "presenceA", "DESIGNER");
+        JsonNode secondUser = signUp("presence-b@test.io", "Presence B", "presenceB", "CLIENT");
+
+        String firstToken = login("presence-a@test.io", "testPass1!");
+        String secondToken = login("presence-b@test.io", "testPass1!");
+
+        long firstUserId = firstUser.path("userId").asLong();
+        long secondUserId = secondUser.path("userId").asLong();
+
+        MvcResult createConversationResult = mockMvc.perform(post("/api/messages/conversations")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("partnerUserId", secondUserId))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andReturn();
+
+        long conversationId = readData(createConversationResult).path("id").asLong();
+
+        messagePresenceTracker.connectUser(secondUserId, "presence-session");
+        messagePresenceTracker.updateTyping(conversationId, secondUserId, true);
+
+        mockMvc.perform(get("/api/messages/conversations/{conversationId}/presence", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.conversationId").value(conversationId))
+                .andExpect(jsonPath("$.data.partnerUserId").value(secondUserId))
+                .andExpect(jsonPath("$.data.partnerAvailable").value(true))
+                .andExpect(jsonPath("$.data.partnerTyping").value(true));
+
+        mockMvc.perform(get("/api/messages/conversations")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].partnerUserId").value(secondUserId))
+                .andExpect(jsonPath("$.data[0].partnerAvailable").value(true))
+                .andExpect(jsonPath("$.data[0].partnerTyping").value(true));
+
+        messagePresenceTracker.updateTyping(conversationId, secondUserId, false);
+        messagePresenceTracker.disconnectUser(secondUserId, "presence-session");
+
+        mockMvc.perform(get("/api/messages/conversations/{conversationId}/presence", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.partnerAvailable").value(false))
+                .andExpect(jsonPath("$.data.partnerTyping").value(false));
+
+        mockMvc.perform(post("/api/messages/conversations/{conversationId}/read", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + secondToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.readerUserId").value(secondUserId));
+
+        mockMvc.perform(get("/api/messages/conversations/{conversationId}/presence", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.partnerAvailable").value(false))
+                .andExpect(jsonPath("$.data.partnerTyping").value(false))
+                .andExpect(jsonPath("$.data.partnerUserId").value(secondUserId));
+
+        mockMvc.perform(delete("/api/messages/conversations/{conversationId}", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken))
+                .andExpect(status().isOk());
     }
 
     private JsonNode signUp(String loginId, String name, String nickname, String role) throws Exception {

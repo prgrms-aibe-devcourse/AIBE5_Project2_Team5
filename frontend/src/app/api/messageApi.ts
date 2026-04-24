@@ -15,6 +15,15 @@ export type MessageConversationResponse = {
   lastMessage: string | null;
   lastMessageAt: string | null;
   unreadCount: number;
+  partnerAvailable: boolean;
+  partnerTyping: boolean;
+};
+
+export type MessageConversationPresenceResponse = {
+  conversationId: number;
+  partnerUserId: number;
+  partnerAvailable: boolean;
+  partnerTyping: boolean;
 };
 
 export type ChatMessageResponse = {
@@ -106,6 +115,14 @@ export async function sendConversationMessageApi(
       }),
     },
     "Failed to send message.",
+  );
+}
+
+export async function getConversationPresenceApi(conversationId: number) {
+  return apiRequest<MessageConversationPresenceResponse>(
+    `/api/messages/conversations/${conversationId}/presence`,
+    {},
+    "Failed to load conversation presence.",
   );
 }
 

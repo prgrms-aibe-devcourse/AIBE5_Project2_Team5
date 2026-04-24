@@ -10,6 +10,7 @@ import {
 import {
   deleteMessageConversationApi,
   getConversationProcessesApi,
+  getConversationPresenceApi,
   getConversationMessagesApi,
   getMessageConversationsApi,
   markConversationReadApi,
@@ -423,8 +424,12 @@ const mapConversationResponse = (
     time: formatConversationTime(conversation.lastMessageAt),
     unread: conversation.unreadCount > 0,
     unreadCount: conversation.unreadCount,
-    online: false,
-    statusText: "자리비움",
+    online: conversation.partnerAvailable,
+    statusText: conversation.partnerTyping
+      ? "입력 중..."
+      : conversation.partnerAvailable
+        ? "메시지 가능"
+        : "자리비움",
     avatar:
       conversation.partnerProfileImage ||
       `https://i.pravatar.cc/150?u=message-${conversation.partnerUserId}`,
@@ -1015,10 +1020,15 @@ export default function Messages() {
     setProcesses(nextProcesses);
     setProcessCreated(nextProcesses.length > 0);
     setExpandedProcess((current) => {
-      const candidate = preferredExpandedId ?? current;
       if (nextProcesses.length === 0) {
         return null;
       }
+
+      if (preferredExpandedId === null) {
+        return null;
+      }
+
+      const candidate = preferredExpandedId ?? current;
 
       return candidate && nextProcesses.some((process) => process.id === candidate)
         ? candidate
@@ -1212,6 +1222,62 @@ export default function Messages() {
       window.clearInterval(pollInterval);
     };
   }, [activeConversation?.id, currentUserId, isSocketConnected]);
+
+  useEffect(() => {
+    if (!activeConversation) return;
+
+    let mounted = true;
+    const conversationId = activeConversation.id;
+
+    async function loadConversationPresence(silent = false) {
+      try {
+        const presence = await getConversationPresenceApi(conversationId);
+        if (!mounted || activeConversationIdRef.current !== conversationId) return;
+
+        setOnlineByConversationId((prev) => ({
+          ...prev,
+          [conversationId]: presence.partnerAvailable,
+        }));
+        setServerConversations((prev) =>
+          prev.map((conversation) =>
+            conversation.id === conversationId
+              ? {
+                  ...conversation,
+                  online: presence.partnerAvailable,
+                  statusText: presence.partnerTyping
+                    ? "입력 중..."
+                    : presence.partnerAvailable
+                      ? "메시지 가능"
+                      : "자리비움",
+                }
+              : conversation
+          )
+        );
+        setTypingConversationId((current) => {
+          if (presence.partnerTyping) {
+            return conversationId;
+          }
+
+          return current === conversationId ? null : current;
+        });
+      } catch (error) {
+        if (!mounted || silent) return;
+        setConversationError(
+          error instanceof Error ? error.message : "대화 상태를 불러오지 못했습니다."
+        );
+      }
+    }
+
+    void loadConversationPresence();
+    const pollInterval = window.setInterval(() => {
+      void loadConversationPresence(true);
+    }, isSocketConnected ? CONNECTED_MESSAGE_POLL_INTERVAL : DISCONNECTED_POLL_INTERVAL);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(pollInterval);
+    };
+  }, [activeConversation?.id, isSocketConnected]);
 
   useEffect(() => {
     if (!activeConversation) {
@@ -1634,7 +1700,7 @@ export default function Messages() {
     const roleLabel = getProcessParticipantDisplayLabel(role);
     void persistProcesses(nextProcesses, {
       optimistic: true,
-      preferredExpandedId: processId,
+      preferredExpandedId: null,
       successMessage: isConfirming ? `${roleLabel} 확인이 기록되었습니다.` : undefined,
     });
     return;
@@ -1868,6 +1934,9 @@ export default function Messages() {
     role === "designer"
       ? `${getCurrentParticipantName()} (${getCurrentParticipantRoleLabel()})`
       : `${getPartnerParticipantName()} (${getPartnerParticipantRoleLabel()})`;
+
+  const isProcessConfirmationEditable = (role: keyof ProcessConfirmations) =>
+    role === "designer";
 
   const getConfirmationLabel = (
     role: keyof ProcessConfirmations,
@@ -3031,7 +3100,7 @@ export default function Messages() {
                           }`}
                         />
                         <p className="min-w-0 flex-1 truncate text-xs text-gray-500">
-                          {conv.online ? "온라인" : conv.statusText}
+                          {conv.statusText}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -3108,7 +3177,7 @@ export default function Messages() {
                       activeConversation.online ? "bg-[#72CDBD]" : "bg-gray-300"
                     }`}
                   />
-                  {activeConversation.statusText}
+                  {isPartnerTyping ? "입력 중..." : activeConversation.statusText}
                 </p>
               </div>
             </div>
@@ -3669,7 +3738,7 @@ export default function Messages() {
                   <p className="text-sm text-gray-600">
                     {activeConversation.title}
                     <span className="mx-1.5 text-gray-300">·</span>
-                    {activeConversation.statusText}
+                    {isPartnerTyping ? "입력 중..." : activeConversation.statusText}
                   </p>
                 </div>
 
@@ -3797,6 +3866,8 @@ export default function Messages() {
                           progress === 100 && hasBothConfirmations(process.confirmations);
                         const approvalBadge = getProcessApprovalBadge(process, progress);
                         const approvalSummary = getProcessApprovalSummary(process, progress);
+                        const canEditDesignerConfirmation = isProcessConfirmationEditable("designer");
+                        const canEditClientConfirmation = isProcessConfirmationEditable("client");
 
                         return (
                           <div
@@ -3905,14 +3976,19 @@ export default function Messages() {
                               <div className="grid grid-cols-2 gap-2">
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    toggleProcessConfirmation(process.id, "designer")
-                                  }
+                                  onClick={() => {
+                                    if (!canEditDesignerConfirmation) return;
+                                    toggleProcessConfirmation(process.id, "designer");
+                                  }}
+                                  disabled={!canEditDesignerConfirmation}
                                   aria-pressed={process.confirmations.designer}
+                                  aria-disabled={!canEditDesignerConfirmation}
                                   className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-all ${
                                     process.confirmations.designer
                                       ? "border-[#9EE7D0] bg-white text-[#12382D] shadow-[0_8px_20px_rgba(0,201,167,0.12)] ring-1 ring-[#DDF8EC]"
-                                      : "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
+                                      : canEditDesignerConfirmation
+                                        ? "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
+                                        : "border-gray-200 bg-[#F3F4F6] text-gray-400"
                                   }`}
                                 >
                                   <span className="flex items-center justify-center gap-2">
@@ -3943,14 +4019,19 @@ export default function Messages() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    toggleProcessConfirmation(process.id, "client")
-                                  }
+                                  onClick={() => {
+                                    if (!canEditClientConfirmation) return;
+                                    toggleProcessConfirmation(process.id, "client");
+                                  }}
+                                  disabled={!canEditClientConfirmation}
                                   aria-pressed={process.confirmations.client}
+                                  aria-disabled={!canEditClientConfirmation}
                                   className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-all ${
                                     process.confirmations.client
                                       ? "border-[#9EE7D0] bg-white text-[#12382D] shadow-[0_8px_20px_rgba(0,201,167,0.12)] ring-1 ring-[#DDF8EC]"
-                                      : "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
+                                      : canEditClientConfirmation
+                                        ? "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
+                                        : "border-gray-200 bg-[#F3F4F6] text-gray-400"
                                   }`}
                                 >
                                   <span className="flex items-center justify-center gap-2">
