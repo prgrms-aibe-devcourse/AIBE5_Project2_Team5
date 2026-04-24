@@ -10,12 +10,14 @@ import {
 import {
   deleteMessageConversationApi,
   getConversationProcessesApi,
+  getConversationPresenceApi,
   getConversationMessagesApi,
   getMessageConversationsApi,
   markConversationReadApi,
   saveConversationProcessesApi,
   sendConversationMessageApi,
   toggleMessageReactionApi,
+  updateConversationTypingApi,
   type ChatMessageResponse as ApiChatMessageResponse,
   type MessageConversationResponse as ApiMessageConversationResponse,
   type MessageProcessResponse as ApiMessageProcessResponse,
@@ -23,7 +25,11 @@ import {
 import {
   uploadMessageAttachmentsApi,
 } from "../api/uploadApi";
-import { createMessageSocket, type IncomingMessageSocketEvent } from "../api/messageSocket";
+import {
+  createMessageSocket,
+  type IncomingMessageSocketEvent,
+  type MessagePresenceState,
+} from "../api/messageSocket";
 import { getCurrentUser } from "../utils/auth";
 
 type AttachmentUploadStatus = "uploading" | "ready" | "failed";
@@ -124,9 +130,17 @@ const MESSAGE_DRAFTS_STORAGE_KEY = "pickxel:message-drafts";
 const LEFT_CONVERSATIONS_STORAGE_KEY = "pickxel:left-message-conversations";
 const CONNECTED_CONVERSATION_POLL_INTERVAL = 5000;
 const CONNECTED_MESSAGE_POLL_INTERVAL = 1000;
-const CONNECTED_PROCESS_POLL_INTERVAL = 3000;
+const CONNECTED_PROCESS_POLL_INTERVAL = 1000;
 const DISCONNECTED_POLL_INTERVAL = 1000;
 const TYPING_IDLE_DELAY = 1200;
+const TYPING_SYNC_INTERVAL = 800;
+const DEBUG_MESSAGE_TYPING = import.meta.env.DEV;
+
+const debugMessageTyping = (...args: unknown[]) => {
+  if (DEBUG_MESSAGE_TYPING) {
+    console.debug("[MessagesTyping]", ...args);
+  }
+};
 
 const createClientId = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -358,6 +372,7 @@ const readLeftConversationIds = () =>
 type Conversation = {
   id: number;
   partnerId: string;
+  partnerRole: ApiMessageConversationResponse["partnerRole"];
   username: string;
   name: string;
   profileName: string;
@@ -408,6 +423,7 @@ const mapConversationResponse = (
   return {
     id: conversation.id,
     partnerId: String(conversation.partnerUserId),
+    partnerRole: conversation.partnerRole,
     username: conversation.partnerLoginId || partnerDisplayName,
     name: partnerDisplayName,
     profileName: partnerDisplayName,
@@ -417,8 +433,12 @@ const mapConversationResponse = (
     time: formatConversationTime(conversation.lastMessageAt),
     unread: conversation.unreadCount > 0,
     unreadCount: conversation.unreadCount,
-    online: false,
-    statusText: "메시지 가능",
+    online: conversation.partnerAvailable,
+    statusText: conversation.partnerTyping
+      ? "입력 중..."
+      : conversation.partnerAvailable
+        ? "메시지 가능"
+        : "자리비움",
     avatar:
       conversation.partnerProfileImage ||
       `https://i.pravatar.cc/150?u=message-${conversation.partnerUserId}`,
@@ -543,7 +563,7 @@ const normalizeIncomingAttachments = (attachments: unknown): MessageAttachment[]
           {
             id,
             type: "icon" as const,
-            value: item.value,
+            value: normalizeMessageIconValue(item.value),
             name,
             uploadStatus,
           },
@@ -610,7 +630,7 @@ const buildOutgoingAttachmentsPayload = (attachments: MessageAttachment[]) =>
           {
             id: attachment.id,
             type: "icon" as const,
-            value: attachment.value,
+            value: toMessageIconStorageValue(attachment.value),
             name: attachment.name,
           },
         ];
@@ -633,11 +653,145 @@ const readFileAsDataUrl = (file: File) =>
     reader.readAsDataURL(file);
   });
 
+const reactionEmojiAliases: Record<string, string> = {
+  thumbs_up: "👍",
+  thumbsup: "👍",
+  "thumbs-up": "👍",
+  heart: "❤️",
+  fire: "🔥",
+  clap: "👏",
+  joy: "😂",
+  wow: "😮",
+  palette: "🎨",
+  check: "✅",
+  eyes: "👀",
+  rocket: "🚀",
+};
+
+const messageIconDisplayByKey: Record<string, string> = {
+  thumbs_up: "👍",
+  clap: "👏",
+  raising_hands: "🙌",
+  ok_hand: "👌",
+  pray: "🙏",
+  smile: "😊",
+  slight_smile: "🙂",
+  grin: "😄",
+  thinking: "🤔",
+  eyes: "👀",
+  sparkles: "✨",
+  fire: "🔥",
+  palette: "🎨",
+  framed_picture: "🖼️",
+  idea: "💡",
+  pin: "📌",
+  check: "✅",
+  memo: "📝",
+  rocket: "🚀",
+  speech_balloon: "💬",
+  heart: "❤️",
+  star: "⭐",
+  coffee: "☕",
+  target: "🎯",
+};
+
+const messageIconKeyByAlias = Object.entries(messageIconDisplayByKey).reduce(
+  (accumulator, [key, emoji]) => {
+    const normalizedKey = key.trim().replace(/\uFE0F/g, "").toLowerCase();
+    const normalizedEmoji = emoji.trim().replace(/\uFE0F/g, "").toLowerCase();
+    accumulator[normalizedKey] = key;
+    accumulator[`:${normalizedKey}:`] = key;
+    accumulator[normalizedEmoji] = key;
+    return accumulator;
+  },
+  {
+    thumbsup: "thumbs_up",
+    "thumbs-up": "thumbs_up",
+    "thumbs up": "thumbs_up",
+    raise_hands: "raising_hands",
+    raised_hands: "raising_hands",
+    ok: "ok_hand",
+    bulb: "idea",
+    light_bulb: "idea",
+    pushpin: "pin",
+    comment: "speech_balloon",
+    speech: "speech_balloon",
+    dart: "target",
+    picture: "framed_picture",
+    frame: "framed_picture",
+    art: "palette",
+    tick: "check",
+    check_mark: "check",
+    note: "memo",
+  } as Record<string, string>
+);
+
+const normalizeReactionEmoji = (emoji: string) => {
+  const normalizedKey = emoji.trim().replace(/\uFE0F/g, "").replace(/-/g, "_").toLowerCase();
+  return reactionEmojiAliases[normalizedKey] ?? emoji;
+};
+
+const normalizeMessageIconValue = (value: string) => {
+  const normalizedValue = value.trim().replace(/\uFE0F/g, "").toLowerCase();
+  const iconKey = messageIconKeyByAlias[normalizedValue];
+  return iconKey ? (messageIconDisplayByKey[iconKey] ?? value) : value;
+};
+
+const toMessageIconStorageValue = (value: string) => {
+  const normalizedValue = value.trim().replace(/\uFE0F/g, "").toLowerCase();
+  const iconKey = messageIconKeyByAlias[normalizedValue];
+  return iconKey ? `:${iconKey}:` : value;
+};
+
+const normalizeMessageReactions = (reactions: MessageReaction[] = []) =>
+  reactions.map((reaction) => ({
+    ...reaction,
+    emoji: normalizeReactionEmoji(reaction.emoji),
+  }));
+
+const toNumericUserId = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : null;
+  }
+
+  return null;
+};
+
+const isCurrentUsersMessage = (
+  senderUserId: unknown,
+  options: {
+    currentUserId?: number;
+    partnerUserId?: string | number | null;
+  }
+) => {
+  const normalizedSenderUserId = toNumericUserId(senderUserId);
+  const normalizedCurrentUserId = toNumericUserId(options.currentUserId);
+
+  if (normalizedSenderUserId !== null && normalizedCurrentUserId !== null) {
+    return normalizedSenderUserId === normalizedCurrentUserId;
+  }
+
+  const normalizedPartnerUserId = toNumericUserId(options.partnerUserId);
+  if (normalizedSenderUserId !== null && normalizedPartnerUserId !== null) {
+    return normalizedSenderUserId !== normalizedPartnerUserId;
+  }
+
+  return false;
+};
+
 const mapChatMessageResponse = (
   message: ApiChatMessageResponse,
-  currentUserId?: number
+  options: {
+    currentUserId?: number;
+    partnerUserId?: string | number | null;
+  }
 ): ChatMessage => {
-  const isSelf = currentUserId === message.senderUserId;
+  const isSelf = isCurrentUsersMessage(message.senderUserId, options);
   const messageId = String(message.id);
 
   return {
@@ -653,7 +807,7 @@ const mapChatMessageResponse = (
     isSelf,
     status: isSelf && message.readByPartner ? "read" : "sent",
     attachments: normalizeIncomingAttachments(message.attachments ?? []),
-    reactions: message.reactions ?? [],
+    reactions: normalizeMessageReactions(message.reactions ?? []),
   };
 };
 
@@ -804,7 +958,25 @@ export default function Messages() {
   const [leftConversationIds, setLeftConversationIds] = useState<number[]>(
     readLeftConversationIds
   );
-  const rawConversations = [...serverConversations, ...conversations];
+  const [onlineByConversationId, setOnlineByConversationId] = useState<Record<number, boolean>>(
+    {}
+  );
+  const [typingConversationId, setTypingConversationId] = useState<number | null>(null);
+  const rawConversations = [...serverConversations, ...conversations].map((conversation) => {
+    const isOnline = onlineByConversationId[conversation.id] ?? conversation.online;
+    const statusText =
+      typingConversationId === conversation.id
+        ? "입력 중..."
+        : isOnline
+          ? "메시지 가능"
+          : "자리비움";
+
+    return {
+      ...conversation,
+      online: isOnline,
+      statusText,
+    };
+  });
   const allConversations = rawConversations.filter(
     (conversation) => !leftConversationIds.includes(conversation.id)
   );
@@ -854,7 +1026,6 @@ export default function Messages() {
     key: number;
     shouldBounceCount: boolean;
   } | null>(null);
-  const [typingConversationId, setTypingConversationId] = useState<number | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ src: string; name: string } | null>(null);
   const [processToast, setProcessToast] = useState<ProcessToast | null>(null);
@@ -863,8 +1034,11 @@ export default function Messages() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageSocketRef = useRef<ReturnType<typeof createMessageSocket> | null>(null);
   const activeConversationIdRef = useRef(activeConversationId);
+  const onlineByConversationIdRef = useRef<Record<number, boolean>>({});
   const typingTimeoutRef = useRef<number | null>(null);
   const typingConversationRef = useRef<number | null>(null);
+  const partnerTypingConversationIdRef = useRef<number | null>(null);
+  const lastTypingSyncAtRef = useRef<Record<number, number>>({});
   const partnerTypingTimeoutRef = useRef<number | null>(null);
   const activeConversation =
     allConversations.find((conversation) => conversation.id === activeConversationId) ??
@@ -874,11 +1048,144 @@ export default function Messages() {
     ? chatMessages.filter((message) => message.conversationId === activeConversation.id)
     : [];
 
+  function applyPresenceStates(states: MessagePresenceState[]) {
+    const partnerUserIdByConversationId = new Map(
+      allConversations.map((conversation) => [
+        conversation.id,
+        toNumericUserId(conversation.partnerId),
+      ])
+    );
+
+    setOnlineByConversationId((prev) => {
+      const next = { ...prev };
+      states.forEach((state) => {
+        const partnerUserId = partnerUserIdByConversationId.get(state.conversationId);
+        if (partnerUserId === state.userId) {
+          next[state.conversationId] = state.isOnline;
+          return;
+        }
+
+        if (
+          (partnerUserId === null || partnerUserId === undefined) &&
+          state.userId !== currentUserId
+        ) {
+          next[state.conversationId] = state.isOnline;
+        }
+      });
+      onlineByConversationIdRef.current = next;
+      return next;
+    });
+    setServerConversations((prev) =>
+      prev.map((conversation) => {
+        const nextState = states.find((state) => {
+          const partnerUserId = partnerUserIdByConversationId.get(state.conversationId);
+          return (
+            state.conversationId === conversation.id &&
+            (partnerUserId === state.userId ||
+              ((partnerUserId === null || partnerUserId === undefined) &&
+                state.userId !== currentUserId))
+          );
+        });
+
+        if (!nextState) {
+          return conversation;
+        }
+
+        const isTyping = partnerTypingConversationIdRef.current === conversation.id;
+        return {
+          ...conversation,
+          online: nextState.isOnline,
+          statusText: isTyping
+            ? "입력 중..."
+            : nextState.isOnline
+              ? "메시지 가능"
+              : "자리비움",
+        };
+      })
+    );
+  }
+
   function clearOwnTypingTimeout() {
     if (typingTimeoutRef.current !== null) {
       window.clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = null;
     }
+  }
+
+  function applyConversationPresence(
+    conversationId: number,
+    presence: {
+      partnerAvailable: boolean;
+      partnerTyping: boolean;
+    }
+  ) {
+    debugMessageTyping("applyConversationPresence", {
+      conversationId,
+      presence,
+    });
+    setOnlineByConversationId((prev) => {
+      const next = {
+        ...prev,
+        [conversationId]: presence.partnerAvailable,
+      };
+      onlineByConversationIdRef.current = next;
+      return next;
+    });
+    setServerConversations((prev) =>
+      prev.map((conversation) =>
+        conversation.id === conversationId
+          ? {
+              ...conversation,
+              online: presence.partnerAvailable,
+              statusText: presence.partnerTyping
+                ? "입력 중..."
+                : presence.partnerAvailable
+                  ? "메시지 가능"
+                  : "자리비움",
+            }
+          : conversation
+      )
+    );
+    setTypingConversationId((current) => {
+      const nextTypingConversationId = presence.partnerTyping
+        ? conversationId
+        : current === conversationId
+          ? null
+          : current;
+      partnerTypingConversationIdRef.current = nextTypingConversationId;
+      return nextTypingConversationId;
+    });
+  }
+
+  function notifyTypingState(conversationId: number, isTyping: boolean) {
+    debugMessageTyping("notifyTypingState", {
+      conversationId,
+      isTyping,
+      currentUserId,
+    });
+    const now = Date.now();
+    if (isTyping) {
+      const lastSyncedAt = lastTypingSyncAtRef.current[conversationId] ?? 0;
+      if (now - lastSyncedAt < TYPING_SYNC_INTERVAL) {
+        return;
+      }
+      lastTypingSyncAtRef.current[conversationId] = now;
+    } else {
+      delete lastTypingSyncAtRef.current[conversationId];
+    }
+
+    const socket = messageSocketRef.current;
+    if (socket?.isOpen()) {
+      try {
+        socket.sendTyping(conversationId, isTyping);
+      } catch {
+        // REST fallback below still updates typing state.
+      }
+    }
+
+    void updateConversationTypingApi(conversationId, isTyping).catch(() => {
+      // Presence polling will retry shortly; ignore transient typing sync failures.
+    });
   }
 
   function stopOwnTyping(conversationId = typingConversationRef.current) {
@@ -889,14 +1196,7 @@ export default function Messages() {
       return;
     }
 
-    const socket = messageSocketRef.current;
-    if (socket?.isOpen()) {
-      try {
-        socket.sendTyping(conversationId, false);
-      } catch {
-        // Ignore transient typing send failures.
-      }
-    }
+    notifyTypingState(conversationId, false);
 
     if (typingConversationRef.current === conversationId) {
       typingConversationRef.current = null;
@@ -907,10 +1207,15 @@ export default function Messages() {
     setProcesses(nextProcesses);
     setProcessCreated(nextProcesses.length > 0);
     setExpandedProcess((current) => {
-      const candidate = preferredExpandedId ?? current;
       if (nextProcesses.length === 0) {
         return null;
       }
+
+      if (preferredExpandedId === null) {
+        return null;
+      }
+
+      const candidate = preferredExpandedId ?? current;
 
       return candidate && nextProcesses.some((process) => process.id === candidate)
         ? candidate
@@ -1005,8 +1310,26 @@ export default function Messages() {
 
         if (!mounted) return;
 
-        const nextConversations = conversationResponses.map(mapConversationResponse);
+        const nextConversations = conversationResponses.map(mapConversationResponse).map((conversation) => {
+          const isOnline =
+            onlineByConversationIdRef.current[conversation.id] ?? conversation.online;
+          const isTyping = partnerTypingConversationIdRef.current === conversation.id;
+
+          return {
+            ...conversation,
+            online: isOnline,
+            statusText: isTyping ? "입력 중..." : isOnline ? "메시지 가능" : "자리비움",
+          };
+        });
         setServerConversations(nextConversations);
+        const socket = messageSocketRef.current;
+        if (socket?.isOpen() && nextConversations.length > 0) {
+          try {
+            socket.subscribe(nextConversations.map((conversation) => conversation.id));
+          } catch {
+            // Ignore transient subscribe refresh failures.
+          }
+        }
 
         const requestedId = Number.isFinite(requestedConversationId)
           ? requestedConversationId
@@ -1057,7 +1380,10 @@ export default function Messages() {
         if (!mounted || activeConversationIdRef.current !== conversationId) return;
 
         const nextMessages = messageResponses.map((message) =>
-          mapChatMessageResponse(message, currentUserId)
+          mapChatMessageResponse(message, {
+            currentUserId,
+            partnerUserId: activeConversation.partnerId,
+          })
         );
 
         setChatMessages((prev) => {
@@ -1093,6 +1419,42 @@ export default function Messages() {
       window.clearInterval(pollInterval);
     };
   }, [activeConversation?.id, currentUserId, isSocketConnected]);
+
+  useEffect(() => {
+    if (!activeConversation) return;
+
+    let mounted = true;
+    const conversationId = activeConversation.id;
+
+    async function loadConversationPresence(silent = false) {
+      try {
+        const presence = await getConversationPresenceApi(conversationId);
+        if (!mounted || activeConversationIdRef.current !== conversationId) return;
+
+        debugMessageTyping("presence api", {
+          conversationId,
+          silent,
+          presence,
+        });
+        applyConversationPresence(conversationId, presence);
+      } catch (error) {
+        if (!mounted || silent) return;
+        setConversationError(
+          error instanceof Error ? error.message : "대화 상태를 불러오지 못했습니다."
+        );
+      }
+    }
+
+    void loadConversationPresence();
+    const pollInterval = window.setInterval(() => {
+      void loadConversationPresence(true);
+    }, isSocketConnected ? CONNECTED_MESSAGE_POLL_INTERVAL : DISCONNECTED_POLL_INTERVAL);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(pollInterval);
+    };
+  }, [activeConversation?.id, isSocketConnected]);
 
   useEffect(() => {
     if (!activeConversation) {
@@ -1165,6 +1527,14 @@ export default function Messages() {
   }, [activeConversationId]);
 
   useEffect(() => {
+    onlineByConversationIdRef.current = onlineByConversationId;
+  }, [onlineByConversationId]);
+
+  useEffect(() => {
+    partnerTypingConversationIdRef.current = typingConversationId;
+  }, [typingConversationId]);
+
+  useEffect(() => {
     return () => {
       stopOwnTyping();
     };
@@ -1186,24 +1556,38 @@ export default function Messages() {
       },
       onEvent: (event: IncomingMessageSocketEvent) => {
         if (event.type === "typing") {
+          debugMessageTyping("socket typing event", {
+            event,
+            currentUserId,
+            activeConversationId: activeConversationIdRef.current,
+          });
           if (event.senderUserId !== currentUserId) {
             if (partnerTypingTimeoutRef.current !== null) {
               window.clearTimeout(partnerTypingTimeoutRef.current);
               partnerTypingTimeoutRef.current = null;
             }
 
+            const currentConversation = allConversations.find(
+              (conversation) => conversation.id === event.conversationId
+            );
+
             if (event.isTyping) {
-              setTypingConversationId(event.conversationId);
+              applyConversationPresence(event.conversationId, {
+                partnerAvailable: currentConversation?.online ?? true,
+                partnerTyping: true,
+              });
               partnerTypingTimeoutRef.current = window.setTimeout(() => {
-                setTypingConversationId((current) =>
-                  current === event.conversationId ? null : current
-                );
+                applyConversationPresence(event.conversationId, {
+                  partnerAvailable: currentConversation?.online ?? true,
+                  partnerTyping: false,
+                });
                 partnerTypingTimeoutRef.current = null;
               }, TYPING_IDLE_DELAY + 800);
             } else {
-              setTypingConversationId((current) =>
-                current === event.conversationId ? null : current
-              );
+              applyConversationPresence(event.conversationId, {
+                partnerAvailable: currentConversation?.online ?? true,
+                partnerTyping: false,
+              });
             }
           }
           return;
@@ -1230,8 +1614,30 @@ export default function Messages() {
           return;
         }
 
+        if (event.type === "presence.snapshot") {
+          applyPresenceStates(event.states);
+          return;
+        }
+
+        if (event.type === "presence.update") {
+          applyPresenceStates([
+            {
+              conversationId: event.conversationId,
+              userId: event.userId,
+              isOnline: event.isOnline,
+            },
+          ]);
+          return;
+        }
+
         const incomingMessage = event;
-        const isSelfMessage = currentUserId === incomingMessage.senderUserId;
+        const partnerUserId = allConversations.find(
+          (conversation) => conversation.id === incomingMessage.conversationId
+        )?.partnerId;
+        const isSelfMessage = isCurrentUsersMessage(incomingMessage.senderUserId, {
+          currentUserId,
+          partnerUserId,
+        });
         const nextMessage: ChatMessage = {
           id: incomingMessage.serverId,
           clientId: incomingMessage.clientId || incomingMessage.serverId,
@@ -1245,7 +1651,7 @@ export default function Messages() {
           isSelf: isSelfMessage,
           status: isSelfMessage && incomingMessage.readByPartner ? "read" : "sent",
           attachments: normalizeIncomingAttachments(incomingMessage.attachments ?? []),
-          reactions: incomingMessage.reactions ?? [],
+          reactions: normalizeMessageReactions(incomingMessage.reactions ?? []),
         };
 
         setChatMessages((prev) => {
@@ -1291,6 +1697,7 @@ export default function Messages() {
       onClose: () => {
         setIsSocketConnected(false);
         setTypingConversationId(null);
+        partnerTypingConversationIdRef.current = null;
         if (partnerTypingTimeoutRef.current !== null) {
           window.clearTimeout(partnerTypingTimeoutRef.current);
           partnerTypingTimeoutRef.current = null;
@@ -1381,14 +1788,15 @@ export default function Messages() {
 
     if (!lastMessage) return fallbackConversation?.message ?? "";
 
-    const hasText = Boolean(lastMessage.message.trim());
+    const messageText = typeof lastMessage.message === "string" ? lastMessage.message : "";
+    const hasText = Boolean(messageText.trim());
     const hasAttachments = Boolean(lastMessage.attachments?.length);
 
     if (!hasText && hasAttachments && lastMessage.attachments) {
       return getAttachmentConversationPreview(lastMessage.attachments);
     }
 
-    return lastMessage.message || fallbackConversation?.message || "";
+    return messageText || fallbackConversation?.message || "";
   };
 
   const getConversationUnreadCount = (conversation: Conversation) =>
@@ -1490,10 +1898,10 @@ export default function Messages() {
       };
     });
 
-    const roleLabel = role === "designer" ? "디자이너" : "클라이언트";
+    const roleLabel = getProcessParticipantButtonTitle(role);
     void persistProcesses(nextProcesses, {
       optimistic: true,
-      preferredExpandedId: processId,
+      preferredExpandedId: null,
       successMessage: isConfirming ? `${roleLabel} 확인이 기록되었습니다.` : undefined,
     });
     return;
@@ -1705,19 +2113,75 @@ export default function Messages() {
     );
   };
 
+  const getCurrentParticipantRoleLabel = () =>
+    currentUser?.role === "client" ? "클라이언트" : "디자이너";
+
+  const getPartnerParticipantRoleLabel = () =>
+    activeConversation?.partnerRole === "CLIENT" ? "클라이언트" : "디자이너";
+
+  const getCurrentParticipantName = () =>
+    currentUser?.nickname?.trim() || currentUser?.name?.trim() || "나";
+
+  const getPartnerParticipantName = () =>
+    activeConversation?.profileName?.trim() || activeConversation?.name?.trim() || "상대방";
+
+  const getShortParticipantName = (name: string, maxLength = 8) =>
+    name.length > maxLength ? `${name.slice(0, maxLength)}…` : name;
+
+  const normalizedCurrentParticipantUserId = toNumericUserId(currentUserId);
+  const normalizedPartnerParticipantUserId = toNumericUserId(activeConversation?.partnerId);
+  const currentProcessConfirmationRole: keyof ProcessConfirmations =
+    currentUser?.role === "client" && activeConversation?.partnerRole !== "CLIENT"
+      ? "client"
+      : currentUser?.role === "designer" && activeConversation?.partnerRole !== "DESIGNER"
+        ? "designer"
+        : normalizedCurrentParticipantUserId !== null && normalizedPartnerParticipantUserId !== null
+          ? normalizedCurrentParticipantUserId <= normalizedPartnerParticipantUserId
+            ? "designer"
+            : "client"
+          : "designer";
+  const partnerProcessConfirmationRole: keyof ProcessConfirmations =
+    currentProcessConfirmationRole === "designer" ? "client" : "designer";
+
+  const getProcessParticipantRoleLabel = (
+    role: keyof ProcessConfirmations
+  ) =>
+    role === currentProcessConfirmationRole
+      ? getCurrentParticipantRoleLabel()
+      : getPartnerParticipantRoleLabel();
+
+  const getProcessParticipantDisplayLabel = (
+    role: keyof ProcessConfirmations
+  ) =>
+    role === currentProcessConfirmationRole
+      ? `${getCurrentParticipantName()} (${getCurrentParticipantRoleLabel()})`
+      : `${getPartnerParticipantName()} (${getPartnerParticipantRoleLabel()})`;
+
+  const getProcessParticipantButtonTitle = (role: keyof ProcessConfirmations) =>
+    `${getProcessParticipantRoleLabel(role)} 확인`;
+
+  const getProcessParticipantButtonSubtitle = (role: keyof ProcessConfirmations) =>
+    role === currentProcessConfirmationRole
+      ? getShortParticipantName(getCurrentParticipantName())
+      : getShortParticipantName(getPartnerParticipantName());
+
+  const isProcessConfirmationEditable = (role: keyof ProcessConfirmations) =>
+    role === currentProcessConfirmationRole;
+
   const getConfirmationLabel = (
     role: keyof ProcessConfirmations,
     confirmations: ProcessConfirmations
   ) => {
-    const roleLabel = role === "designer" ? "디자이너" : "클라이언트";
+    const roleLabel = getProcessParticipantDisplayLabel(role);
     return confirmations[role] ? `${roleLabel} 확인 완료` : `${roleLabel} 대기`;
   };
 
   const getProcessApprovalSummary = (process: ProjectProcess, progress: number) =>
-    `작업 ${progress}% · ${getConfirmationLabel(
-      "designer",
-      process.confirmations
-    )} · ${getConfirmationLabel("client", process.confirmations)}`;
+    `작업 ${progress}% · ${
+      process.confirmations.designer ? "디자이너 완료" : "디자이너 대기"
+    } · ${
+      process.confirmations.client ? "클라이언트 완료" : "클라이언트 대기"
+    }`;
 
   const getProcessApprovalBadge = (process: ProjectProcess, progress: number) => {
     if (progress === 100 && hasBothConfirmations(process.confirmations)) {
@@ -1836,6 +2300,8 @@ export default function Messages() {
     }
   };
 
+  const processCompletionGuideText = "작업이 끝나면 양쪽 모두 확인해 주세요.";
+
   const handleDeleteConversation = async () => {
     if (!activeConversation) return;
     stopOwnTyping(activeConversation.id);
@@ -1889,6 +2355,11 @@ export default function Messages() {
 
   const updateMessageText = (value: string) => {
     if (!activeConversation) return;
+    debugMessageTyping("updateMessageText", {
+      conversationId: activeConversation.id,
+      valueLength: value.length,
+      hasTrimmedValue: Boolean(value.trim()),
+    });
     setMessageText(value);
     setMessageDrafts((prev) => ({
       ...prev,
@@ -1896,16 +2367,7 @@ export default function Messages() {
     }));
 
     const conversationId = activeConversation.id;
-    const socket = messageSocketRef.current;
     const trimmedValue = value.trim();
-
-    if (!socket?.isOpen()) {
-      if (!trimmedValue && typingConversationRef.current === conversationId) {
-        typingConversationRef.current = null;
-      }
-      clearOwnTypingTimeout();
-      return;
-    }
 
     if (!trimmedValue) {
       if (typingConversationRef.current === conversationId) {
@@ -1921,12 +2383,10 @@ export default function Messages() {
         stopOwnTyping(typingConversationRef.current);
       }
 
-      try {
-        socket.sendTyping(conversationId, true);
-        typingConversationRef.current = conversationId;
-      } catch {
-        return;
-      }
+      notifyTypingState(conversationId, true);
+      typingConversationRef.current = conversationId;
+    } else {
+      notifyTypingState(conversationId, true);
     }
 
     clearOwnTypingTimeout();
@@ -2170,7 +2630,7 @@ export default function Messages() {
         id: createClientId("icon"),
         type: "icon",
         value: icon,
-        name: `${icon} 아이콘`,
+        name: "메시지 이모티콘",
         uploadStatus: "ready",
       },
     ]);
@@ -2264,11 +2724,11 @@ export default function Messages() {
       setChatMessages((prev) =>
         prev.map((message) =>
           message.clientId === messageClientId || Number(message.serverId ?? message.id) === response.messageId
-            ? {
-                ...message,
-                reactions: response.reactions,
-              }
-            : message
+              ? {
+                  ...message,
+                  reactions: normalizeMessageReactions(response.reactions),
+                }
+              : message
         )
       );
     } catch (error) {
@@ -2865,7 +3325,7 @@ export default function Messages() {
                           }`}
                         />
                         <p className="min-w-0 flex-1 truncate text-xs text-gray-500">
-                          {conv.online ? "온라인" : conv.statusText}
+                          {conv.statusText}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -2942,7 +3402,7 @@ export default function Messages() {
                       activeConversation.online ? "bg-[#72CDBD]" : "bg-gray-300"
                     }`}
                   />
-                  {activeConversation.statusText}
+                  {isPartnerTyping ? "입력 중..." : activeConversation.statusText}
                 </p>
               </div>
             </div>
@@ -3144,37 +3604,6 @@ export default function Messages() {
                 </div>
               </div>
             ))}
-            {isPartnerTyping && (
-              <div
-                className="flex justify-start"
-                style={{ animation: "pickxelTypingBubbleIn 180ms ease-out both" }}
-              >
-                <div className="flex max-w-[88%] items-end gap-2 sm:max-w-[70%]">
-                  <ImageWithFallback
-                    src={activeConversation.avatar}
-                    alt={activeConversation.name}
-                    className="size-7 rounded-full object-cover shadow-sm"
-                  />
-                  <div className="rounded-2xl rounded-tl-sm border border-gray-200 bg-white px-4 py-3 shadow-sm">
-                    <div className="mb-1 text-xs font-medium text-gray-500">
-                      {activeConversation.profileName}님이 입력 중...
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      {[0, 1, 2].map((index) => (
-                        <span
-                          key={index}
-                          className="size-2 rounded-full bg-[#00A88C]"
-                          style={{
-                            animation: "pickxelTypingDot 1s ease-in-out infinite",
-                            animationDelay: `${index * 0.16}s`,
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
             <div ref={messagesEndRef} />
 
             {/* Quick Actions */}
@@ -3199,6 +3628,30 @@ export default function Messages() {
 
           {/* Message Input */}
           <div className="border-t border-gray-200 bg-white p-3 sm:p-4">
+            <div className="mb-2 flex min-h-[18px] items-center gap-1.5 px-1">
+              {isPartnerTyping && (
+                <>
+                  <div
+                    className="flex items-center gap-1"
+                    style={{ animation: "pickxelTypingBubbleIn 180ms ease-out both" }}
+                  >
+                    {[0, 1, 2].map((index) => (
+                      <span
+                        key={index}
+                        className="size-1.5 rounded-full bg-[#00A88C]"
+                        style={{
+                          animation: "pickxelTypingDot 1s ease-in-out infinite",
+                          animationDelay: `${index * 0.16}s`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <p className="truncate text-xs text-gray-500">
+                    {activeConversation.profileName}님이 입력 중...
+                  </p>
+                </>
+              )}
+            </div>
             {pendingAttachments.length > 0 && (
               <div className="mb-3 flex flex-wrap items-start gap-2 rounded-xl bg-[#F7F7F5] p-3">
                 {renderImageAttachmentGallery(
@@ -3491,8 +3944,20 @@ export default function Messages() {
                     alt={activeConversation.name}
                     className="mx-auto mb-4 size-24 rounded-full object-cover ring-4 ring-[#A8F0E4]/40 shadow-lg"
                   />
-                  <h3 className="font-bold text-lg mb-1">{activeConversation.profileName}</h3>
-                  <p className="text-sm text-gray-600">{activeConversation.title}</p>
+                  <div className="mb-1 flex items-center justify-center gap-2">
+                    <span
+                      className={`inline-flex size-2.5 rounded-full ${
+                        activeConversation.online ? "bg-[#00C853] shadow-[0_0_0_4px_rgba(0,200,83,0.14)]" : "bg-gray-300"
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <h3 className="font-bold text-lg">{activeConversation.profileName}</h3>
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    {activeConversation.title}
+                    <span className="mx-1.5 text-gray-300">·</span>
+                    {isPartnerTyping ? "입력 중..." : activeConversation.statusText}
+                  </p>
                 </div>
 
                 <div className="space-y-3 mb-6">
@@ -3619,6 +4084,10 @@ export default function Messages() {
                           progress === 100 && hasBothConfirmations(process.confirmations);
                         const approvalBadge = getProcessApprovalBadge(process, progress);
                         const approvalSummary = getProcessApprovalSummary(process, progress);
+                        const confirmationRoles: Array<keyof ProcessConfirmations> = [
+                          partnerProcessConfirmationRole,
+                          currentProcessConfirmationRole,
+                        ];
 
                         return (
                           <div
@@ -3714,7 +4183,7 @@ export default function Messages() {
                                     완료 확인
                                   </p>
                                   <p className="text-xs text-gray-500">
-                                    디자이너와 클라이언트가 모두 확인해야 완료됩니다.
+                                    {processCompletionGuideText}
                                   </p>
                                   <p className="mt-1 text-xs font-semibold text-[#00A88C]">
                                     {approvalSummary}
@@ -3725,78 +4194,87 @@ export default function Messages() {
                                 </span>
                               </div>
                               <div className="grid grid-cols-2 gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    toggleProcessConfirmation(process.id, "designer")
-                                  }
-                                  aria-pressed={process.confirmations.designer}
-                                  className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-all ${
-                                    process.confirmations.designer
-                                      ? "border-[#9EE7D0] bg-white text-[#12382D] shadow-[0_8px_20px_rgba(0,201,167,0.12)] ring-1 ring-[#DDF8EC]"
-                                      : "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
-                                  }`}
-                                >
-                                  <span className="flex items-center justify-center gap-2">
-                                    <span
-                                      className={`flex size-6 shrink-0 items-center justify-center rounded-full border transition-all ${
-                                        process.confirmations.designer
-                                          ? "border-[#00C9A7] bg-[#00C9A7] text-white"
-                                          : "border-gray-300 bg-white text-transparent"
+                                {confirmationRoles.map((role) => {
+                                  const isCurrentParticipant = role === "designer";
+                                  const canEditConfirmation =
+                                    isProcessConfirmationEditable(role);
+                                  const isConfirmed = process.confirmations[role];
+
+                                  return (
+                                    <button
+                                      key={`${process.id}-${role}`}
+                                      type="button"
+                                      onClick={() => {
+                                        if (!canEditConfirmation) return;
+                                        toggleProcessConfirmation(process.id, role);
+                                      }}
+                                      disabled={!canEditConfirmation}
+                                      aria-pressed={isConfirmed}
+                                      aria-disabled={!canEditConfirmation}
+                                      className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-all ${
+                                        isConfirmed
+                                          ? "border-[#9EE7D0] bg-white text-[#12382D] shadow-[0_8px_20px_rgba(0,201,167,0.12)] ring-1 ring-[#DDF8EC]"
+                                          : canEditConfirmation
+                                            ? "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
+                                            : "border-gray-200 bg-[#F3F4F6] text-gray-400"
                                       }`}
                                     >
-                                      <CheckCircle className="size-4" />
-                                    </span>
-                                    <span className="text-left leading-tight">
-                                      <span className="block">디자이너</span>
                                       <span
-                                        className={`block text-[11px] font-bold ${
-                                          process.confirmations.designer
-                                            ? "text-[#007E68]"
-                                            : "text-gray-400"
+                                        className={`flex items-center gap-2 ${
+                                          isCurrentParticipant
+                                            ? "justify-end text-right"
+                                            : "justify-start text-left"
                                         }`}
                                       >
-                                        {process.confirmations.designer ? "확인 완료" : "확인 대기"}
+                                        {isCurrentParticipant && (
+                                          <span className="min-w-0 flex-1 leading-tight">
+                                            <span className="block truncate">
+                                              {getProcessParticipantButtonTitle(role)}
+                                            </span>
+                                            <span
+                                              className={`block truncate text-[11px] font-bold ${
+                                                isConfirmed
+                                                  ? "text-[#007E68]"
+                                                  : "text-gray-400"
+                                              }`}
+                                            >
+                                              {`${getProcessParticipantButtonSubtitle(role)} · ${
+                                                isConfirmed ? "완료" : "대기"
+                                              }`}
+                                            </span>
+                                          </span>
+                                        )}
+                                        <span
+                                          className={`flex size-6 shrink-0 items-center justify-center rounded-full border transition-all ${
+                                            isConfirmed
+                                              ? "border-[#00C9A7] bg-[#00C9A7] text-white"
+                                              : "border-gray-300 bg-white text-transparent"
+                                          }`}
+                                        >
+                                          <CheckCircle className="size-4" />
+                                        </span>
+                                        {!isCurrentParticipant && (
+                                          <span className="min-w-0 flex-1 leading-tight">
+                                            <span className="block truncate">
+                                              {getProcessParticipantButtonTitle(role)}
+                                            </span>
+                                            <span
+                                              className={`block truncate text-[11px] font-bold ${
+                                                isConfirmed
+                                                  ? "text-[#007E68]"
+                                                  : "text-gray-400"
+                                              }`}
+                                            >
+                                              {`${getProcessParticipantButtonSubtitle(role)} · ${
+                                                isConfirmed ? "완료" : "대기"
+                                              }`}
+                                            </span>
+                                          </span>
+                                        )}
                                       </span>
-                                    </span>
-                                  </span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    toggleProcessConfirmation(process.id, "client")
-                                  }
-                                  aria-pressed={process.confirmations.client}
-                                  className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-all ${
-                                    process.confirmations.client
-                                      ? "border-[#9EE7D0] bg-white text-[#12382D] shadow-[0_8px_20px_rgba(0,201,167,0.12)] ring-1 ring-[#DDF8EC]"
-                                      : "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
-                                  }`}
-                                >
-                                  <span className="flex items-center justify-center gap-2">
-                                    <span
-                                      className={`flex size-6 shrink-0 items-center justify-center rounded-full border transition-all ${
-                                        process.confirmations.client
-                                          ? "border-[#00C9A7] bg-[#00C9A7] text-white"
-                                          : "border-gray-300 bg-white text-transparent"
-                                      }`}
-                                    >
-                                      <CheckCircle className="size-4" />
-                                    </span>
-                                    <span className="text-left leading-tight">
-                                      <span className="block">클라이언트</span>
-                                      <span
-                                        className={`block text-[11px] font-bold ${
-                                          process.confirmations.client
-                                            ? "text-[#007E68]"
-                                            : "text-gray-400"
-                                        }`}
-                                      >
-                                        {process.confirmations.client ? "확인 완료" : "확인 대기"}
-                                      </span>
-                                    </span>
-                                  </span>
-                                </button>
+                                    </button>
+                                  );
+                                })}
                               </div>
                             </div>
                           </div>

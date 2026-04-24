@@ -4,10 +4,12 @@ import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.message.dto.ChatMessageResponse;
 import com.example.pixel_project2.message.dto.CreateConversationRequest;
 import com.example.pixel_project2.message.dto.MessageConversationResponse;
+import com.example.pixel_project2.message.dto.MessageConversationPresenceResponse;
 import com.example.pixel_project2.message.dto.MessagePolicyResponse;
 import com.example.pixel_project2.message.dto.MessageProcessResponse;
 import com.example.pixel_project2.message.dto.MessageReactionUpdateResponse;
 import com.example.pixel_project2.message.dto.MessageReadReceiptResponse;
+import com.example.pixel_project2.message.dto.MessageTypingRequest;
 import com.example.pixel_project2.message.dto.SaveMessageProcessesRequest;
 import com.example.pixel_project2.message.dto.SendMessageRequest;
 import com.example.pixel_project2.message.dto.ToggleMessageReactionRequest;
@@ -21,6 +23,14 @@ public interface MessageService {
     List<MessageConversationResponse> getConversations(AuthenticatedUser currentUser);
 
     MessageConversationResponse createConversation(AuthenticatedUser currentUser, CreateConversationRequest request);
+
+    MessageConversationPresenceResponse getConversationPresence(AuthenticatedUser currentUser, Long conversationId);
+
+    MessageConversationPresenceResponse updateConversationTyping(
+            AuthenticatedUser currentUser,
+            Long conversationId,
+            MessageTypingRequest request
+    );
 
     List<ChatMessageResponse> getMessages(AuthenticatedUser currentUser, Long conversationId);
 
@@ -48,4 +58,6 @@ public interface MessageService {
     boolean canAccessConversation(AuthenticatedUser currentUser, Long conversationId);
 
     Set<Long> getConversationParticipantIds(Long conversationId);
+
+    Set<Long> getConversationIdsForUser(Long userId);
 }
