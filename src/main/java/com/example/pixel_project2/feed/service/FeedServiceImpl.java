@@ -2,6 +2,7 @@ package com.example.pixel_project2.feed.service;
 
 import com.example.pixel_project2.common.entity.Comment;
 import com.example.pixel_project2.common.entity.Feed;
+import com.example.pixel_project2.common.entity.PickCount;
 import com.example.pixel_project2.common.entity.Post;
 import com.example.pixel_project2.common.entity.PostImage;
 import com.example.pixel_project2.common.entity.User;
@@ -27,6 +28,7 @@ import com.example.pixel_project2.feed.dto.DeleteFeedResponse;
 import com.example.pixel_project2.feed.dto.FeedDetailResponse;
 import com.example.pixel_project2.feed.dto.FeedItemResponse;
 import com.example.pixel_project2.feed.dto.FeedListResponse;
+import com.example.pixel_project2.feed.dto.FeedPickResponse;
 import com.example.pixel_project2.feed.dto.UpdateCommentResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -34,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -47,11 +50,11 @@ public class FeedServiceImpl implements FeedService {
     private final CollectionRepository collectionRepository;
 
     @Override
-    public FeedListResponse getFeeds(PostType postType) {
+    public FeedListResponse getFeeds(PostType postType, Long userId) {
         PostType resolvedPostType = postType == null ? PostType.PORTFOLIO : postType;
         List<Post> posts = postRepository.findAllByTypeWithDetails(resolvedPostType);
         List<FeedItemResponse> feeds = posts.stream()
-                .map(this::toFeedItemResponse)
+                .map(post -> toFeedItemResponse(post, userId))
                 .toList();
 
         return new FeedListResponse(feeds);
@@ -84,8 +87,37 @@ public class FeedServiceImpl implements FeedService {
                 feed != null ? feed.getPortfolioUrl() : null,
                 post.getCreatedAt(),
                 imageUrls,
+                pickCountRepository.existsByUserIdAndPostId(userId, post.getId()),
                 post.getUser().getId().equals(userId)
         );
+    }
+
+    @Override
+    @Transactional
+    public FeedPickResponse toggleFeedPick(Long feedId, Long userId) {
+        Post post = postRepository.findById(feedId)
+                .orElseThrow(() -> new IllegalArgumentException("Feed not found."));
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found."));
+
+        Optional<PickCount> existingPick = pickCountRepository.findByUserIdAndPostId(userId, feedId);
+        int currentPickCount = post.getPickCount() == null ? 0 : post.getPickCount();
+        boolean picked;
+
+        if (existingPick.isPresent()) {
+            pickCountRepository.delete(existingPick.get());
+            post.setPickCount(Math.max(0, currentPickCount - 1));
+            picked = false;
+        } else {
+            pickCountRepository.save(PickCount.builder()
+                    .user_id(user)
+                    .post_id(post)
+                    .build());
+            post.setPickCount(currentPickCount + 1);
+            picked = true;
+        }
+
+        return new FeedPickResponse(post.getId(), picked, post.getPickCount());
     }
 
     @Override
@@ -294,7 +326,7 @@ public class FeedServiceImpl implements FeedService {
         return portfolioUrl.trim();
     }
 
-    private FeedItemResponse toFeedItemResponse(Post post) {
+    private FeedItemResponse toFeedItemResponse(Post post, Long userId) {
         String thumbnailUrl = post.getImages().stream()
                 .filter(image -> image.getSortOrder() != null && image.getSortOrder() == 1)
                 .map(PostImage::getImageUrl)
@@ -310,7 +342,8 @@ public class FeedServiceImpl implements FeedService {
                 post.getPickCount(),
                 Math.toIntExact(commentRepository.countByPostId(post.getId())),
                 post.getPostType().name(),
-                post.getCategory().name()
+                post.getCategory().name(),
+                pickCountRepository.existsByUserIdAndPostId(userId, post.getId())
         );
     }
 }
