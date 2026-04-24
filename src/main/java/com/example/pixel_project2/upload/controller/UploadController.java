@@ -3,6 +3,7 @@ package com.example.pixel_project2.upload.controller;
 import com.example.pixel_project2.common.dto.ApiResponse;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.upload.dto.FeedImagesUploadResponse;
+import com.example.pixel_project2.upload.dto.MessageAttachmentsUploadResponse;
 import com.example.pixel_project2.upload.dto.ProfileImageUploadResponse;
 import com.example.pixel_project2.upload.service.UploadService;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +50,18 @@ public class UploadController {
         return ApiResponse.ok(
                 "Feed images replaced.",
                 uploadService.replaceFeedImages(currentUser, postId, existingImageUrls, files)
+        );
+    }
+
+    @PostMapping(value = "/message-attachments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<MessageAttachmentsUploadResponse> uploadMessageAttachments(
+            @AuthenticationPrincipal AuthenticatedUser currentUser,
+            @RequestParam("conversationId") Long conversationId,
+            @RequestParam("files") List<MultipartFile> files
+    ) {
+        return ApiResponse.ok(
+                "Message attachments uploaded.",
+                uploadService.uploadMessageAttachments(currentUser, conversationId, files)
         );
     }
 }

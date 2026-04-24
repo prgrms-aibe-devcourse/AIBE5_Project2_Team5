@@ -3,6 +3,7 @@ package com.example.pixel_project2.message.dto;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record ChatMessageResponse(
         Long id,
@@ -12,6 +13,8 @@ public record ChatMessageResponse(
         String senderName,
         String message,
         JsonNode attachments,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        List<MessageReactionSummaryResponse> reactions,
+        boolean readByPartner
 ) {
 }

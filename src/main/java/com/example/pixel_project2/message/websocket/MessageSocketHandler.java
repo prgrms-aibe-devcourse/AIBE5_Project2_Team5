@@ -2,6 +2,7 @@ package com.example.pixel_project2.message.websocket;
 
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.message.dto.ChatMessageResponse;
+import com.example.pixel_project2.message.dto.MessageReadReceiptResponse;
 import com.example.pixel_project2.message.dto.SendMessageRequest;
 import com.example.pixel_project2.message.service.MessageService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -24,6 +25,10 @@ import java.util.concurrent.ConcurrentHashMap;
 public class MessageSocketHandler extends TextWebSocketHandler {
     private static final String TYPE_SUBSCRIBE = "subscribe";
     private static final String TYPE_CHAT_MESSAGE = "chat.message";
+    private static final String TYPE_TYPING = "typing";
+    private static final String TYPE_CONVERSATION_READ = "conversation.read";
+    private static final String TYPE_PING = "ping";
+    private static final String TYPE_PONG = "pong";
 
     private final ObjectMapper objectMapper;
     private final MessageService messageService;
@@ -48,8 +53,23 @@ public class MessageSocketHandler extends TextWebSocketHandler {
             return;
         }
 
+        if (TYPE_PING.equals(type)) {
+            handlePing(session);
+            return;
+        }
+
         if (TYPE_CHAT_MESSAGE.equals(type)) {
             handleChatMessage(session, payload);
+            return;
+        }
+
+        if (TYPE_TYPING.equals(type)) {
+            handleTyping(session, payload);
+            return;
+        }
+
+        if (TYPE_CONVERSATION_READ.equals(type)) {
+            handleConversationRead(session, payload);
             return;
         }
 
@@ -58,9 +78,13 @@ public class MessageSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        sessions.remove(session.getId());
-        subscriptions.remove(session.getId());
-        sessionLocks.remove(session.getId());
+        cleanupSession(session);
+    }
+
+    @Override
+    public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
+        cleanupSession(session);
+        closeQuietly(session);
     }
 
     private void handleSubscribe(WebSocketSession session, JsonNode payload) throws IOException {
@@ -83,6 +107,12 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         response.put("type", "subscribed");
         response.set("conversationIds", objectMapper.valueToTree(List.copyOf(conversationIds)));
         sendJson(session, response);
+    }
+
+    private void handlePing(WebSocketSession session) throws IOException {
+        ObjectNode pong = objectMapper.createObjectNode();
+        pong.put("type", TYPE_PONG);
+        sendJson(session, pong);
     }
 
     private void handleChatMessage(WebSocketSession session, JsonNode payload) throws IOException {
@@ -130,13 +160,82 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         outbound.put("message", savedMessage.message());
         outbound.put("createdAt", savedMessage.createdAt().toString());
         outbound.set("attachments", savedMessage.attachments());
+        outbound.set("reactions", objectMapper.valueToTree(savedMessage.reactions()));
+        outbound.put("readByPartner", savedMessage.readByPartner());
 
-        broadcast(conversationId, session.getId(), outbound);
+        broadcast(conversationId, session.getId(), messageService.getConversationParticipantIds(conversationId), outbound);
     }
 
-    private void broadcast(long conversationId, String senderSessionId, ObjectNode outbound) throws IOException {
+    private void handleTyping(WebSocketSession session, JsonNode payload) throws IOException {
+        AuthenticatedUser sender = authenticatedUser(session);
+        if (sender == null) {
+            sendError(session, "Authentication is required.");
+            return;
+        }
+
+        if (!payload.path("conversationId").canConvertToLong()) {
+            sendError(session, "conversationId is required.");
+            return;
+        }
+
+        long conversationId = payload.path("conversationId").asLong();
+        if (!messageService.canAccessConversation(sender, conversationId)) {
+            sendError(session, "You do not have access to the conversation.");
+            return;
+        }
+
+        ObjectNode outbound = objectMapper.createObjectNode();
+        outbound.put("type", TYPE_TYPING);
+        outbound.put("conversationId", conversationId);
+        outbound.put("senderUserId", sender.id());
+        outbound.put("isTyping", payload.path("isTyping").asBoolean(false));
+
+        broadcast(conversationId, session.getId(), messageService.getConversationParticipantIds(conversationId), outbound);
+    }
+
+    private void handleConversationRead(WebSocketSession session, JsonNode payload) throws IOException {
+        AuthenticatedUser sender = authenticatedUser(session);
+        if (sender == null) {
+            sendError(session, "Authentication is required.");
+            return;
+        }
+
+        if (!payload.path("conversationId").canConvertToLong()) {
+            sendError(session, "conversationId is required.");
+            return;
+        }
+
+        long conversationId = payload.path("conversationId").asLong();
+        MessageReadReceiptResponse readReceipt;
+        try {
+            readReceipt = messageService.markConversationRead(sender, conversationId);
+        } catch (IllegalArgumentException e) {
+            sendError(session, e.getMessage());
+            return;
+        }
+
+        ObjectNode outbound = objectMapper.createObjectNode();
+        outbound.put("type", TYPE_CONVERSATION_READ);
+        outbound.put("conversationId", readReceipt.conversationId());
+        outbound.put("readerUserId", readReceipt.readerUserId());
+        if (readReceipt.lastReadMessageId() == null) {
+            outbound.putNull("lastReadMessageId");
+        } else {
+            outbound.put("lastReadMessageId", readReceipt.lastReadMessageId());
+        }
+
+        broadcast(conversationId, session.getId(), messageService.getConversationParticipantIds(conversationId), outbound);
+    }
+
+    private void broadcast(
+            long conversationId,
+            String senderSessionId,
+            Set<Long> participantUserIds,
+            ObjectNode outbound
+    ) {
         for (WebSocketSession targetSession : sessions.values()) {
             if (!targetSession.isOpen()) {
+                cleanupSession(targetSession);
                 continue;
             }
 
@@ -146,10 +245,15 @@ public class MessageSocketHandler extends TextWebSocketHandler {
                     .contains(conversationId);
             AuthenticatedUser targetUser = authenticatedUser(targetSession);
             boolean participantSession = targetUser != null
-                    && messageService.canAccessConversation(targetUser, conversationId);
+                    && participantUserIds.contains(targetUser.id());
 
             if (senderSession || subscribed || participantSession) {
-                sendJson(targetSession, outbound);
+                try {
+                    sendJson(targetSession, outbound);
+                } catch (IOException e) {
+                    cleanupSession(targetSession);
+                    closeQuietly(targetSession);
+                }
             }
         }
     }
@@ -172,6 +276,22 @@ public class MessageSocketHandler extends TextWebSocketHandler {
             if (session.isOpen()) {
                 session.sendMessage(new TextMessage(objectMapper.writeValueAsString(payload)));
             }
+        }
+    }
+
+    private void cleanupSession(WebSocketSession session) {
+        sessions.remove(session.getId());
+        subscriptions.remove(session.getId());
+        sessionLocks.remove(session.getId());
+    }
+
+    private void closeQuietly(WebSocketSession session) {
+        try {
+            if (session.isOpen()) {
+                session.close();
+            }
+        } catch (IOException ignored) {
+            // Best effort close for broken sockets.
         }
     }
 

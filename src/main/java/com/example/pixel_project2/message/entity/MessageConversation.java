@@ -67,6 +67,12 @@ public class MessageConversation extends BaseTimeEntity {
     @Column(name = "last_message_preview", length = 500)
     private String lastMessagePreview;
 
+    @Column(name = "user_one_last_read_message_id")
+    private Long userOneLastReadMessageId;
+
+    @Column(name = "user_two_last_read_message_id")
+    private Long userTwoLastReadMessageId;
+
     public boolean hasParticipant(Long userId) {
         return userOne.getId().equals(userId) || userTwo.getId().equals(userId);
     }
@@ -84,5 +90,51 @@ public class MessageConversation extends BaseTimeEntity {
     public void updateLastMessage(String preview, LocalDateTime createdAt) {
         this.lastMessagePreview = preview;
         this.lastMessageAt = createdAt;
+    }
+
+    public void markRead(Long userId, Long messageId) {
+        if (messageId == null) {
+            return;
+        }
+
+        if (userOne.getId().equals(userId)) {
+            userOneLastReadMessageId = maxMessageId(userOneLastReadMessageId, messageId);
+            return;
+        }
+        if (userTwo.getId().equals(userId)) {
+            userTwoLastReadMessageId = maxMessageId(userTwoLastReadMessageId, messageId);
+            return;
+        }
+
+        throw new IllegalArgumentException("Conversation participant not found.");
+    }
+
+    public Long getLastReadMessageId(Long userId) {
+        if (userOne.getId().equals(userId)) {
+            return userOneLastReadMessageId;
+        }
+        if (userTwo.getId().equals(userId)) {
+            return userTwoLastReadMessageId;
+        }
+
+        throw new IllegalArgumentException("Conversation participant not found.");
+    }
+
+    public Long getPartnerLastReadMessageId(Long userId) {
+        if (userOne.getId().equals(userId)) {
+            return userTwoLastReadMessageId;
+        }
+        if (userTwo.getId().equals(userId)) {
+            return userOneLastReadMessageId;
+        }
+
+        throw new IllegalArgumentException("Conversation participant not found.");
+    }
+
+    private Long maxMessageId(Long currentMessageId, Long nextMessageId) {
+        if (currentMessageId == null) {
+            return nextMessageId;
+        }
+        return Math.max(currentMessageId, nextMessageId);
     }
 }
