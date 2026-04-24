@@ -4,23 +4,24 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "post_images")
+@Table(name = "praises")
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class PostImage {
+public class Praise extends BaseTimeEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "post_id")
-    private Post post;
+    @JoinColumn(name = "from_user_id")
+    private User fromUser;
 
-    @Column(nullable = false)
-    private String imageUrl;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "to_user_id")
+    private User toUser;
 
-    private Integer sortOrder;
+    private String praiseType; // ENUM 처리 가능 (Fast, Quality, Kind 등)
 }

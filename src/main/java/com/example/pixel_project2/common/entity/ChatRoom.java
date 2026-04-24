@@ -4,23 +4,22 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "post_images")
+@Table(name = "chat_rooms")
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class PostImage {
+public class ChatRoom extends BaseTimeEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "post_id")
-    private Post post;
+    @JoinColumn(name = "user1_id")
+    private User user1;
 
-    @Column(nullable = false)
-    private String imageUrl;
-
-    private Integer sortOrder;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user2_id")
+    private User user2;
 }

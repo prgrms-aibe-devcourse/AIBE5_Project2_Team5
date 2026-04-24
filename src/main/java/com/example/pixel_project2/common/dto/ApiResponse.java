@@ -15,14 +15,4 @@ public record ApiResponse<T>(
                 .data(data)
                 .build();
     }
-
-    // auth 실패 응답 메서드
-    public static <T> ApiResponse<T> fail(String message) {
-        return ApiResponse.<T>builder()
-                .success(false)
-                .message(message)
-                .data(null)
-                .build();
-    }
-
 }

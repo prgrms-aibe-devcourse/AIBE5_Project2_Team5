@@ -1,143 +1,168 @@
-import { Link, useLocation, useNavigate } from "react-router";
-import { Bell, LogOut } from "lucide-react";
-import { useEffect, useState } from "react";
-import { motion, LayoutGroup } from "motion/react";
-import {
-  hasUnreadNotifications,
-  subscribeNotificationState,
-} from "../utils/notificationState";
-import { clearAuthenticated, getCurrentUser } from "../utils/auth";
-import { logoutApi } from "../api/authApi";
+import { Link, useLocation } from "react-router";
+import { Search, Bell, User, X } from "lucide-react";
+import { useState } from "react";
+import { ImageWithFallback } from "./figma/ImageWithFallback";
 
 export default function Navigation() {
   const location = useLocation();
-  const navigate = useNavigate();
-  const currentUser = getCurrentUser();
-  const [hasUnread, setHasUnread] = useState(hasUnreadNotifications);
-  const [scrolled, setScrolled] = useState(false);
-  const profilePath = "/profile/me";
-  const profileInitial = (currentUser?.nickname || currentUser?.name || "J").slice(0, 1).toUpperCase();
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const navItems = [
     { path: "/feed", label: "피드" },
     { path: "/explore", label: "탐색" },
-    { path: "/projects", label: "매칭" },
+    { path: "/projects", label: "역제안 게시판" },
     { path: "/messages", label: "메시지" },
+    { path: "/notifications", label: "알림" },
     { path: "/collections", label: "컬렉션" },
   ];
 
-  const isActive = (path: string) => location.pathname.startsWith(path);
+  const searchSuggestions = [
+    { type: "tag", text: "브랜딩" },
+    { type: "tag", text: "UI/UX" },
+    { type: "tag", text: "일러스트" },
+    { type: "profile", name: "김지은", role: "브랜드 디자이너", avatar: "https://i.pravatar.cc/150?img=1" },
+    { type: "profile", name: "박서준", role: "그래픽 디자이너", avatar: "https://i.pravatar.cc/150?img=2" },
+  ];
 
-  const handleLogout = async () => {
-    try {
-      await logoutApi();
-    } catch {
-      // 클라이언트 인증 정보는 서버 로그아웃 실패와 무관하게 정리합니다.
-    } finally {
-      clearAuthenticated();
-      navigate("/", { replace: true });
-    }
+  const isActive = (path: string) => {
+    if (path === "/") return location.pathname === "/";
+    return location.pathname.startsWith(path);
   };
-
-  useEffect(() => {
-    const refreshUnreadState = () => setHasUnread(hasUnreadNotifications());
-    refreshUnreadState();
-    return subscribeNotificationState(refreshUnreadState);
-  }, []);
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 10);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-  /* ── 메뉴 링크 (공통) ── */
-  const NavLinks = ({ compact = false }: { compact?: boolean }) => (
-    <LayoutGroup>
-      <div className={`flex items-center ${compact ? "gap-0" : "gap-1"}`}>
-        {navItems.map((item) => {
-          const active = isActive(item.path);
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`relative transition-colors duration-200 ${
-                compact ? "px-3 py-2" : "px-4 py-2"
-              }`}
-            >
-              <span
-                className={`relative z-[1] ${compact ? "text-[13px]" : "text-sm"} ${
-                  active
-                    ? "text-[#00A88C] font-semibold"
-                    : "text-gray-500 hover:text-[#0F0F0F] font-medium"
-                }`}
-              >
-                {item.label}
-              </span>
-              {active && (
-                <motion.span
-                  layoutId="navUnderline"
-                  className="absolute bottom-0 left-1/2 -translate-x-1/2 w-5 h-[2px] rounded-full bg-[#00C9A7]"
-                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                />
-              )}
-            </Link>
-          );
-        })}
-      </div>
-    </LayoutGroup>
-  );
 
   return (
     <>
-      {/* ━━ 기본 헤더 (상단 고정, 스크롤 시 그림자) ━━ */}
-      <header className={`sticky top-0 z-50 h-[68px] bg-white/95 backdrop-blur-sm transition-all duration-300 ${scrolled ? "shadow-sm border-b-transparent" : "border-b border-gray-100"}`}>
-        <div className="w-full h-full px-8 grid grid-cols-[auto_1fr_auto] items-center">
-
-          {/* 좌: 로고 */}
-          <Link to="/" className="flex items-center gap-2.5 hover:opacity-70 transition-opacity">
-            <div className="grid grid-cols-2 gap-[3px] w-[24px] h-[24px]">
-              <div className="rounded-[2px] bg-[#00C9A7]" />
-              <div className="rounded-[2px] bg-[#00C9A7] opacity-50" />
-              <div className="rounded-[2px] bg-[#FF5C3A] opacity-60" />
-              <div className="rounded-[2px] bg-[#FF5C3A]" />
-            </div>
-            <span className="text-xl font-bold tracking-tight leading-none select-none">
-              <span className="text-[#FF5C3A]">p</span>ick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A]">.</span>
-            </span>
-          </Link>
-
-          {/* 중앙: 메뉴 */}
-          <div className="flex justify-center">
-            <NavLinks />
-          </div>
-
-          {/* 우: 액션 */}
-          <div className="flex items-center gap-2.5">
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="hidden h-9 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-gray-600 transition-colors hover:border-[#FF5C3A]/40 hover:bg-[#FFF7F4] hover:text-[#FF5C3A] md:flex"
-            >
-              <LogOut className="size-4" />
-              로그아웃
-            </button>
-            <Link
-              to="/notifications"
-              className="relative size-10 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500 hover:text-[#0F0F0F]"
-            >
-              <Bell className="size-5" />
-              {hasUnread && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#FF5C3A] rounded-full ring-2 ring-white" />
-              )}
+      <nav className="border-b border-gray-200 bg-white sticky top-0 z-50 shadow-sm">
+        <div className="max-w-[1400px] mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-8">{/* Pickxel Logo with Branding */}
+            <Link to="/" className="flex items-center gap-2">
+              {/* Pixel Grid Symbol */}
+              <div className="grid grid-cols-2 gap-[3px] w-[28px] h-[28px]">
+                <div className="rounded-[2px] bg-[#00C9A7]"></div>
+                <div className="rounded-[2px] bg-[#00C9A7] opacity-50"></div>
+                <div className="rounded-[2px] bg-[#FF5C3A] opacity-60"></div>
+                <div className="rounded-[2px] bg-[#FF5C3A]"></div>
+              </div>
+              {/* Wordmark */}
+              <span className="text-2xl font-bold tracking-tight">
+                <span className="text-[#FF5C3A]">p</span>ick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A] text-[28px]">.</span>
+              </span>
             </Link>
-            <Link
-              to={profilePath}
-              className="size-9 rounded-full bg-gradient-to-br from-[#00C9A7] to-[#009E88] flex items-center justify-center text-white text-xs font-bold shadow-sm shadow-[#00C9A7]/20 hover:shadow-md hover:shadow-[#00C9A7]/30 transition-shadow"
+            <div className="hidden md:flex items-center gap-6">
+              {navItems.map((item) => (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`text-sm transition-all ${
+                    isActive(item.path)
+                      ? "text-[#00C9A7] font-semibold border-b-2 border-[#00C9A7] pb-1"
+                      : "text-gray-600 hover:text-[#00A88C]"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setShowSearch(true)}
+              className="p-2 hover:bg-[#A8F0E4]/20 rounded-full transition-colors text-gray-700 hover:text-[#00A88C]"
             >
-              {profileInitial}
+              <Search className="size-5" />
+            </button>
+            <Link to="/notifications" className="p-2 hover:bg-[#A8F0E4]/20 rounded-full transition-colors text-gray-700 hover:text-[#00A88C] relative">
+              <Bell className="size-5" />
+              <span className="absolute top-1 right-1 w-2 h-2 bg-[#FF5C3A] rounded-full"></span>
+            </Link>
+            <Link to="/profile/jieun" className="flex items-center gap-2 bg-gradient-to-r from-[#00C9A7]/90 to-[#00A88C]/90 backdrop-blur-md text-white px-4 py-2 rounded-full text-sm font-medium hover:shadow-lg hover:scale-105 transition-all border border-white/30">
+              <User className="size-4" />
+              프로필
             </Link>
           </div>
         </div>
-      </header>
+      </nav>
+
+      {/* Search Modal */}
+      {showSearch && (
+        <div 
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center pt-20"
+          onClick={() => setShowSearch(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Search Input */}
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center gap-3">
+                <Search className="size-5 text-gray-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="작품, 디자이너, 태그를 검색하세요..."
+                  className="flex-1 text-lg outline-none"
+                  autoFocus
+                />
+                <button 
+                  onClick={() => setShowSearch(false)}
+                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                >
+                  <X className="size-5 text-gray-600" />
+                </button>
+              </div>
+            </div>
+
+            {/* Search Results */}
+            <div className="p-4 max-h-[60vh] overflow-y-auto">
+              {searchQuery === "" ? (
+                <>
+                  <h3 className="text-sm font-semibold text-gray-500 mb-3 px-2">인기 태그</h3>
+                  <div className="flex flex-wrap gap-2 mb-6">
+                    {searchSuggestions.filter(s => s.type === "tag").map((suggestion, idx) => (
+                      <button
+                        key={idx}
+                        className="px-4 py-2 bg-[#A8F0E4]/20 text-[#00A88C] rounded-full text-sm font-medium hover:bg-[#00C9A7]/90 hover:backdrop-blur-md hover:text-white transition-all border border-[#00C9A7]/20"
+                      >
+                        #{suggestion.text}
+                      </button>
+                    ))}
+                  </div>
+
+                  <h3 className="text-sm font-semibold text-gray-500 mb-3 px-2">추천 디자이너</h3>
+                  <div className="space-y-2">
+                    {searchSuggestions.filter(s => s.type === "profile").map((suggestion, idx) => (
+                      <Link
+                        key={idx}
+                        to={`/profile/${suggestion.name}`}
+                        onClick={() => setShowSearch(false)}
+                        className="flex items-center gap-3 p-3 rounded-lg hover:bg-[#F7F7F5] transition-colors"
+                      >
+                        <ImageWithFallback
+                          src={suggestion.avatar!}
+                          alt={suggestion.name!}
+                          className="size-12 rounded-full ring-2 ring-[#00C9A7]/30"
+                        />
+                        <div>
+                          <h4 className="font-semibold text-sm">{suggestion.name}</h4>
+                          <p className="text-xs text-gray-500">{suggestion.role}</p>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <Search className="size-12 mx-auto mb-3 opacity-30" />
+                  <p>"{searchQuery}"에 대한 검색 결과</p>
+                  <p className="text-sm mt-2">실제 검색 기능은 백엔드 연동 후 작동합니다.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

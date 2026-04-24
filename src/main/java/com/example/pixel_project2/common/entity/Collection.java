@@ -12,20 +12,14 @@ import lombok.*;
 @Builder
 public class Collection {
     @Id
-    @SequenceGenerator(
-            name = "Collection_SEQ_generator",
-            sequenceName = "COLLECTION_SEQ",
-            allocationSize = 1
-    )
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "Collection_SEQ_generator")
-    @Column(name = "collection_id")
-    private Long collection_id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "folder_id", nullable = false)
+    @JoinColumn(name = "folder_id")
     private CollectionFolder folder;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "post_id", nullable = false)
+    @JoinColumn(name = "post_id")
     private Post post;
 }

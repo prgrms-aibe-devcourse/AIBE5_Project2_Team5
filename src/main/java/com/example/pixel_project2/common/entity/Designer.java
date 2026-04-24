@@ -14,36 +14,23 @@ import lombok.*;
 @Builder
 public class Designer {
     @Id
-    @Column(name = "user_id")
     private Long userId;
 
     @OneToOne(fetch = FetchType.LAZY)
     @MapsId
     @JoinColumn(name = "user_id")
-    private User user; // user Table이 부모 Entity라는 증거
+    private User user;
 
-    @Column(length = 50)
-    private String job; // 직업
+    private String job;
 
-    @Column(columnDefinition = "CLOB")
-    private String introduction; // 자기소개
+    @Column(columnDefinition = "TEXT")
+    private String introduction;
 
-    private Float rating; // 별점
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "work_status")
-    private WorkStatus workStatus; // 작업 상태
+    private String location;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "work_type")
+    private WorkStatus workStatus;
+
+    @Enumerated(EnumType.STRING)
     private WorkType workType;
-
-    @Column(name = "figma_url", length = 255)
-    private String figmaUrl;
-
-    @Column(name = "photoshop_url", length = 255)
-    private String photoshopUrl;
-
-    @Column(name = "adobe_url", length = 255)
-    private String adobeUrl;
 }

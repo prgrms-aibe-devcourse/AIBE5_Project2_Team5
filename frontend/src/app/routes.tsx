@@ -1,5 +1,4 @@
-import type { ReactNode } from "react";
-import { createBrowserRouter, Navigate, useLocation } from "react-router";
+import { createBrowserRouter } from "react-router";
 import Home from "./pages/Home";
 import Feed from "./pages/Feed";
 import Explore from "./pages/Explore";
@@ -12,33 +11,7 @@ import CreateProject from "./pages/CreateProject";
 import ProjectDetail from "./pages/ProjectDetail";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
-import OAuth2Redirect from "./pages/OAuth2Redirect";
-import PasswordReset from "./pages/PasswordReset";
 import ReviewWrite from "./pages/ReviewWrite";
-import { isAuthenticated } from "./utils/auth";
-
-function ProtectedRoute({ children }: { children: ReactNode }) {
-  const location = useLocation();
-
-  if (isAuthenticated()) {
-    return children;
-  }
-
-  return (
-    <Navigate
-      to="/login"
-      replace
-      state={{
-        redirectTo: `${location.pathname}${location.search}`,
-        message: "로그인이 필요한 페이지입니다.",
-      }}
-    />
-  );
-}
-
-function protect(children: ReactNode) {
-  return <ProtectedRoute>{children}</ProtectedRoute>;
-}
 
 export const router = createBrowserRouter([
   {
@@ -54,36 +27,28 @@ export const router = createBrowserRouter([
     Component: Signup,
   },
   {
-    path: "/oauth2/redirect",
-    Component: OAuth2Redirect,
-  },
-  {
-    path: "/password-reset",
-    Component: PasswordReset,
-  },
-  {
     path: "/feed",
-    element: protect(<Feed />),
+    Component: Feed,
   },
   {
     path: "/explore",
-    element: protect(<Explore />),
+    Component: Explore,
   },
   {
     path: "/collections",
-    element: protect(<Collections />),
+    Component: Collections,
   },
   {
     path: "/profile/:username",
-    element: protect(<Profile />),
+    Component: Profile,
   },
   {
     path: "/notifications",
-    element: protect(<Notifications />),
+    Component: Notifications,
   },
   {
     path: "/messages",
-    element: protect(<Messages />),
+    Component: Messages,
   },
   {
     path: "/projects",
@@ -91,14 +56,14 @@ export const router = createBrowserRouter([
   },
   {
     path: "/projects/new",
-    element: protect(<CreateProject />),
+    Component: CreateProject,
   },
   {
     path: "/projects/:id",
-    element: protect(<ProjectDetail />),
+    Component: ProjectDetail,
   },
   {
     path: "/review/write",
-    element: protect(<ReviewWrite />),
+    Component: ReviewWrite,
   },
 ]);

@@ -5,7 +5,6 @@ import lombok.*;
 
 @Entity
 @Table(name = "collection_folders")
-@AttributeOverride(name = "createdAt", column = @Column(name = "created_collect", nullable = false, updatable = false))
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -13,26 +12,13 @@ import lombok.*;
 @Builder
 public class CollectionFolder extends BaseTimeEntity {
     @Id
-    @SequenceGenerator(
-            name = "CollectionFolder_SEQ_generator",
-            sequenceName = "COLLECTION_FOLDER_SEQ",
-            allocationSize = 1
-    )
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "CollectionFolder_SEQ_generator")
-    @Column(name = "folder_id")
-    private Long folder_id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
+    @JoinColumn(name = "user_id")
     private User user;
 
-    @Column(name = "folder_name", nullable = false, length = 100)
+    @Column(nullable = false, length = 100)
     private String folderName;
-
-    @Column(name = "sort_order")
-    private Integer sortOrder;
-
-    @Builder.Default
-    @OneToMany(mappedBy = "folder", cascade = CascadeType.ALL, orphanRemoval = true)
-    private java.util.List<Collection> collections = new java.util.ArrayList<>();
 }
