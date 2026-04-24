@@ -38,6 +38,16 @@ export type ProjectDetailResponse = {
   deadline: string;
 };
 
+export type MyActivityItemResponse = {
+  postId: number;
+  title: string;
+  overview: string;
+  projectState: string;
+  jobState: string;
+  category: string;
+  deadline: string;
+};
+
 export function getProjectFilterOptionsApi() {
   return publicApiRequest<FilteringResponse>("/api/projects/filtering", {}, "Failed to load project filters.");
 }
@@ -54,5 +64,23 @@ export function createProjectApi(payload: CreateProjectPayload) {
       body: JSON.stringify(payload),
     },
     "Failed to create project.",
+  );
+}
+
+/** 신규 추가: 내가 등록한 프로젝트 공고 목록 조회 */
+export function getMyPostsApi() {
+  return apiRequest<MyActivityItemResponse[]>(
+      "/api/projects/my-posts",
+      { method: "GET" },
+      "내가 등록한 공고를 불러오지 못했습니다."
+  );
+}
+
+/** 신규 추가: 내가 지원한 프로젝트 공고 목록 조회 */
+export function getMyApplicationsApi() {
+  return apiRequest<MyActivityItemResponse[]>(
+      "/api/projects/my-applications",
+      { method: "GET" },
+      "내가 지원한 공고를 불러오지 못했습니다."
   );
 }
