@@ -130,7 +130,7 @@ const MESSAGE_DRAFTS_STORAGE_KEY = "pickxel:message-drafts";
 const LEFT_CONVERSATIONS_STORAGE_KEY = "pickxel:left-message-conversations";
 const CONNECTED_CONVERSATION_POLL_INTERVAL = 5000;
 const CONNECTED_MESSAGE_POLL_INTERVAL = 1000;
-const CONNECTED_PROCESS_POLL_INTERVAL = 3000;
+const CONNECTED_PROCESS_POLL_INTERVAL = 1000;
 const DISCONNECTED_POLL_INTERVAL = 1000;
 const TYPING_IDLE_DELAY = 1200;
 const TYPING_SYNC_INTERVAL = 800;
@@ -1898,7 +1898,7 @@ export default function Messages() {
       };
     });
 
-    const roleLabel = getProcessParticipantDisplayLabel(role);
+    const roleLabel = getProcessParticipantButtonTitle(role);
     void persistProcesses(nextProcesses, {
       optimistic: true,
       preferredExpandedId: null,
@@ -2125,19 +2125,48 @@ export default function Messages() {
   const getPartnerParticipantName = () =>
     activeConversation?.profileName?.trim() || activeConversation?.name?.trim() || "상대방";
 
+  const getShortParticipantName = (name: string, maxLength = 8) =>
+    name.length > maxLength ? `${name.slice(0, maxLength)}…` : name;
+
+  const normalizedCurrentParticipantUserId = toNumericUserId(currentUserId);
+  const normalizedPartnerParticipantUserId = toNumericUserId(activeConversation?.partnerId);
+  const currentProcessConfirmationRole: keyof ProcessConfirmations =
+    currentUser?.role === "client" && activeConversation?.partnerRole !== "CLIENT"
+      ? "client"
+      : currentUser?.role === "designer" && activeConversation?.partnerRole !== "DESIGNER"
+        ? "designer"
+        : normalizedCurrentParticipantUserId !== null && normalizedPartnerParticipantUserId !== null
+          ? normalizedCurrentParticipantUserId <= normalizedPartnerParticipantUserId
+            ? "designer"
+            : "client"
+          : "designer";
+  const partnerProcessConfirmationRole: keyof ProcessConfirmations =
+    currentProcessConfirmationRole === "designer" ? "client" : "designer";
+
   const getProcessParticipantRoleLabel = (
     role: keyof ProcessConfirmations
-  ) => (role === "designer" ? getCurrentParticipantRoleLabel() : getPartnerParticipantRoleLabel());
+  ) =>
+    role === currentProcessConfirmationRole
+      ? getCurrentParticipantRoleLabel()
+      : getPartnerParticipantRoleLabel();
 
   const getProcessParticipantDisplayLabel = (
     role: keyof ProcessConfirmations
   ) =>
-    role === "designer"
+    role === currentProcessConfirmationRole
       ? `${getCurrentParticipantName()} (${getCurrentParticipantRoleLabel()})`
       : `${getPartnerParticipantName()} (${getPartnerParticipantRoleLabel()})`;
 
+  const getProcessParticipantButtonTitle = (role: keyof ProcessConfirmations) =>
+    `${getProcessParticipantRoleLabel(role)} 확인`;
+
+  const getProcessParticipantButtonSubtitle = (role: keyof ProcessConfirmations) =>
+    role === currentProcessConfirmationRole
+      ? getShortParticipantName(getCurrentParticipantName())
+      : getShortParticipantName(getPartnerParticipantName());
+
   const isProcessConfirmationEditable = (role: keyof ProcessConfirmations) =>
-    role === "designer";
+    role === currentProcessConfirmationRole;
 
   const getConfirmationLabel = (
     role: keyof ProcessConfirmations,
@@ -2148,10 +2177,11 @@ export default function Messages() {
   };
 
   const getProcessApprovalSummary = (process: ProjectProcess, progress: number) =>
-    `작업 ${progress}% · ${getConfirmationLabel(
-      "designer",
-      process.confirmations
-    )} · ${getConfirmationLabel("client", process.confirmations)}`;
+    `작업 ${progress}% · ${
+      process.confirmations.designer ? "디자이너 완료" : "디자이너 대기"
+    } · ${
+      process.confirmations.client ? "클라이언트 완료" : "클라이언트 대기"
+    }`;
 
   const getProcessApprovalBadge = (process: ProjectProcess, progress: number) => {
     if (progress === 100 && hasBothConfirmations(process.confirmations)) {
@@ -2270,7 +2300,7 @@ export default function Messages() {
     }
   };
 
-  const processCompletionGuideText = `${getProcessParticipantDisplayLabel("designer")}와 ${getProcessParticipantDisplayLabel("client")}가 모두 확인해야 완료됩니다.`;
+  const processCompletionGuideText = "작업이 끝나면 양쪽 모두 확인해 주세요.";
 
   const handleDeleteConversation = async () => {
     if (!activeConversation) return;
@@ -3574,37 +3604,6 @@ export default function Messages() {
                 </div>
               </div>
             ))}
-            {isPartnerTyping && (
-              <div
-                className="flex justify-start"
-                style={{ animation: "pickxelTypingBubbleIn 180ms ease-out both" }}
-              >
-                <div className="flex max-w-[88%] items-end gap-2 sm:max-w-[70%]">
-                  <ImageWithFallback
-                    src={activeConversation.avatar}
-                    alt={activeConversation.name}
-                    className="size-7 rounded-full object-cover shadow-sm"
-                  />
-                  <div className="rounded-2xl rounded-tl-sm border border-gray-200 bg-white px-4 py-3 shadow-sm">
-                    <div className="mb-1 text-xs font-medium text-gray-500">
-                      {activeConversation.profileName}님이 입력 중...
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      {[0, 1, 2].map((index) => (
-                        <span
-                          key={index}
-                          className="size-2 rounded-full bg-[#00A88C]"
-                          style={{
-                            animation: "pickxelTypingDot 1s ease-in-out infinite",
-                            animationDelay: `${index * 0.16}s`,
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
             <div ref={messagesEndRef} />
 
             {/* Quick Actions */}
@@ -3629,6 +3628,30 @@ export default function Messages() {
 
           {/* Message Input */}
           <div className="border-t border-gray-200 bg-white p-3 sm:p-4">
+            <div className="mb-2 flex min-h-[18px] items-center gap-1.5 px-1">
+              {isPartnerTyping && (
+                <>
+                  <div
+                    className="flex items-center gap-1"
+                    style={{ animation: "pickxelTypingBubbleIn 180ms ease-out both" }}
+                  >
+                    {[0, 1, 2].map((index) => (
+                      <span
+                        key={index}
+                        className="size-1.5 rounded-full bg-[#00A88C]"
+                        style={{
+                          animation: "pickxelTypingDot 1s ease-in-out infinite",
+                          animationDelay: `${index * 0.16}s`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <p className="truncate text-xs text-gray-500">
+                    {activeConversation.profileName}님이 입력 중...
+                  </p>
+                </>
+              )}
+            </div>
             {pendingAttachments.length > 0 && (
               <div className="mb-3 flex flex-wrap items-start gap-2 rounded-xl bg-[#F7F7F5] p-3">
                 {renderImageAttachmentGallery(
@@ -4062,8 +4085,8 @@ export default function Messages() {
                         const approvalBadge = getProcessApprovalBadge(process, progress);
                         const approvalSummary = getProcessApprovalSummary(process, progress);
                         const confirmationRoles: Array<keyof ProcessConfirmations> = [
-                          "client",
-                          "designer",
+                          partnerProcessConfirmationRole,
+                          currentProcessConfirmationRole,
                         ];
 
                         return (
@@ -4204,18 +4227,20 @@ export default function Messages() {
                                         }`}
                                       >
                                         {isCurrentParticipant && (
-                                          <span className="leading-tight">
-                                            <span className="block">
-                                              {getProcessParticipantDisplayLabel(role)}
+                                          <span className="min-w-0 flex-1 leading-tight">
+                                            <span className="block truncate">
+                                              {getProcessParticipantButtonTitle(role)}
                                             </span>
                                             <span
-                                              className={`block text-[11px] font-bold ${
+                                              className={`block truncate text-[11px] font-bold ${
                                                 isConfirmed
                                                   ? "text-[#007E68]"
                                                   : "text-gray-400"
                                               }`}
                                             >
-                                              {isConfirmed ? "확인 완료" : "확인 대기"}
+                                              {`${getProcessParticipantButtonSubtitle(role)} · ${
+                                                isConfirmed ? "완료" : "대기"
+                                              }`}
                                             </span>
                                           </span>
                                         )}
@@ -4229,18 +4254,20 @@ export default function Messages() {
                                           <CheckCircle className="size-4" />
                                         </span>
                                         {!isCurrentParticipant && (
-                                          <span className="leading-tight">
-                                            <span className="block">
-                                              {getProcessParticipantDisplayLabel(role)}
+                                          <span className="min-w-0 flex-1 leading-tight">
+                                            <span className="block truncate">
+                                              {getProcessParticipantButtonTitle(role)}
                                             </span>
                                             <span
-                                              className={`block text-[11px] font-bold ${
+                                              className={`block truncate text-[11px] font-bold ${
                                                 isConfirmed
                                                   ? "text-[#007E68]"
                                                   : "text-gray-400"
                                               }`}
                                             >
-                                              {isConfirmed ? "확인 완료" : "확인 대기"}
+                                              {`${getProcessParticipantButtonSubtitle(role)} · ${
+                                                isConfirmed ? "완료" : "대기"
+                                              }`}
                                             </span>
                                           </span>
                                         )}
