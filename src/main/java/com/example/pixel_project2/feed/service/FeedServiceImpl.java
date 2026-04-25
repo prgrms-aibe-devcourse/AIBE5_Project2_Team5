@@ -31,6 +31,8 @@ import com.example.pixel_project2.feed.dto.FeedItemResponse;
 import com.example.pixel_project2.feed.dto.FeedListResponse;
 import com.example.pixel_project2.feed.dto.FeedPickResponse;
 import com.example.pixel_project2.feed.dto.UpdateCommentResponse;
+import com.example.pixel_project2.common.entity.enums.NotificationType;
+import com.example.pixel_project2.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,6 +55,7 @@ public class FeedServiceImpl implements FeedService {
     private final PostImageRepository postImageRepository;
     private final CollectionRepository collectionRepository;
     private final FollowRepository followRepository;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional(readOnly = true)
@@ -140,8 +143,20 @@ public class FeedServiceImpl implements FeedService {
                     .build());
             post.setPickCount(currentPickCount + 1);
             picked = true;
+
+            // 좋아요 알림 생성 (자기 자신의 게시물이 아닐 때만)
+            if (!post.getUser().getId().equals(userId)) {
+                notificationService.createNotification(
+                        post.getUser().getId(),
+                        userId,
+                        NotificationType.LIKE,
+                        post.getId(),
+                        user.getNickname() + "님이 회원님의 게시물을 좋아합니다."
+                );
+            }
         }
 
+        postRepository.save(post);
         return new FeedPickResponse(post.getId(), picked, post.getPickCount());
     }
 
@@ -183,6 +198,17 @@ public class FeedServiceImpl implements FeedService {
                 .build();
 
         Comment savedComment = commentRepository.save(comment);
+
+        // 댓글 알림 생성 (자기 자신의 게시물이 아닐 때만)
+        if (!post.getUser().getId().equals(userId)) {
+            notificationService.createNotification(
+                    post.getUser().getId(),
+                    userId,
+                    NotificationType.COMMENT,
+                    post.getId(),
+                    user.getNickname() + "님이 회원님의 게시물에 댓글을 남겼습니다: " + savedComment.getDescription()
+            );
+        }
 
         return new CreateCommentResponse(
                 savedComment.getCommentId(),
