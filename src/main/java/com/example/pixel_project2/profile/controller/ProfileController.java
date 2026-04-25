@@ -2,6 +2,7 @@ package com.example.pixel_project2.profile.controller;
 
 import com.example.pixel_project2.common.dto.ApiResponse;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
+import com.example.pixel_project2.profile.dto.CreateProfileReviewRequest;
 import com.example.pixel_project2.profile.dto.ProfileFeedResponse;
 import com.example.pixel_project2.profile.dto.ProfileResponse;
 import com.example.pixel_project2.profile.dto.ProfileReviewResponse;
@@ -14,6 +15,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -40,6 +42,14 @@ public class ProfileController {
     @GetMapping("/me/reviews")
     public ApiResponse<List<ProfileReviewResponse>> getMyProfileReviews(@AuthenticationPrincipal AuthenticatedUser currentUser) {
         return ApiResponse.ok("Profile reviews loaded.", profileService.getMyProfileReviews(currentUser));
+    }
+
+    @PostMapping("/reviews")
+    public ApiResponse<ProfileReviewResponse> createProfileReview(
+            @AuthenticationPrincipal AuthenticatedUser currentUser,
+            @Valid @RequestBody CreateProfileReviewRequest request
+    ) {
+        return ApiResponse.ok("Profile review created.", profileService.createProfileReview(currentUser, request));
     }
 
     @PatchMapping("/me")

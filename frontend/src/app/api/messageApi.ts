@@ -15,6 +15,15 @@ export type MessageConversationResponse = {
   lastMessage: string | null;
   lastMessageAt: string | null;
   unreadCount: number;
+  partnerAvailable: boolean;
+  partnerTyping: boolean;
+};
+
+export type MessageConversationPresenceResponse = {
+  conversationId: number;
+  partnerUserId: number;
+  partnerAvailable: boolean;
+  partnerTyping: boolean;
 };
 
 export type ChatMessageResponse = {
@@ -26,12 +35,46 @@ export type ChatMessageResponse = {
   message: string;
   attachments: MessageSocketAttachment[];
   createdAt: string;
+  reactions: MessageReactionSummaryResponse[];
+  readByPartner: boolean;
+};
+
+export type MessageReactionSummaryResponse = {
+  emoji: string;
+  count: number;
+  reactedByMe: boolean;
+};
+
+export type MessageReactionUpdateResponse = {
+  messageId: number;
+  reactions: MessageReactionSummaryResponse[];
+};
+
+export type MessageProcessTaskResponse = {
+  id: number;
+  text: string;
+  completed: boolean;
+};
+
+export type MessageProcessConfirmationsResponse = {
+  designer: boolean;
+  client: boolean;
+};
+
+export type MessageProcessResponse = {
+  id: number;
+  title: string;
+  status: "completed" | "in-progress" | "pending";
+  tasks: MessageProcessTaskResponse[];
+  confirmations: MessageProcessConfirmationsResponse;
 };
 
 export async function getMessageConversationsApi() {
   return apiRequest<MessageConversationResponse[]>(
     "/api/messages/conversations",
-    {},
+    {
+      cache: "no-store",
+    },
     "Failed to load conversations.",
   );
 }
@@ -50,7 +93,9 @@ export async function createMessageConversationApi(partnerUserId: number) {
 export async function getConversationMessagesApi(conversationId: number) {
   return apiRequest<ChatMessageResponse[]>(
     `/api/messages/conversations/${conversationId}/messages`,
-    {},
+    {
+      cache: "no-store",
+    },
     "Failed to load messages.",
   );
 }
@@ -74,5 +119,101 @@ export async function sendConversationMessageApi(
       }),
     },
     "Failed to send message.",
+  );
+}
+
+export async function getConversationPresenceApi(conversationId: number) {
+  return apiRequest<MessageConversationPresenceResponse>(
+    `/api/messages/conversations/${conversationId}/presence`,
+    {
+      cache: "no-store",
+    },
+    "Failed to load conversation presence.",
+  );
+}
+
+export async function updateConversationTypingApi(
+  conversationId: number,
+  isTyping: boolean,
+) {
+  return apiRequest<MessageConversationPresenceResponse>(
+    `/api/messages/conversations/${conversationId}/typing`,
+    {
+      method: "POST",
+      body: JSON.stringify({ isTyping }),
+    },
+    "Failed to update conversation typing.",
+  );
+}
+
+export async function markConversationReadApi(conversationId: number) {
+  return apiRequest<{
+    conversationId: number;
+    readerUserId: number;
+    lastReadMessageId: number | null;
+  }>(
+    `/api/messages/conversations/${conversationId}/read`,
+    {
+      method: "POST",
+    },
+    "Failed to mark conversation as read.",
+  );
+}
+
+export async function toggleMessageReactionApi(
+  conversationId: number,
+  messageId: number,
+  emoji: string,
+) {
+  return apiRequest<MessageReactionUpdateResponse>(
+    `/api/messages/conversations/${conversationId}/messages/${messageId}/reactions/toggle`,
+    {
+      method: "POST",
+      body: JSON.stringify({ emoji }),
+    },
+    "Failed to update reaction.",
+  );
+}
+
+export async function getConversationProcessesApi(conversationId: number) {
+  return apiRequest<MessageProcessResponse[]>(
+    `/api/messages/conversations/${conversationId}/processes`,
+    {
+      cache: "no-store",
+    },
+    "Failed to load processes.",
+  );
+}
+
+export async function saveConversationProcessesApi(
+  conversationId: number,
+  processes: Array<{
+    id?: number;
+    title: string;
+    confirmations: MessageProcessConfirmationsResponse;
+    tasks: Array<{
+      id?: number;
+      text: string;
+      completed: boolean;
+    }>;
+  }>,
+) {
+  return apiRequest<MessageProcessResponse[]>(
+    `/api/messages/conversations/${conversationId}/processes`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ processes }),
+    },
+    "Failed to save processes.",
+  );
+}
+
+export async function deleteMessageConversationApi(conversationId: number) {
+  return apiRequest<null>(
+    `/api/messages/conversations/${conversationId}`,
+    {
+      method: "DELETE",
+    },
+    "Failed to delete conversation.",
   );
 }

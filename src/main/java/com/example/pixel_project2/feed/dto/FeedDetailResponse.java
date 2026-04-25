@@ -9,7 +9,9 @@ public record FeedDetailResponse(
         String title,
         String description,
         String nickname,
+        String profileKey,
         String profileImageUrl,
+        String job,
         String role,
         String postType,
         String category,
@@ -18,6 +20,7 @@ public record FeedDetailResponse(
         String portfolioUrl,
         LocalDateTime createdAt,
         List<String> imageUrls,
+        boolean picked,
         boolean mine
 ) {
 }

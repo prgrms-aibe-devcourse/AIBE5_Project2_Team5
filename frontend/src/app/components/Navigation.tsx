@@ -3,13 +3,14 @@ import { Bell, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { motion, LayoutGroup } from "motion/react";
 import { fetchUnreadCount } from "../utils/notificationState";
-import { clearAuthenticated, getCurrentUser } from "../utils/auth";
+import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { clearAuthenticated, getCurrentUser, subscribeCurrentUser } from "../utils/auth";
 import { logoutApi } from "../api/authApi";
 
 export default function Navigation() {
   const location = useLocation();
   const navigate = useNavigate();
-  const currentUser = getCurrentUser();
+  const [currentUser, setCurrentUserState] = useState(() => getCurrentUser());
   const [hasUnread, setHasUnread] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const profilePath = "/profile/me";
@@ -47,6 +48,13 @@ export default function Navigation() {
     };
     refreshUnreadState();
   }, []);
+
+  useEffect(() => {
+    const refreshCurrentUser = () => setCurrentUserState(getCurrentUser());
+    refreshCurrentUser();
+    return subscribeCurrentUser(refreshCurrentUser);
+  }, []);
+
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -134,9 +142,17 @@ export default function Navigation() {
             </Link>
             <Link
               to={profilePath}
-              className="size-9 rounded-full bg-gradient-to-br from-[#00C9A7] to-[#009E88] flex items-center justify-center text-white text-xs font-bold shadow-sm shadow-[#00C9A7]/20 hover:shadow-md hover:shadow-[#00C9A7]/30 transition-shadow"
+              className="size-9 overflow-hidden rounded-full bg-gradient-to-br from-[#00C9A7] to-[#009E88] flex items-center justify-center text-white text-xs font-bold shadow-sm shadow-[#00C9A7]/20 hover:shadow-md hover:shadow-[#00C9A7]/30 transition-shadow"
             >
-              {profileInitial}
+              {currentUser?.profileImage ? (
+                <ImageWithFallback
+                  src={currentUser.profileImage}
+                  alt={currentUser.nickname || currentUser.name || "프로필"}
+                  className="size-full object-cover"
+                />
+              ) : (
+                profileInitial
+              )}
             </Link>
           </div>
         </div>

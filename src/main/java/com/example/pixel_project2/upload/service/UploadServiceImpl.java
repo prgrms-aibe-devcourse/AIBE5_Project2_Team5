@@ -9,8 +9,12 @@ import com.example.pixel_project2.common.repository.PostRepository;
 import com.example.pixel_project2.common.repository.UserRepository;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.upload.dto.FeedImagesUploadResponse;
+import com.example.pixel_project2.upload.dto.MessageAttachmentUploadItemResponse;
+import com.example.pixel_project2.upload.dto.MessageAttachmentsUploadResponse;
 import com.example.pixel_project2.upload.dto.ProfileImageUploadResponse;
+import com.example.pixel_project2.upload.dto.StoredFile;
 import com.example.pixel_project2.upload.dto.StoredImage;
+import com.example.pixel_project2.message.service.MessageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,11 +28,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class UploadServiceImpl implements UploadService {
     private static final int MAX_FEED_IMAGES = 4;
+    private static final int MAX_MESSAGE_ATTACHMENTS = 8;
 
     private final R2StorageService r2StorageService;
     private final UserRepository userRepository;
     private final PostRepository postRepository;
     private final PostImageRepository postImageRepository;
+    private final MessageService messageService;
 
     @Override
     @Transactional
@@ -139,6 +145,60 @@ public class UploadServiceImpl implements UploadService {
         return new FeedImagesUploadResponse(post.getId(), imageUrls, thumbnailImageUrl);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public MessageAttachmentsUploadResponse uploadMessageAttachments(
+            AuthenticatedUser currentUser,
+            Long conversationId,
+            List<MultipartFile> files
+    ) {
+        if (conversationId == null) {
+            throw new IllegalArgumentException("Conversation id is required.");
+        }
+        if (!messageService.canAccessConversation(currentUser, conversationId)) {
+            throw new IllegalArgumentException("대화에 접근할 권한이 없습니다.");
+        }
+
+        List<MultipartFile> attachmentFiles = normalizeFiles(files);
+        if (attachmentFiles.isEmpty()) {
+            throw new IllegalArgumentException("At least one attachment file is required.");
+        }
+        if (attachmentFiles.size() > MAX_MESSAGE_ATTACHMENTS) {
+            throw new IllegalArgumentException("Message attachments can be up to " + MAX_MESSAGE_ATTACHMENTS + " files.");
+        }
+
+        List<MessageAttachmentUploadItemResponse> attachments = new ArrayList<>();
+        String prefix = "messages/" + conversationId + "/" + currentUser.id();
+
+        for (MultipartFile file : attachmentFiles) {
+            String contentType = file.getContentType() == null ? "" : file.getContentType().trim().toLowerCase();
+            String fileName = normalizeFileName(file.getOriginalFilename());
+
+            if (contentType.startsWith("image/")) {
+                StoredImage storedImage = r2StorageService.uploadImage(file, prefix);
+                attachments.add(new MessageAttachmentUploadItemResponse(
+                        "image",
+                        fileName,
+                        storedImage.url(),
+                        storedImage.contentType(),
+                        storedImage.size()
+                ));
+                continue;
+            }
+
+            StoredFile storedFile = r2StorageService.uploadFile(file, prefix);
+            attachments.add(new MessageAttachmentUploadItemResponse(
+                    "file",
+                    fileName,
+                    storedFile.url(),
+                    storedFile.contentType(),
+                    storedFile.size()
+            ));
+        }
+
+        return new MessageAttachmentsUploadResponse(conversationId, attachments);
+    }
+
     private Post getOwnedPortfolioPost(AuthenticatedUser currentUser, Long postId) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new IllegalArgumentException("Feed not found."));
@@ -153,6 +213,16 @@ public class UploadServiceImpl implements UploadService {
     }
 
     private List<MultipartFile> normalizeImageFiles(List<MultipartFile> files) {
+        if (files == null || files.isEmpty()) {
+            return List.of();
+        }
+
+        return files.stream()
+                .filter(file -> file != null && !file.isEmpty())
+                .toList();
+    }
+
+    private List<MultipartFile> normalizeFiles(List<MultipartFile> files) {
         if (files == null || files.isEmpty()) {
             return List.of();
         }
@@ -186,5 +256,14 @@ public class UploadServiceImpl implements UploadService {
         }
 
         return imageUrls;
+    }
+
+    private String normalizeFileName(String originalFilename) {
+        if (originalFilename == null || originalFilename.isBlank()) {
+            return "attachment";
+        }
+
+        String normalized = originalFilename.trim();
+        return normalized.length() > 200 ? normalized.substring(normalized.length() - 200) : normalized;
     }
 }

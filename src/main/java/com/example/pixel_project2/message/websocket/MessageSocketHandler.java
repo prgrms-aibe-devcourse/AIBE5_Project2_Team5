@@ -2,12 +2,14 @@ package com.example.pixel_project2.message.websocket;
 
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.message.dto.ChatMessageResponse;
+import com.example.pixel_project2.message.dto.MessageReadReceiptResponse;
 import com.example.pixel_project2.message.dto.SendMessageRequest;
 import com.example.pixel_project2.message.service.MessageService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -21,21 +23,48 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class MessageSocketHandler extends TextWebSocketHandler {
     private static final String TYPE_SUBSCRIBE = "subscribe";
     private static final String TYPE_CHAT_MESSAGE = "chat.message";
+    private static final String TYPE_TYPING = "typing";
+    private static final String TYPE_CONVERSATION_READ = "conversation.read";
+    private static final String TYPE_PRESENCE_SNAPSHOT = "presence.snapshot";
+    private static final String TYPE_PRESENCE_UPDATE = "presence.update";
+    private static final String TYPE_PING = "ping";
+    private static final String TYPE_PONG = "pong";
 
     private final ObjectMapper objectMapper;
     private final MessageService messageService;
+    private final MessagePresenceTracker messagePresenceTracker;
     private final ConcurrentHashMap<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Set<Long>> subscriptions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Object> sessionLocks = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> sessionUsers = new ConcurrentHashMap<>();
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
         sessions.put(session.getId(), session);
         subscriptions.put(session.getId(), Set.of());
         sessionLocks.put(session.getId(), new Object());
+
+        AuthenticatedUser user = authenticatedUser(session);
+        if (user == null) {
+            return;
+        }
+
+        sessionUsers.put(session.getId(), user.id());
+        boolean becameOnline = messagePresenceTracker.connectUser(user.id(), session.getId());
+        if (becameOnline) {
+            broadcastPresenceForUser(user.id(), true);
+        }
+
+        try {
+            sendPresenceSnapshot(session, messageService.getConversationIdsForUser(user.id()));
+        } catch (IOException ignored) {
+            cleanupSession(session);
+            closeQuietly(session);
+        }
     }
 
     @Override
@@ -48,8 +77,23 @@ public class MessageSocketHandler extends TextWebSocketHandler {
             return;
         }
 
+        if (TYPE_PING.equals(type)) {
+            handlePing(session);
+            return;
+        }
+
         if (TYPE_CHAT_MESSAGE.equals(type)) {
             handleChatMessage(session, payload);
+            return;
+        }
+
+        if (TYPE_TYPING.equals(type)) {
+            handleTyping(session, payload);
+            return;
+        }
+
+        if (TYPE_CONVERSATION_READ.equals(type)) {
+            handleConversationRead(session, payload);
             return;
         }
 
@@ -58,12 +102,21 @@ public class MessageSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        sessions.remove(session.getId());
-        subscriptions.remove(session.getId());
-        sessionLocks.remove(session.getId());
+        cleanupSession(session);
+    }
+
+    @Override
+    public void handleTransportError(WebSocketSession session, Throwable exception) throws Exception {
+        cleanupSession(session);
+        closeQuietly(session);
     }
 
     private void handleSubscribe(WebSocketSession session, JsonNode payload) throws IOException {
+        AuthenticatedUser currentUser = authenticatedUser(session);
+        if (currentUser != null) {
+            messagePresenceTracker.touchUser(currentUser.id());
+        }
+
         JsonNode conversationIdsNode = payload.path("conversationIds");
         if (!conversationIdsNode.isArray()) {
             sendError(session, "conversationIds must be an array.");
@@ -83,6 +136,18 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         response.put("type", "subscribed");
         response.set("conversationIds", objectMapper.valueToTree(List.copyOf(conversationIds)));
         sendJson(session, response);
+        sendPresenceSnapshot(session, conversationIds);
+    }
+
+    private void handlePing(WebSocketSession session) throws IOException {
+        AuthenticatedUser currentUser = authenticatedUser(session);
+        if (currentUser != null) {
+            messagePresenceTracker.touchUser(currentUser.id());
+        }
+
+        ObjectNode pong = objectMapper.createObjectNode();
+        pong.put("type", TYPE_PONG);
+        sendJson(session, pong);
     }
 
     private void handleChatMessage(WebSocketSession session, JsonNode payload) throws IOException {
@@ -130,13 +195,90 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         outbound.put("message", savedMessage.message());
         outbound.put("createdAt", savedMessage.createdAt().toString());
         outbound.set("attachments", savedMessage.attachments());
+        outbound.set("reactions", objectMapper.valueToTree(savedMessage.reactions()));
+        outbound.put("readByPartner", savedMessage.readByPartner());
 
-        broadcast(conversationId, session.getId(), outbound);
+        broadcast(conversationId, session.getId(), messageService.getConversationParticipantIds(conversationId), outbound);
     }
 
-    private void broadcast(long conversationId, String senderSessionId, ObjectNode outbound) throws IOException {
+    private void handleTyping(WebSocketSession session, JsonNode payload) throws IOException {
+        AuthenticatedUser sender = authenticatedUser(session);
+        if (sender == null) {
+            sendError(session, "Authentication is required.");
+            return;
+        }
+
+        if (!payload.path("conversationId").canConvertToLong()) {
+            sendError(session, "conversationId is required.");
+            return;
+        }
+
+        long conversationId = payload.path("conversationId").asLong();
+        if (!messageService.canAccessConversation(sender, conversationId)) {
+            sendError(session, "You do not have access to the conversation.");
+            return;
+        }
+
+        ObjectNode outbound = objectMapper.createObjectNode();
+        outbound.put("type", TYPE_TYPING);
+        outbound.put("conversationId", conversationId);
+        outbound.put("senderUserId", sender.id());
+        boolean isTyping = payload.path("isTyping").asBoolean(false);
+        outbound.put("isTyping", isTyping);
+        messagePresenceTracker.updateTyping(conversationId, sender.id(), isTyping);
+        log.info(
+                "message typing socket event conversationId={} senderUserId={} isTyping={}",
+                conversationId,
+                sender.id(),
+                isTyping
+        );
+
+        broadcast(conversationId, session.getId(), messageService.getConversationParticipantIds(conversationId), outbound);
+    }
+
+    private void handleConversationRead(WebSocketSession session, JsonNode payload) throws IOException {
+        AuthenticatedUser sender = authenticatedUser(session);
+        if (sender == null) {
+            sendError(session, "Authentication is required.");
+            return;
+        }
+
+        if (!payload.path("conversationId").canConvertToLong()) {
+            sendError(session, "conversationId is required.");
+            return;
+        }
+
+        long conversationId = payload.path("conversationId").asLong();
+        MessageReadReceiptResponse readReceipt;
+        try {
+            readReceipt = messageService.markConversationRead(sender, conversationId);
+        } catch (IllegalArgumentException e) {
+            sendError(session, e.getMessage());
+            return;
+        }
+
+        ObjectNode outbound = objectMapper.createObjectNode();
+        outbound.put("type", TYPE_CONVERSATION_READ);
+        outbound.put("conversationId", readReceipt.conversationId());
+        outbound.put("readerUserId", readReceipt.readerUserId());
+        if (readReceipt.lastReadMessageId() == null) {
+            outbound.putNull("lastReadMessageId");
+        } else {
+            outbound.put("lastReadMessageId", readReceipt.lastReadMessageId());
+        }
+
+        broadcast(conversationId, session.getId(), messageService.getConversationParticipantIds(conversationId), outbound);
+    }
+
+    private void broadcast(
+            long conversationId,
+            String senderSessionId,
+            Set<Long> participantUserIds,
+            ObjectNode outbound
+    ) {
         for (WebSocketSession targetSession : sessions.values()) {
             if (!targetSession.isOpen()) {
+                cleanupSession(targetSession);
                 continue;
             }
 
@@ -146,10 +288,15 @@ public class MessageSocketHandler extends TextWebSocketHandler {
                     .contains(conversationId);
             AuthenticatedUser targetUser = authenticatedUser(targetSession);
             boolean participantSession = targetUser != null
-                    && messageService.canAccessConversation(targetUser, conversationId);
+                    && participantUserIds.contains(targetUser.id());
 
             if (senderSession || subscribed || participantSession) {
-                sendJson(targetSession, outbound);
+                try {
+                    sendJson(targetSession, outbound);
+                } catch (IOException e) {
+                    cleanupSession(targetSession);
+                    closeQuietly(targetSession);
+                }
             }
         }
     }
@@ -175,6 +322,32 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         }
     }
 
+    private void cleanupSession(WebSocketSession session) {
+        sessions.remove(session.getId());
+        subscriptions.remove(session.getId());
+        sessionLocks.remove(session.getId());
+
+        Long userId = sessionUsers.remove(session.getId());
+        if (userId == null) {
+            return;
+        }
+
+        boolean becameOffline = messagePresenceTracker.disconnectUser(userId, session.getId());
+        if (becameOffline) {
+            broadcastPresenceForUser(userId, false);
+        }
+    }
+
+    private void closeQuietly(WebSocketSession session) {
+        try {
+            if (session.isOpen()) {
+                session.close();
+            }
+        } catch (IOException ignored) {
+            // Best effort close for broken sockets.
+        }
+    }
+
     private String text(JsonNode payload, String fieldName) {
         JsonNode value = payload.path(fieldName);
         if (value.isMissingNode() || value.isNull()) {
@@ -182,4 +355,48 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         }
         return value.asText();
     }
+
+    private void sendPresenceSnapshot(WebSocketSession session, Set<Long> conversationIds) throws IOException {
+        AuthenticatedUser currentUser = authenticatedUser(session);
+        if (currentUser == null) {
+            return;
+        }
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("type", TYPE_PRESENCE_SNAPSHOT);
+        var states = objectMapper.createArrayNode();
+
+        for (Long conversationId : conversationIds) {
+            Set<Long> participantIds = messageService.getConversationParticipantIds(conversationId);
+            Long partnerUserId = participantIds.stream()
+                    .filter(participantId -> !participantId.equals(currentUser.id()))
+                    .findFirst()
+                    .orElse(null);
+            if (partnerUserId == null) {
+                continue;
+            }
+
+            ObjectNode state = objectMapper.createObjectNode();
+            state.put("conversationId", conversationId);
+            state.put("userId", partnerUserId);
+            state.put("isOnline", messagePresenceTracker.isUserAvailable(partnerUserId));
+            states.add(state);
+        }
+
+        payload.set("states", states);
+        sendJson(session, payload);
+    }
+
+    private void broadcastPresenceForUser(Long userId, boolean isOnline) {
+        Set<Long> conversationIds = messageService.getConversationIdsForUser(userId);
+        for (Long conversationId : conversationIds) {
+            ObjectNode outbound = objectMapper.createObjectNode();
+            outbound.put("type", TYPE_PRESENCE_UPDATE);
+            outbound.put("conversationId", conversationId);
+            outbound.put("userId", userId);
+            outbound.put("isOnline", isOnline);
+            broadcast(conversationId, null, messageService.getConversationParticipantIds(conversationId), outbound);
+        }
+    }
+
 }

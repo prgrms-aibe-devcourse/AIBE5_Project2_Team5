@@ -152,6 +152,57 @@ class ProfileFlowIntegrationTest {
                 .andExpect(jsonPath("$.data.nickname").value("둘닉"));
     }
 
+    @Test
+    void savedReviewAppearsOnProfileReviewTab() throws Exception {
+        JsonNode clientUser = signUp("review-client@test.io", "리뷰 클라이언트", "리뷰클라", "CLIENT");
+        JsonNode designerUser = signUp("review-designer@test.io", "리뷰 디자이너", "리뷰디자", "DESIGNER");
+
+        String clientToken = login("review-client@test.io", "testPass1!");
+
+        MvcResult createConversationResult = mockMvc.perform(post("/api/messages/conversations")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("partnerUserId", designerUser.path("userId").asLong()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andReturn();
+
+        long conversationId = objectMapper.readTree(createConversationResult.getResponse().getContentAsString())
+                .path("data")
+                .path("id")
+                .asLong();
+
+        mockMvc.perform(post("/api/profiles/reviews")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "conversationId", conversationId,
+                                "revieweeId", designerUser.path("userId").asLong(),
+                                "projectTitle", "브랜드 리디자인",
+                                "rating", 5,
+                                "content", "소통이 빠르고 결과물 퀄리티가 좋아서 만족스러웠습니다.",
+                                "workCategories", List.of("브랜딩", "편집디자인"),
+                                "complimentTags", List.of("소통이 빨라요", "결과물이 훌륭해요")
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.projectTitle").value("브랜드 리디자인"))
+                .andExpect(jsonPath("$.data.rating").value(5))
+                .andExpect(jsonPath("$.data.workCategories[0]").value("브랜딩"));
+
+        mockMvc.perform(get("/api/profiles/{profileKey}/reviews", "리뷰디자")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].projectTitle").value("브랜드 리디자인"))
+                .andExpect(jsonPath("$.data[0].reviewerId").value(clientUser.path("userId").asLong()))
+                .andExpect(jsonPath("$.data[0].complimentTags[0]").value("소통이 빨라요"));
+
+        mockMvc.perform(get("/api/profiles/{profileKey}", "리뷰디자")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.rating").value(5.0));
+    }
+
     private JsonNode signUp(String loginId, String name, String nickname, String role) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)

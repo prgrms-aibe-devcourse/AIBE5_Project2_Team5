@@ -32,4 +32,8 @@ public interface MessageConversationRepository extends JpaRepository<MessageConv
             @Param("userOneId") Long userOneId,
             @Param("userTwoId") Long userTwoId
     );
+
+    @Query("select c.id from MessageConversation c " +
+            "where c.userOne.id = :userId or c.userTwo.id = :userId")
+    List<Long> findIdsByParticipant(@Param("userId") Long userId);
 }

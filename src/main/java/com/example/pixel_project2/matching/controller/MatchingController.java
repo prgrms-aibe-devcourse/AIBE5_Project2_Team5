@@ -5,14 +5,7 @@ import com.example.pixel_project2.common.entity.enums.Category;
 import com.example.pixel_project2.common.entity.enums.ExperienceLevel;
 import com.example.pixel_project2.common.entity.enums.JobState;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
-import com.example.pixel_project2.matching.dto.ApplyProjectRequest;
-import com.example.pixel_project2.matching.dto.CreateProjectRequest;
-import com.example.pixel_project2.matching.dto.FilteringResponse;
-import com.example.pixel_project2.matching.dto.ProjectApplicationItemResponse;
-import com.example.pixel_project2.matching.dto.ProjectDetailResponse;
-import com.example.pixel_project2.matching.dto.ProjectInquiryRequest;
-import com.example.pixel_project2.matching.dto.ProjectListItemResponse;
-import com.example.pixel_project2.matching.dto.UpdateProjectRequest;
+import com.example.pixel_project2.matching.dto.*;
 import com.example.pixel_project2.matching.service.MatchingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -92,5 +85,15 @@ public class MatchingController {
     @GetMapping("/{postId}/applications")
     public ApiResponse<List<ProjectApplicationItemResponse>> getProjectApplications(@PathVariable Long postId) {
         return ApiResponse.ok("지원서 목록을 조회했습니다.", matchingService.getProjectApplications(postId));
+    }
+
+    @GetMapping("/my-posts")
+    public ApiResponse<List<MyPostItemResponse>> getMyPosts() {
+        return ApiResponse.ok("내가 등록한 공고 목록을 조회했습니다.", matchingService.getMyPosts());
+    }
+
+    @GetMapping("/my-applications")
+    public ApiResponse<List<MyApplicationItemResponse>> getMyApplications() {
+        return ApiResponse.ok("내가 지원한 공고 목록을 조회했습니다.", matchingService.getMyApplications());
     }
 }
