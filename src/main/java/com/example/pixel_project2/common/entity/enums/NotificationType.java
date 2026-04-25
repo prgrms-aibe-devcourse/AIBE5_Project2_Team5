@@ -6,5 +6,6 @@ public enum NotificationType {
     PROJECT_APPLY,
     PROJECT_ACCEPT,
     MESSAGE,
-    COLLECTION
+    COLLECTION,
+    COMMENT
 }
