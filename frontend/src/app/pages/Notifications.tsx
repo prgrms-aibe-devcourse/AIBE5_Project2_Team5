@@ -7,12 +7,10 @@ import Footer from "../components/Footer";
 import {
   type NotificationCategory,
   type NotificationItem,
-  getNotifications,
-  hasUnreadNotifications,
+  fetchNotifications,
+  fetchUnreadCount,
   markAllNotificationsRead,
   markNotificationRead,
-  snoozeNotification,
-  subscribeNotificationState,
 } from "../utils/notificationState";
 
 type NotificationTab = "all" | NotificationCategory;
@@ -161,18 +159,23 @@ const getIconContent = (notification: NotificationItem) => {
 export default function Notifications() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<NotificationTab>("all");
-  const [notifications, setNotifications] = useState<NotificationItem[]>(() => getNotifications());
-  const [hasUnread, setHasUnread] = useState(hasUnreadNotifications());
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [hasUnread, setHasUnread] = useState(false);
   const [selectedProposalNotification, setSelectedProposalNotification] = useState<NotificationItem | null>(null);
 
-  useEffect(() => {
-    const sync = () => {
-      setNotifications(getNotifications());
-      setHasUnread(hasUnreadNotifications());
-    };
+  const loadNotifications = async () => {
+    try {
+      const items = await fetchNotifications();
+      const unread = await fetchUnreadCount();
+      setNotifications(items);
+      setHasUnread(unread);
+    } catch (e) {
+      console.error("Failed to fetch notifications", e);
+    }
+  };
 
-    sync();
-    return subscribeNotificationState(sync);
+  useEffect(() => {
+    loadNotifications();
   }, []);
 
   const visibleNotifications = useMemo(() => {
@@ -184,25 +187,22 @@ export default function Notifications() {
     return filtered.filter((notification) => !notification.isSnoozed);
   }, [activeTab, notifications]);
 
-  const handleMarkAllRead = () => {
-    markAllNotificationsRead();
-    setNotifications(getNotifications());
-    setHasUnread(false);
+  const handleMarkAllRead = async () => {
+    await markAllNotificationsRead();
+    await loadNotifications();
   };
 
   const handleSnooze = (notificationId: number) => {
-    snoozeNotification(notificationId);
-    setNotifications(getNotifications());
-    setHasUnread(hasUnreadNotifications());
+    // API에 스누즈 기능이 없으므로 일단 로컬에서만 숨김 처리
+    setNotifications((prev) => prev.filter(n => n.id !== notificationId));
   };
 
-  const handlePrimaryAction = (notification: NotificationItem) => {
-    markNotificationRead(notification.id);
+  const handlePrimaryAction = async (notification: NotificationItem) => {
+    await markNotificationRead(notification.id);
 
     if (notification.actionType === "proposal") {
       setSelectedProposalNotification(notification);
-      setNotifications(getNotifications());
-      setHasUnread(hasUnreadNotifications());
+      await loadNotifications();
       return;
     }
 
@@ -217,8 +217,7 @@ export default function Notifications() {
       return;
     }
 
-    setNotifications(getNotifications());
-    setHasUnread(hasUnreadNotifications());
+    await loadNotifications();
   };
 
   return (
@@ -274,7 +273,9 @@ export default function Notifications() {
                   <div
                     className={`${iconContent.iconBg} size-12 rounded-full flex items-center justify-center flex-shrink-0`}
                   >
-                    {notification.avatar ? (
+                    {notification.senderProfileImage ? (
+                      <img src={notification.senderProfileImage} alt="" className="size-12 rounded-full object-cover" />
+                    ) : notification.avatar ? (
                       <div className="size-12 rounded-full bg-gradient-to-br from-blue-400 to-purple-500"></div>
                     ) : (
                       iconContent.icon

@@ -2,10 +2,7 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { Bell, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { motion, LayoutGroup } from "motion/react";
-import {
-  hasUnreadNotifications,
-  subscribeNotificationState,
-} from "../utils/notificationState";
+import { fetchUnreadCount } from "../utils/notificationState";
 import { clearAuthenticated, getCurrentUser } from "../utils/auth";
 import { logoutApi } from "../api/authApi";
 
@@ -13,7 +10,7 @@ export default function Navigation() {
   const location = useLocation();
   const navigate = useNavigate();
   const currentUser = getCurrentUser();
-  const [hasUnread, setHasUnread] = useState(hasUnreadNotifications);
+  const [hasUnread, setHasUnread] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const profilePath = "/profile/me";
   const profileInitial = (currentUser?.nickname || currentUser?.name || "J").slice(0, 1).toUpperCase();
@@ -40,9 +37,15 @@ export default function Navigation() {
   };
 
   useEffect(() => {
-    const refreshUnreadState = () => setHasUnread(hasUnreadNotifications());
+    const refreshUnreadState = async () => {
+      try {
+        const unread = await fetchUnreadCount();
+        setHasUnread(unread);
+      } catch {
+        // ignore
+      }
+    };
     refreshUnreadState();
-    return subscribeNotificationState(refreshUnreadState);
   }, []);
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);

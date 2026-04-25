@@ -11,6 +11,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.example.pixel_project2.notification.service.NotificationService;
+import com.example.pixel_project2.common.entity.enums.NotificationType;
+
 import java.util.List;
 
 @Service
@@ -19,6 +22,7 @@ import java.util.List;
 public class FollowServiceImpl implements FollowService {
     private final FollowRepository followRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional
@@ -31,11 +35,19 @@ public class FollowServiceImpl implements FollowService {
         User following = findUser(targetUserId);
 
         if (followRepository.countRelation(follower.getId(), following.getId()) == 0) {
-            followRepository.save(Follow.builder()
+            Follow savedFollow = followRepository.save(Follow.builder()
                     .follower(follower)
                     .following(following)
                     .build());
             following.setFollowCount((following.getFollowCount() == null ? 0 : following.getFollowCount()) + 1);
+
+            notificationService.createNotification(
+                    following.getId(),
+                    follower.getId(),
+                    NotificationType.FOLLOW,
+                    savedFollow.getFollow_id(),
+                    follower.getNickname() + "님이 회원님을 팔로우하기 시작했습니다."
+            );
         }
 
         return buildResponse(follower.getId(), following.getId(), true);

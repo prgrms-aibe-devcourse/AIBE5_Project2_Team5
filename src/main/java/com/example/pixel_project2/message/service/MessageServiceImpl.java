@@ -20,6 +20,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.example.pixel_project2.notification.service.NotificationService;
+import com.example.pixel_project2.common.entity.enums.NotificationType;
+
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -30,6 +33,7 @@ public class MessageServiceImpl implements MessageService {
     private final MessageConversationRepository conversationRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final ObjectMapper objectMapper;
+    private final NotificationService notificationService;
 
     @Override
     public MessagePolicyResponse getMessagePolicy() {
@@ -95,6 +99,15 @@ public class MessageServiceImpl implements MessageService {
                 ? LocalDateTime.now()
                 : savedMessage.getCreatedAt();
         conversation.updateLastMessage(createPreview(message, attachments), messageCreatedAt);
+
+        User receiver = conversation.getOtherParticipant(currentUser.id());
+        notificationService.createNotification(
+                receiver.getId(),
+                sender.getId(),
+                NotificationType.MESSAGE,
+                savedMessage.getId(),
+                "새로운 메시지가 도착했습니다: " + createPreview(message, attachments)
+        );
 
         return toChatMessageResponse(savedMessage);
     }

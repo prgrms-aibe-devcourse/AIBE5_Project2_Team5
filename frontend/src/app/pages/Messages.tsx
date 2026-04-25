@@ -4,10 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import {
-  getUnreadMessageConversationIds,
-  markConversationRead,
-} from "../utils/notificationState";
-import {
   getConversationMessagesApi,
   getMessageConversationsApi,
   sendConversationMessageApi,
@@ -591,9 +587,7 @@ export default function Messages() {
     taskId: number;
   } | null>(null);
   const [saved, setSaved] = useState(false);
-  const [unreadConversationIds, setUnreadConversationIds] = useState(
-    getUnreadMessageConversationIds
-  );
+  const [unreadConversationIds, setUnreadConversationIds] = useState<number[]>([]);
   const [clearingUnreadConversationId, setClearingUnreadConversationId] =
     useState<number | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => [...messages]);
@@ -930,7 +924,7 @@ export default function Messages() {
       window.matchMedia("(min-width: 1024px)").matches;
 
     if (!isDesktopLayout && mobileView === "list") return;
-    setUnreadConversationIds(markConversationRead(activeConversation.id));
+    setUnreadConversationIds((prev) => prev.filter(id => id !== activeConversation.id));
   }, [activeConversation?.id, clearingUnreadConversationId, mobileView]);
 
   useEffect(() => {
@@ -1258,13 +1252,13 @@ export default function Messages() {
     if (unreadConversationIds.includes(conversationId)) {
       setClearingUnreadConversationId(conversationId);
       window.setTimeout(() => {
-        setUnreadConversationIds(markConversationRead(conversationId));
+        setUnreadConversationIds((prev) => prev.filter(id => id !== conversationId));
         setClearingUnreadConversationId((currentId) =>
           currentId === conversationId ? null : currentId
         );
       }, 180);
     } else {
-      setUnreadConversationIds(markConversationRead(conversationId));
+      setUnreadConversationIds((prev) => prev.filter(id => id !== conversationId));
     }
     setActiveConversationId(conversationId);
     setActiveTab("profile");
@@ -1293,7 +1287,7 @@ export default function Messages() {
     const nextConversation = nextConversations[0];
 
     setLeftConversationIds(nextLeftConversationIds);
-    setUnreadConversationIds(markConversationRead(conversationId));
+    setUnreadConversationIds((prev) => prev.filter(id => id !== conversationId));
     setMessageDrafts((prev) => {
       const nextDrafts = { ...prev };
       delete nextDrafts[String(conversationId)];
