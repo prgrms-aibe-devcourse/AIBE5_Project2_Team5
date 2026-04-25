@@ -809,17 +809,22 @@ const mapChatMessageResponse = (
 };
 
 const isSameChatMessage = (
-  left: Pick<ChatMessage, "id" | "clientId" | "serverId">,
-  right: Pick<ChatMessage, "id" | "clientId" | "serverId">
+  left: Pick<ChatMessage, "id" | "clientId" | "serverId" | "conversationId">,
+  right: Pick<ChatMessage, "id" | "clientId" | "serverId" | "conversationId">
 ) => {
-  if (left.clientId && right.clientId && left.clientId === right.clientId) {
-    return true;
+  if (left.conversationId !== right.conversationId) {
+    return false;
   }
 
-  const leftServerIds = [left.serverId, left.id].filter(Boolean);
-  const rightServerIds = [right.serverId, right.id].filter(Boolean);
+  const leftIdentifiers = new Set(
+    [left.id, left.clientId, left.serverId].filter(
+      (value): value is string => typeof value === "string" && value.trim().length > 0
+    )
+  );
 
-  return leftServerIds.some((serverId) => rightServerIds.includes(serverId));
+  return [right.id, right.clientId, right.serverId].some(
+    (value) => typeof value === "string" && leftIdentifiers.has(value)
+  );
 };
 
 const mapProcessResponse = (
@@ -1401,21 +1406,19 @@ export default function Messages() {
         );
 
         setChatMessages((prev) => {
-          const localConversationMessages = prev.filter(
+          const currentConversationMessages = prev.filter(
             (message) => message.conversationId === conversationId
           );
           const otherMessages = prev.filter(
             (message) => message.conversationId !== conversationId
           );
-          const localMessagesNotInHistory = localConversationMessages.filter(
-            (localMessage) =>
-              !nextMessages.some((message) => isSameChatMessage(message, localMessage)) &&
-              (localMessage.status === "sending" ||
-                localMessage.status === "failed" ||
-                localMessage.isSelf)
+          const optimisticMessagesNotInHistory = currentConversationMessages.filter(
+            (currentMessage) =>
+              currentMessage.isSelf &&
+              !nextMessages.some((message) => isSameChatMessage(message, currentMessage))
           );
 
-          return [...otherMessages, ...nextMessages, ...localMessagesNotInHistory];
+          return [...otherMessages, ...nextMessages, ...optimisticMessagesNotInHistory];
         });
       } catch (error) {
         if (!mounted || silent) return;
