@@ -12,7 +12,7 @@ frontend/node_modules/
 dist/
 .vite/
 
-*.local
+*.localjav
 .env.local
 .env.*.local
 
@@ -54,7 +54,6 @@ node_modules/
 dist/
 out/
 /.env
-/env
 *.local
 *.log
 .DS_Store

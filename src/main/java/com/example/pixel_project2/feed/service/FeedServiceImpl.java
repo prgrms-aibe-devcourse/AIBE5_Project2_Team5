@@ -12,6 +12,7 @@ import com.example.pixel_project2.common.entity.enums.UserRole;
 import com.example.pixel_project2.common.repository.CollectionRepository;
 import com.example.pixel_project2.common.repository.CommentRepository;
 import com.example.pixel_project2.common.repository.FeedRepository;
+import com.example.pixel_project2.common.repository.FollowRepository;
 import com.example.pixel_project2.common.repository.PickCountRepository;
 import com.example.pixel_project2.common.repository.PostImageRepository;
 import com.example.pixel_project2.common.repository.PostRepository;
@@ -30,13 +31,18 @@ import com.example.pixel_project2.feed.dto.FeedItemResponse;
 import com.example.pixel_project2.feed.dto.FeedListResponse;
 import com.example.pixel_project2.feed.dto.FeedPickResponse;
 import com.example.pixel_project2.feed.dto.UpdateCommentResponse;
+import com.example.pixel_project2.common.entity.enums.NotificationType;
+import com.example.pixel_project2.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -48,11 +54,31 @@ public class FeedServiceImpl implements FeedService {
     private final PickCountRepository pickCountRepository;
     private final PostImageRepository postImageRepository;
     private final CollectionRepository collectionRepository;
+    private final FollowRepository followRepository;
+    private final NotificationService notificationService;
 
     @Override
+    @Transactional(readOnly = true)
     public FeedListResponse getFeeds(PostType postType, Long userId) {
         PostType resolvedPostType = postType == null ? PostType.PORTFOLIO : postType;
         List<Post> posts = postRepository.findAllByTypeWithDetails(resolvedPostType);
+        List<Long> followingUserIds = followRepository.findFollowingUserIds(userId);
+
+        if (!followingUserIds.isEmpty()) {
+            Set<Long> priorityUserIds = new LinkedHashSet<>(followingUserIds);
+            priorityUserIds.add(userId);
+
+            List<Post> prioritizedPosts = new ArrayList<>();
+
+            for (Post post : posts) {
+                if (priorityUserIds.contains(post.getUser().getId())) {
+                    prioritizedPosts.add(post);
+                }
+            }
+
+            posts = prioritizedPosts;
+        }
+
         List<FeedItemResponse> feeds = posts.stream()
                 .map(post -> toFeedItemResponse(post, userId))
                 .toList();
@@ -78,7 +104,9 @@ public class FeedServiceImpl implements FeedService {
                 post.getTitle(),
                 feed != null && feed.getDescription() != null ? feed.getDescription() : "",
                 post.getUser().getNickname(),
+                resolveProfileKey(post.getUser()),
                 post.getUser().getProfileImage(),
+                resolveDisplayJob(post),
                 post.getUser().getRole().name(),
                 post.getPostType().name(),
                 post.getCategory().name(),
@@ -115,8 +143,20 @@ public class FeedServiceImpl implements FeedService {
                     .build());
             post.setPickCount(currentPickCount + 1);
             picked = true;
+
+            // 좋아요 알림 생성 (자기 자신의 게시물이 아닐 때만)
+            if (!post.getUser().getId().equals(userId)) {
+                notificationService.createNotification(
+                        post.getUser().getId(),
+                        userId,
+                        NotificationType.LIKE,
+                        post.getId(),
+                        user.getNickname() + "님이 회원님의 게시물을 좋아합니다."
+                );
+            }
         }
 
+        postRepository.save(post);
         return new FeedPickResponse(post.getId(), picked, post.getPickCount());
     }
 
@@ -159,11 +199,23 @@ public class FeedServiceImpl implements FeedService {
 
         Comment savedComment = commentRepository.save(comment);
 
+        // 댓글 알림 생성 (자기 자신의 게시물이 아닐 때만)
+        if (!post.getUser().getId().equals(userId)) {
+            notificationService.createNotification(
+                    post.getUser().getId(),
+                    userId,
+                    NotificationType.COMMENT,
+                    post.getId(),
+                    user.getNickname() + "님이 회원님의 게시물에 댓글을 남겼습니다: " + savedComment.getDescription()
+            );
+        }
+
         return new CreateCommentResponse(
                 savedComment.getCommentId(),
                 post.getId(),
                 user.getId(),
                 user.getNickname(),
+                user.getProfileImage(),
                 savedComment.getDescription()
         );
     }
@@ -338,6 +390,10 @@ public class FeedServiceImpl implements FeedService {
                 post.getUser().getId(),
                 post.getTitle(),
                 post.getUser().getNickname(),
+                resolveProfileKey(post.getUser()),
+                post.getUser().getProfileImage(),
+                resolveDisplayJob(post),
+                post.getUser().getRole().name(),
                 thumbnailUrl,
                 post.getPickCount(),
                 Math.toIntExact(commentRepository.countByPostId(post.getId())),
@@ -345,5 +401,25 @@ public class FeedServiceImpl implements FeedService {
                 post.getCategory().name(),
                 pickCountRepository.existsByUserIdAndPostId(userId, post.getId())
         );
+    }
+
+    private String resolveDisplayJob(Post post) {
+        if (post.getUser().getDesigner() != null) {
+            String job = post.getUser().getDesigner().getJob();
+            if (job != null && !job.isBlank()) {
+                return job;
+            }
+        }
+        return post.getUser().getRole().name();
+    }
+
+    private String resolveProfileKey(User user) {
+        if (user.getLoginId() != null && !user.getLoginId().isBlank()) {
+            return user.getLoginId();
+        }
+        if (user.getNickname() != null && !user.getNickname().isBlank()) {
+            return user.getNickname();
+        }
+        return String.valueOf(user.getId());
     }
 }

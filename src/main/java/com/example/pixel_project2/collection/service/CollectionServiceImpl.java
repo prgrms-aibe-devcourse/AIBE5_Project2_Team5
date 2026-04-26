@@ -24,6 +24,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.example.pixel_project2.notification.service.NotificationService;
+import com.example.pixel_project2.common.entity.enums.NotificationType;
+
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -39,6 +42,7 @@ public class CollectionServiceImpl implements CollectionService {
     private final PostRepository postRepository;
     private final UserRepository userRepository;
     private final CommentRepository commentRepository;
+    private final NotificationService notificationService;
 
     @Override
     public CollectionPolicyResponse getCollectionPolicy() {
@@ -121,6 +125,14 @@ public class CollectionServiceImpl implements CollectionService {
                     .folder(folder)
                     .post(post)
                     .build());
+            
+            notificationService.createNotification(
+                    post.getUser().getId(),
+                    currentUser.id(),
+                    NotificationType.COLLECTION,
+                    post.getId(),
+                    "누군가 회원님의 게시물을 컬렉션에 저장했습니다: " + post.getTitle()
+            );
         }
 
         return toFolderDetailResponse(folder);

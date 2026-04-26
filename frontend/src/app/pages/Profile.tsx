@@ -5,6 +5,7 @@ import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useParams, useNavigate, useSearchParams } from "react-router";
 import { useState, useEffect, useRef, type ChangeEvent, type KeyboardEvent } from "react";
 import { getCurrentUser, getCurrentUserRole, setCurrentUser } from "../utils/auth";
+import { getUserAvatar } from "../utils/avatar";
 import { designerJobOptions, matchingCategories, normalizeDesignerJobLabel } from "../utils/matchingCategories";
 import { checkNicknameAvailabilityApi } from "../api/authApi";
 import {
@@ -153,7 +154,7 @@ const mapProfileFeedToProject = (
   author: {
     name: profile.nickname,
     role: normalizeDesignerJobLabel(profile.job) || profile.role,
-    avatar: profile.profileImage ?? "",
+    avatar: getUserAvatar(profile.profileImage, profile.userId, profile.nickname),
     username: String(profile.userId),
     roleType: profile.role.toLowerCase(),
   },
@@ -473,7 +474,7 @@ export default function Profile() {
         following: formatProfileCount(apiProfile.followingCount),
         badges: buildProfileBadges(apiProfile, fallbackProfile.badges),
         recentProject: apiProfile.introduction || fallbackProfile.recentProject,
-        avatar: apiProfile.profileImage || currentUser?.profileImage || fallbackProfile.avatar,
+        avatar: getUserAvatar(apiProfile.profileImage, apiProfile.userId, apiProfile.nickname),
         location: apiProfile.location || fallbackProfile.location,
       }
     : fallbackProfile;
@@ -592,6 +593,29 @@ export default function Profile() {
       ignore = true;
     };
   }, [isOwnProfileLookup, profileLookupKey]);
+
+  useEffect(() => {
+    if (!apiProfile || !isOwnProfileLookup) {
+      return;
+    }
+
+    setCurrentUser({
+      userId: apiProfile.userId,
+      name: apiProfile.name ?? apiProfile.nickname,
+      nickname: apiProfile.nickname,
+      email: apiProfile.loginId,
+      role: apiProfile.role.toLowerCase() as "designer" | "client",
+      profileImage: apiProfile.profileImage,
+    });
+  }, [
+    apiProfile?.userId,
+    apiProfile?.name,
+    apiProfile?.nickname,
+    apiProfile?.loginId,
+    apiProfile?.role,
+    apiProfile?.profileImage,
+    isOwnProfileLookup,
+  ]);
 
   useEffect(() => {
     if (!apiProfile) {
