@@ -92,12 +92,17 @@ export type AiSearchResponseDto = {
   message: string;
 };
 
-export async function runAiSearchApi(query: string) {
+export type AiSearchMessage = {
+  role: "user" | "ai";
+  content: string;
+};
+
+export async function runAiSearchApi(history: AiSearchMessage[]) {
   return apiRequest<AiSearchResponseDto>(
     "/api/explore/ai/search",
     {
       method: "POST",
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ history }),
     },
     "AI 검색 분석에 실패했습니다."
   );

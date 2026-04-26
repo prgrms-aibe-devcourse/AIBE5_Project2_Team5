@@ -19,7 +19,7 @@ public class AiSearchController {
 
     @PostMapping("/search")
     public ApiResponse<AiSearchResponseDto> search(@RequestBody AiSearchRequestDto request) {
-        AiSearchResponseDto response = aiSearchService.search(request.getQuery());
+        AiSearchResponseDto response = aiSearchService.search(request);
         return ApiResponse.ok("AI 검색 분석이 완료되었습니다.", response);
     }
 }
