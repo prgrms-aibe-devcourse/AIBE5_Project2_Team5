@@ -142,6 +142,8 @@ const CONNECTED_PROCESS_POLL_INTERVAL = 3000;
 const DISCONNECTED_POLL_INTERVAL = 1000;
 const TYPING_IDLE_DELAY = 1200;
 const TYPING_SYNC_INTERVAL = 800;
+const MAX_CHAT_MESSAGE_LENGTH = 4000;
+const MAX_ASSISTANT_SUGGESTION_LENGTH = 320;
 const DEBUG_MESSAGE_TYPING = import.meta.env.DEV;
 const assistantActionItems: AssistantActionItem[] = [
   { goal: "reply", label: "답장 추천" },
@@ -163,6 +165,18 @@ const wait = (delayMs: number) =>
   new Promise<void>((resolve) => {
     window.setTimeout(resolve, delayMs);
   });
+
+const normalizeAssistantSuggestionText = (suggestion: string) => {
+  const normalized = suggestion
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^"(.*)"$/, "$1")
+    .trim();
+
+  return normalized.length > MAX_ASSISTANT_SUGGESTION_LENGTH
+    ? normalized.slice(0, MAX_ASSISTANT_SUGGESTION_LENGTH).trim()
+    : normalized;
+};
 
 const formatFileSize = (size: number) => {
   if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))}KB`;
@@ -2539,7 +2553,7 @@ export default function Messages() {
   };
 
   const handleApplyAssistantSuggestion = (suggestion: string) => {
-    updateMessageText(suggestion);
+    updateMessageText(normalizeAssistantSuggestionText(suggestion));
     messageInputRef.current?.focus();
   };
 
@@ -2717,6 +2731,10 @@ export default function Messages() {
     const trimmedMessage = messageText.trim();
     if (!trimmedMessage && pendingAttachments.length === 0) return;
     if (hasUploadingAttachments || hasFailedAttachments) return;
+    if (trimmedMessage.length > MAX_CHAT_MESSAGE_LENGTH) {
+      window.alert("메시지는 4000자 이하로 전송할 수 있어요.");
+      return;
+    }
 
     stopOwnTyping(activeConversation.id);
 

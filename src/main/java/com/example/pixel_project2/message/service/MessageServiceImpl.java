@@ -80,6 +80,7 @@ public class MessageServiceImpl implements MessageService {
     private static final Duration GEMINI_REQUEST_TIMEOUT = Duration.ofSeconds(8);
     private static final int ASSISTANT_HISTORY_LIMIT = 12;
     private static final int ASSISTANT_SUGGESTION_LIMIT = 3;
+    private static final int ASSISTANT_SUGGESTION_MAX_LENGTH = 320;
 
     private final UserRepository userRepository;
     private final MessageConversationRepository conversationRepository;
@@ -1365,11 +1366,11 @@ public class MessageServiceImpl implements MessageService {
     private List<String> normalizeAssistantSuggestions(List<String> primary, List<String> fallback) {
         LinkedHashSet<String> merged = new LinkedHashSet<>();
         primary.stream()
-                .map(String::trim)
+                .map(this::sanitizeAssistantSuggestion)
                 .filter(value -> !value.isBlank())
                 .forEach(merged::add);
         fallback.stream()
-                .map(String::trim)
+                .map(this::sanitizeAssistantSuggestion)
                 .filter(value -> !value.isBlank())
                 .forEach(merged::add);
 
@@ -1381,6 +1382,29 @@ public class MessageServiceImpl implements MessageService {
             }
         }
         return suggestions;
+    }
+
+    private String sanitizeAssistantSuggestion(String suggestion) {
+        if (suggestion == null || suggestion.isBlank()) {
+            return "";
+        }
+
+        String normalized = suggestion
+                .replace('\n', ' ')
+                .replace('\r', ' ')
+                .replace('\t', ' ')
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (normalized.startsWith("\"") && normalized.endsWith("\"") && normalized.length() >= 2) {
+            normalized = normalized.substring(1, normalized.length() - 1).trim();
+        }
+
+        if (normalized.length() > ASSISTANT_SUGGESTION_MAX_LENGTH) {
+            normalized = normalized.substring(0, ASSISTANT_SUGGESTION_MAX_LENGTH).trim();
+        }
+
+        return normalized;
     }
 
     private String normalizeAssistantGoal(String goal) {
