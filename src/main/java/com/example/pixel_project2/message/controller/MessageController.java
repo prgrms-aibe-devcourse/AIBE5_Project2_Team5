@@ -7,6 +7,8 @@ import com.example.pixel_project2.message.dto.CreateConversationRequest;
 import com.example.pixel_project2.message.dto.MessageConversationResponse;
 import com.example.pixel_project2.message.dto.MessageConversationPresenceResponse;
 import com.example.pixel_project2.message.dto.MessagePolicyResponse;
+import com.example.pixel_project2.message.dto.MessageAssistantSuggestionRequest;
+import com.example.pixel_project2.message.dto.MessageAssistantSuggestionResponse;
 import com.example.pixel_project2.message.dto.MessageProcessResponse;
 import com.example.pixel_project2.message.dto.MessageReactionUpdateResponse;
 import com.example.pixel_project2.message.dto.MessageReadReceiptResponse;
@@ -93,6 +95,18 @@ public class MessageController {
             @Valid @RequestBody SendMessageRequest request
     ) {
         return ApiResponse.ok("Message sent.", messageService.sendMessage(currentUser, conversationId, request));
+    }
+
+    @PostMapping("/conversations/{conversationId}/assistant/suggestions")
+    public ApiResponse<MessageAssistantSuggestionResponse> getAssistantSuggestions(
+            @AuthenticationPrincipal AuthenticatedUser currentUser,
+            @PathVariable Long conversationId,
+            @Valid @RequestBody MessageAssistantSuggestionRequest request
+    ) {
+        return ApiResponse.ok(
+                "Message assistant suggestions loaded.",
+                messageService.getAssistantSuggestions(currentUser, conversationId, request)
+        );
     }
 
     @PostMapping("/conversations/{conversationId}/read")

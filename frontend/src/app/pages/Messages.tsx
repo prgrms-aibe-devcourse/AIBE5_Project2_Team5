@@ -9,6 +9,7 @@ import {
 } from "../utils/notificationState";
 import {
   deleteMessageConversationApi,
+  getConversationAssistantSuggestionsApi,
   getConversationProcessesApi,
   getConversationPresenceApi,
   getConversationMessagesApi,
@@ -19,6 +20,7 @@ import {
   toggleMessageReactionApi,
   updateConversationTypingApi,
   type ChatMessageResponse as ApiChatMessageResponse,
+  type MessageAssistantGoal,
   type MessageConversationResponse as ApiMessageConversationResponse,
   type MessageProcessResponse as ApiMessageProcessResponse,
 } from "../api/messageApi";
@@ -123,6 +125,11 @@ type ProcessToast = {
   message: string;
 };
 
+type AssistantActionItem = {
+  goal: MessageAssistantGoal;
+  label: string;
+};
+
 const CURRENT_USER_ID = "me";
 const PROCESS_STORAGE_KEY = "pickxel:message-processes:v2";
 const PROCESS_CREATED_STORAGE_KEY = "pickxel:message-processes-created:v2";
@@ -135,7 +142,15 @@ const CONNECTED_PROCESS_POLL_INTERVAL = 3000;
 const DISCONNECTED_POLL_INTERVAL = 1000;
 const TYPING_IDLE_DELAY = 1200;
 const TYPING_SYNC_INTERVAL = 800;
+const MAX_CHAT_MESSAGE_LENGTH = 4000;
+const MAX_ASSISTANT_SUGGESTION_LENGTH = 320;
 const DEBUG_MESSAGE_TYPING = import.meta.env.DEV;
+const assistantActionItems: AssistantActionItem[] = [
+  { goal: "reply", label: "답장 추천" },
+  { goal: "next_step", label: "다음 단계 안내" },
+  { goal: "schedule_meeting", label: "미팅 일정 잡기" },
+  { goal: "share_document", label: "문서 전달 안내" },
+];
 
 const debugMessageTyping = (...args: unknown[]) => {
   if (DEBUG_MESSAGE_TYPING) {
@@ -145,6 +160,23 @@ const debugMessageTyping = (...args: unknown[]) => {
 
 const createClientId = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const wait = (delayMs: number) =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, delayMs);
+  });
+
+const normalizeAssistantSuggestionText = (suggestion: string) => {
+  const normalized = suggestion
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^"(.*)"$/, "$1")
+    .trim();
+
+  return normalized.length > MAX_ASSISTANT_SUGGESTION_LENGTH
+    ? normalized.slice(0, MAX_ASSISTANT_SUGGESTION_LENGTH).trim()
+    : normalized;
+};
 
 const formatFileSize = (size: number) => {
   if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))}KB`;
@@ -808,6 +840,25 @@ const mapChatMessageResponse = (
   };
 };
 
+const isSameChatMessage = (
+  left: Pick<ChatMessage, "id" | "clientId" | "serverId" | "conversationId">,
+  right: Pick<ChatMessage, "id" | "clientId" | "serverId" | "conversationId">
+) => {
+  if (left.conversationId !== right.conversationId) {
+    return false;
+  }
+
+  const leftIdentifiers = new Set(
+    [left.id, left.clientId, left.serverId].filter(
+      (value): value is string => typeof value === "string" && value.trim().length > 0
+    )
+  );
+
+  return [right.id, right.clientId, right.serverId].some(
+    (value) => typeof value === "string" && leftIdentifiers.has(value)
+  );
+};
+
 const mapProcessResponse = (
   process: ApiMessageProcessResponse
 ): ProjectProcess => ({
@@ -1021,8 +1072,17 @@ export default function Messages() {
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ src: string; name: string } | null>(null);
   const [processToast, setProcessToast] = useState<ProcessToast | null>(null);
+  const [assistantGoal, setAssistantGoal] = useState<MessageAssistantGoal>("reply");
+  const [assistantSuggestions, setAssistantSuggestions] = useState<string[]>([]);
+  const [assistantUsedAi, setAssistantUsedAi] = useState(false);
+  const [assistantError, setAssistantError] = useState<string | null>(null);
+  const [isAssistantLoading, setIsAssistantLoading] = useState(false);
+  const [isAssistantExpanded, setIsAssistantExpanded] = useState(false);
+  const assistantRequestIdRef = useRef(0);
+  const assistantRefreshTimeoutRef = useRef<number | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageSocketRef = useRef<ReturnType<typeof createMessageSocket> | null>(null);
   const activeConversationIdRef = useRef(activeConversationId);
@@ -1040,6 +1100,47 @@ export default function Messages() {
   const activeMessages = activeConversation
     ? chatMessages.filter((message) => message.conversationId === activeConversation.id)
     : [];
+  const assistantMessageSignature = activeMessages
+    .slice(-6)
+    .map((message) => {
+      const attachmentCount = message.attachments?.length ?? 0;
+      return [
+        message.serverId ?? message.id,
+        message.createdAt,
+        message.message,
+        attachmentCount,
+      ].join(":");
+    })
+    .join("|");
+  const assistantProcessSignature = processes
+    .map((process) =>
+      [
+        process.id,
+        process.title,
+        process.status,
+        process.confirmations.designer ? "1" : "0",
+        process.confirmations.client ? "1" : "0",
+        process.tasks.map((task) => `${task.id}-${task.text}-${task.completed ? "1" : "0"}`).join(","),
+      ].join(":"),
+    )
+    .join("|");
+
+  useEffect(() => {
+    setAssistantGoal("reply");
+    setAssistantSuggestions([]);
+    setAssistantUsedAi(false);
+    setAssistantError(null);
+    setIsAssistantLoading(false);
+    setIsAssistantExpanded(false);
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    return () => {
+      if (assistantRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(assistantRefreshTimeoutRef.current);
+      }
+    };
+  }, []);
 
   function applyPresenceStates(states: MessagePresenceState[]) {
     const partnerUserIdByConversationId = new Map(
@@ -1387,19 +1488,19 @@ export default function Messages() {
         );
 
         setChatMessages((prev) => {
-          const pendingMessages = prev.filter(
-            (message) =>
-              message.conversationId === conversationId && message.status === "sending"
+          const currentConversationMessages = prev.filter(
+            (message) => message.conversationId === conversationId
           );
           const otherMessages = prev.filter(
             (message) => message.conversationId !== conversationId
           );
-          const pendingMessagesNotInHistory = pendingMessages.filter(
-            (pendingMessage) =>
-              !nextMessages.some((message) => message.clientId === pendingMessage.clientId)
+          const optimisticMessagesNotInHistory = currentConversationMessages.filter(
+            (currentMessage) =>
+              currentMessage.isSelf &&
+              !nextMessages.some((message) => isSameChatMessage(message, currentMessage))
           );
 
-          return [...otherMessages, ...nextMessages, ...pendingMessagesNotInHistory];
+          return [...otherMessages, ...nextMessages, ...optimisticMessagesNotInHistory];
         });
       } catch (error) {
         if (!mounted || silent) return;
@@ -2397,6 +2498,152 @@ export default function Messages() {
     startOwnTyping(conversationId);
   };
 
+  const loadAssistantSuggestions = async (
+    goal: MessageAssistantGoal,
+    options?: {
+      silent?: boolean;
+    },
+  ) => {
+    if (!activeConversation) return;
+
+    const requestId = assistantRequestIdRef.current + 1;
+    assistantRequestIdRef.current = requestId;
+
+    if (!options?.silent) {
+      setAssistantGoal(goal);
+      setAssistantError(null);
+      setIsAssistantLoading(true);
+    }
+
+    try {
+      const response = await getConversationAssistantSuggestionsApi(activeConversation.id, {
+        goal,
+        draft: messageText,
+      });
+      if (assistantRequestIdRef.current !== requestId) {
+        return;
+      }
+      setAssistantSuggestions(response.suggestions);
+      setAssistantUsedAi(response.usedAi);
+      setAssistantError(null);
+    } catch (error) {
+      if (assistantRequestIdRef.current !== requestId) {
+        return;
+      }
+      setAssistantSuggestions([]);
+      setAssistantUsedAi(false);
+      setAssistantError(
+        error instanceof Error
+          ? error.message
+          : "추천 문구를 불러오지 못했어요.",
+      );
+    } finally {
+      if (assistantRequestIdRef.current === requestId) {
+        setIsAssistantLoading(false);
+      }
+    }
+  };
+
+  const handleLoadAssistantSuggestions = async (goal: MessageAssistantGoal) => {
+    setIsAssistantExpanded(true);
+    setAssistantGoal(goal);
+    setAssistantError(null);
+    setIsAssistantLoading(true);
+    await loadAssistantSuggestions(goal);
+  };
+
+  const handleApplyAssistantSuggestion = (suggestion: string) => {
+    updateMessageText(normalizeAssistantSuggestionText(suggestion));
+    messageInputRef.current?.focus();
+  };
+
+  const verifySentMessageFromHistory = async (
+    conversationId: number,
+    clientId: string,
+    partnerUserId: string
+  ) => {
+    const messageResponses = await getConversationMessagesApi(conversationId);
+    const matchedMessage = messageResponses.find(
+      (message) => message.clientId === clientId || String(message.id) === clientId
+    );
+
+    if (!matchedMessage) {
+      return null;
+    }
+
+    return mapChatMessageResponse(matchedMessage, {
+      currentUserId,
+      partnerUserId,
+    });
+  };
+
+  const recoverFailedOutgoingMessage = async (params: {
+    conversationId: number;
+    clientId: string;
+    partnerUserId: string;
+    message: string;
+    attachments: ReturnType<typeof buildOutgoingAttachmentsPayload>;
+  }) => {
+    const retryDelays = [0, 350, 900, 1800];
+
+    for (const delayMs of retryDelays) {
+      if (delayMs > 0) {
+        await wait(delayMs);
+      }
+
+      const verifiedMessage = await verifySentMessageFromHistory(
+        params.conversationId,
+        params.clientId,
+        params.partnerUserId
+      );
+
+      if (verifiedMessage) {
+        return verifiedMessage;
+      }
+    }
+
+    try {
+      const savedMessage = await sendConversationMessageApi(params.conversationId, {
+        clientId: params.clientId,
+        message: params.message,
+        attachments: params.attachments,
+      });
+
+      return mapChatMessageResponse(savedMessage, {
+        currentUserId,
+        partnerUserId: params.partnerUserId,
+      });
+    } catch {
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    if (!activeConversation) {
+      return;
+    }
+
+    if (assistantRefreshTimeoutRef.current !== null) {
+      window.clearTimeout(assistantRefreshTimeoutRef.current);
+    }
+
+    assistantRefreshTimeoutRef.current = window.setTimeout(() => {
+      void loadAssistantSuggestions(assistantGoal, { silent: true });
+    }, 350);
+
+    return () => {
+      if (assistantRefreshTimeoutRef.current !== null) {
+        window.clearTimeout(assistantRefreshTimeoutRef.current);
+        assistantRefreshTimeoutRef.current = null;
+      }
+    };
+  }, [
+    activeConversationId,
+    assistantGoal,
+    assistantMessageSignature,
+    assistantProcessSignature,
+  ]);
+
   const getCurrentTime = () => {
     return new Intl.DateTimeFormat("ko-KR", {
       hour: "numeric",
@@ -2484,6 +2731,10 @@ export default function Messages() {
     const trimmedMessage = messageText.trim();
     if (!trimmedMessage && pendingAttachments.length === 0) return;
     if (hasUploadingAttachments || hasFailedAttachments) return;
+    if (trimmedMessage.length > MAX_CHAT_MESSAGE_LENGTH) {
+      window.alert("메시지는 4000자 이하로 전송할 수 있어요.");
+      return;
+    }
 
     stopOwnTyping(activeConversation.id);
 
@@ -2513,6 +2764,9 @@ export default function Messages() {
     setPendingAttachments([]);
     setIsIconPickerOpen(false);
     setIsAttachMenuOpen(false);
+
+    const activeConversationIdAtSend = activeConversation.id;
+    const activePartnerUserIdAtSend = activeConversation.partnerId;
 
     const sendMessageWithRestFallback = () =>
       sendConversationMessageApi(outgoingMessage.conversationId, {
@@ -2555,13 +2809,47 @@ export default function Messages() {
         setConversationReloadKey((key) => key + 1);
       })
       .catch(() => {
-        setChatMessages((prev) =>
-          prev.map((message) =>
-            message.clientId === clientId
-              ? { ...message, status: "failed" }
-              : message
-          )
-        );
+        void recoverFailedOutgoingMessage({
+          conversationId: activeConversationIdAtSend,
+          clientId,
+          partnerUserId: activePartnerUserIdAtSend,
+          message: outgoingMessage.message,
+          attachments: serializedAttachments,
+        })
+          .then((verifiedMessage) => {
+            if (!verifiedMessage) {
+              setChatMessages((prev) =>
+                prev.map((message) =>
+                  message.clientId === clientId
+                    ? { ...message, status: "failed" }
+                    : message
+                )
+              );
+              return;
+            }
+
+            setChatMessages((prev) =>
+              prev.map((message) =>
+                message.clientId === clientId
+                  ? {
+                      ...message,
+                      ...verifiedMessage,
+                      clientId,
+                    }
+                  : message
+              )
+            );
+            setConversationReloadKey((key) => key + 1);
+          })
+          .catch(() => {
+            setChatMessages((prev) =>
+              prev.map((message) =>
+                message.clientId === clientId
+                  ? { ...message, status: "failed" }
+                  : message
+              )
+            );
+          });
       });
   };
 
@@ -3633,22 +3921,94 @@ export default function Messages() {
             <div ref={messagesEndRef} />
 
             {/* Quick Actions */}
-            <div className="bg-gradient-to-br from-[#FFF1F3] via-[#FFE4EA] to-white border-2 border-[#FFB8C5]/70 rounded-xl p-4 shadow-sm">
-              <div className="flex items-center gap-2 mb-3">
-                <Sparkles className="size-5 text-[#E8456D]" />
-                <span className="font-medium text-sm text-[#A30F3D]">AI 메시지 도우미</span>
-              </div>
-              <p className="text-sm text-[#5F2938] mb-3">
-                답장을 더 자연스럽게 다듬거나, 다음 작업 단계에 맞는 메시지를 빠르게 작성해보세요.
-              </p>
-            <div className="flex flex-wrap gap-2">
-                <button className="bg-[#E8456D] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#D7375F] hover:shadow-md transition-all">
-                  미팅 일정 잡기
+            <div className="rounded-xl border border-[#FFB8C5]/70 bg-gradient-to-br from-[#FFF1F3] via-[#FFE4EA] to-white p-3 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="size-4 text-[#E8456D]" />
+                    <span className="text-sm font-medium text-[#A30F3D]">AI 메시지 도우미</span>
+                    <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-[#8C4458]">
+                      {assistantActionItems.find((action) => action.goal === assistantGoal)?.label}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-[#6E3A49]">
+                    {isAssistantExpanded
+                      ? "대화 흐름에 맞는 문구를 바로 골라서 입력창에 넣어보세요."
+                      : "추천 문구를 빠르게 펼쳐볼 수 있어요."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAssistantExpanded((prev) => !prev)}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#FFD6DE] bg-white/80 px-2.5 py-1 text-xs font-semibold text-[#A30F3D] transition-all hover:bg-white"
+                  aria-label={isAssistantExpanded ? "AI 도우미 접기" : "AI 도우미 펼치기"}
+                >
+                  {isAssistantExpanded ? "접기" : "펼치기"}
+                  {isAssistantExpanded ? (
+                    <ChevronUp className="size-3.5" />
+                  ) : (
+                    <ChevronDown className="size-3.5" />
+                  )}
                 </button>
-                <button className="bg-white border-2 border-[#FFB8C5] px-4 py-2 rounded-lg text-sm text-[#A30F3D] hover:bg-[#FFF7F9] transition-all">
-                  프로젝트 문서 첨부
-                </button>
               </div>
+
+              {isAssistantExpanded && (
+                <div className="mt-3 space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    {assistantActionItems.map((action) => {
+                      const isSelected = assistantGoal === action.goal;
+
+                      return (
+                        <button
+                          key={action.goal}
+                          type="button"
+                          onClick={() => handleLoadAssistantSuggestions(action.goal)}
+                          disabled={isAssistantLoading}
+                          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
+                            isSelected
+                              ? "bg-[#E8456D] text-white hover:bg-[#D7375F] hover:shadow-md"
+                              : "bg-white border border-[#FFB8C5] text-[#A30F3D] hover:bg-[#FFF7F9]"
+                          }`}
+                        >
+                          {action.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="space-y-2">
+                    {isAssistantLoading ? (
+                      <div className="rounded-lg border border-[#FFD6DE] bg-white/90 px-3 py-2.5 text-sm font-medium text-[#7C3044]">
+                        최근 대화와 작업 프로세스를 보고 추천 문구를 만들고 있어요.
+                      </div>
+                    ) : assistantSuggestions.length > 0 ? (
+                      <>
+                        <p className="text-xs font-semibold text-[#8C4458]">
+                          {assistantUsedAi
+                            ? "최근 대화와 작업 프로세스를 바탕으로 추천했어요."
+                            : "대화 흐름과 작업 단계에 맞춰 빠르게 쓸 수 있는 문구예요."}
+                        </p>
+                        {assistantSuggestions.map((suggestion, index) => (
+                          <button
+                            key={`${assistantGoal}-${index}`}
+                            type="button"
+                            onClick={() => handleApplyAssistantSuggestion(suggestion)}
+                            className="w-full rounded-lg border border-[#FFD6DE] bg-white/95 px-3 py-2.5 text-left text-sm font-medium text-[#5F2938] transition-all hover:border-[#E8456D] hover:bg-[#FFF7F9]"
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-[#FFD6DE] bg-white/70 px-3 py-2.5 text-sm text-[#7C3044]">
+                        버튼을 누르면 최근 대화와 작업 프로세스를 바탕으로 추천 문구를 3개 준비해드려요.
+                      </div>
+                    )}
+                    {assistantError && (
+                      <p className="text-xs font-semibold text-[#C43E60]">{assistantError}</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -3842,6 +4202,7 @@ export default function Messages() {
               </div>
               <div className="relative flex min-w-0 flex-1 items-center gap-2 rounded-2xl border-2 border-transparent bg-[#F7F7F5] px-3 py-3 transition-all focus-within:border-[#00C9A7] sm:px-4">
                 <input
+                  ref={messageInputRef}
                   type="text"
                   value={messageText}
                   onChange={(event) => updateMessageText(event.target.value)}

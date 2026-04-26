@@ -1,48 +1,77 @@
 import { apiRequest } from "./apiClient";
 
-export interface NotificationResponse {
+export type NotificationResponse = {
   id: number;
-  type: "LIKE" | "FOLLOW" | "PROJECT_APPLY" | "PROJECT_ACCEPT" | "MESSAGE" | "COLLECTION";
-  message: string;
-  referenceId: number;
+  type:
+    | "LIKE"
+    | "FOLLOW"
+    | "PROJECT_APPLY"
+    | "PROJECT_ACCEPT"
+    | "MESSAGE"
+    | "COLLECTION"
+    | "COMMENT";
+  message: string | null;
+  referenceId: number | null;
   isRead: boolean;
   createdAt: string;
-  senderNickname?: string;
-  senderProfileImage?: string;
-}
+  senderNickname: string | null;
+  senderProfileImage: string | null;
+};
 
-export interface PaginatedResponse<T> {
-  content: T[];
-  pageable: any;
-  last: boolean;
+export type NotificationPageResponse = {
+  content: NotificationResponse[];
   totalPages: number;
   totalElements: number;
-  first: boolean;
   size: number;
   number: number;
-  sort: any;
-  numberOfElements: number;
+  first: boolean;
+  last: boolean;
   empty: boolean;
-}
+};
 
 export const notificationApi = {
-  getNotifications: async (page = 0, size = 20) => {
-    return apiRequest<PaginatedResponse<NotificationResponse>>(`/api/notifications?page=${page}&size=${size}`);
-  },
-
-  getUnreadCount: async () => {
-    return apiRequest<number>(`/api/notifications/unread-count`);
-  },
-
-  markAsRead: async (notificationId: number) => {
-    return apiRequest<void>(`/api/notifications/${notificationId}/read`, {
-      method: "PUT",
+  getNotifications(page = 0, size = 20) {
+    const searchParams = new URLSearchParams({
+      page: String(page),
+      size: String(size),
     });
+
+    return apiRequest<NotificationPageResponse>(
+      `/api/notifications?${searchParams.toString()}`,
+      {
+        cache: "no-store",
+      },
+      "Failed to load notifications."
+    );
   },
 
-  markAllAsRead: async () => {
-    return apiRequest<void>(`/api/notifications/read-all`, {
-      method: "PUT",
-    });
+  getUnreadCount() {
+    return apiRequest<number>(
+      "/api/notifications/unread-count",
+      {
+        cache: "no-store",
+      },
+      "Failed to load unread notification count."
+    );
+  },
+
+  markAsRead(notificationId: number) {
+    return apiRequest<void>(
+      `/api/notifications/${notificationId}/read`,
+      {
+        method: "PUT",
+      },
+      "Failed to mark notification as read."
+    );
+  },
+
+  markAllAsRead() {
+    return apiRequest<void>(
+      "/api/notifications/read-all",
+      {
+        method: "PUT",
+      },
+      "Failed to mark all notifications as read."
+    );
   },
 };

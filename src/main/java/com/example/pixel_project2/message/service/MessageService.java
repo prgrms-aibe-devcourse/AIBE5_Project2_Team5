@@ -3,6 +3,8 @@ package com.example.pixel_project2.message.service;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.message.dto.ChatMessageResponse;
 import com.example.pixel_project2.message.dto.CreateConversationRequest;
+import com.example.pixel_project2.message.dto.MessageAssistantSuggestionRequest;
+import com.example.pixel_project2.message.dto.MessageAssistantSuggestionResponse;
 import com.example.pixel_project2.message.dto.MessageConversationResponse;
 import com.example.pixel_project2.message.dto.MessageConversationPresenceResponse;
 import com.example.pixel_project2.message.dto.MessagePolicyResponse;
@@ -35,6 +37,12 @@ public interface MessageService {
     List<ChatMessageResponse> getMessages(AuthenticatedUser currentUser, Long conversationId);
 
     ChatMessageResponse sendMessage(AuthenticatedUser currentUser, Long conversationId, SendMessageRequest request);
+
+    MessageAssistantSuggestionResponse getAssistantSuggestions(
+            AuthenticatedUser currentUser,
+            Long conversationId,
+            MessageAssistantSuggestionRequest request
+    );
 
     MessageReadReceiptResponse markConversationRead(AuthenticatedUser currentUser, Long conversationId);
 
