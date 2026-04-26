@@ -26,6 +26,18 @@ export type MessageConversationPresenceResponse = {
   partnerTyping: boolean;
 };
 
+export type MessageAssistantGoal =
+  | "reply"
+  | "next_step"
+  | "schedule_meeting"
+  | "share_document";
+
+export type MessageAssistantSuggestionResponse = {
+  goal: MessageAssistantGoal;
+  suggestions: string[];
+  usedAi: boolean;
+};
+
 export type ChatMessageResponse = {
   id: number;
   clientId: string | null;
@@ -157,6 +169,26 @@ export async function markConversationReadApi(conversationId: number) {
       method: "POST",
     },
     "Failed to mark conversation as read.",
+  );
+}
+
+export async function getConversationAssistantSuggestionsApi(
+  conversationId: number,
+  params: {
+    goal: MessageAssistantGoal;
+    draft?: string;
+  },
+) {
+  return apiRequest<MessageAssistantSuggestionResponse>(
+    `/api/messages/conversations/${conversationId}/assistant/suggestions`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        goal: params.goal,
+        draft: params.draft ?? "",
+      }),
+    },
+    "Failed to load assistant suggestions.",
   );
 }
 
