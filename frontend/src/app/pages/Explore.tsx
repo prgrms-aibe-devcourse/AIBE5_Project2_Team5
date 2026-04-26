@@ -1,4 +1,4 @@
-﻿import Navigation from "../components/Navigation";
+import Navigation from "../components/Navigation";
 import {
   Search, Sparkles, Heart, Eye, Users, UserSearch, ImageOff,
   LayoutGrid, Palette, Camera, PenTool, Box, Monitor, Building2,
@@ -163,18 +163,18 @@ const projects = [
 ];
 
 const CATEGORY_ICONS: Record<string, (props: { className?: string }) => JSX.Element> = {
-  "그래픽": Palette,
+  "그래픽 디자인": Palette,
   "포토그래피": Camera,
-  "일러스트": PenTool,
+  "일러스트레이션": PenTool,
   "3D Art": Box,
   "UI/UX": Monitor,
   "건축": Building2,
   "패션": Shirt,
   "광고": Megaphone,
   "공예": Scissors,
-  "아트": Brush,
-  "제품": Package,
-  "게임": Gamepad2,
+  "미술": Brush,
+  "제품 디자인": Package,
+  "게임 디자인": Gamepad2,
   "사운드": Music,
   "브랜딩": Palette,
   "패키지": Package,
@@ -829,7 +829,7 @@ export default function Explore() {
                     transition={{ type: "spring", stiffness: 350, damping: 30 }}
                   />
                 )}
-                <span className="relative z-[1]">?꾩껜</span>
+                <span className="relative z-[1]">전체</span>
               </button>
               {categories.map((cat) => {
                 const Icon = CATEGORY_ICONS[cat] || Palette;

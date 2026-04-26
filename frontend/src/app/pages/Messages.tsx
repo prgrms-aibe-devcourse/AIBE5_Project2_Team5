@@ -808,6 +808,25 @@ const mapChatMessageResponse = (
   };
 };
 
+const isSameChatMessage = (
+  left: Pick<ChatMessage, "id" | "clientId" | "serverId" | "conversationId">,
+  right: Pick<ChatMessage, "id" | "clientId" | "serverId" | "conversationId">
+) => {
+  if (left.conversationId !== right.conversationId) {
+    return false;
+  }
+
+  const leftIdentifiers = new Set(
+    [left.id, left.clientId, left.serverId].filter(
+      (value): value is string => typeof value === "string" && value.trim().length > 0
+    )
+  );
+
+  return [right.id, right.clientId, right.serverId].some(
+    (value) => typeof value === "string" && leftIdentifiers.has(value)
+  );
+};
+
 const mapProcessResponse = (
   process: ApiMessageProcessResponse
 ): ProjectProcess => ({
@@ -1387,19 +1406,19 @@ export default function Messages() {
         );
 
         setChatMessages((prev) => {
-          const pendingMessages = prev.filter(
-            (message) =>
-              message.conversationId === conversationId && message.status === "sending"
+          const currentConversationMessages = prev.filter(
+            (message) => message.conversationId === conversationId
           );
           const otherMessages = prev.filter(
             (message) => message.conversationId !== conversationId
           );
-          const pendingMessagesNotInHistory = pendingMessages.filter(
-            (pendingMessage) =>
-              !nextMessages.some((message) => message.clientId === pendingMessage.clientId)
+          const optimisticMessagesNotInHistory = currentConversationMessages.filter(
+            (currentMessage) =>
+              currentMessage.isSelf &&
+              !nextMessages.some((message) => isSameChatMessage(message, currentMessage))
           );
 
-          return [...otherMessages, ...nextMessages, ...pendingMessagesNotInHistory];
+          return [...otherMessages, ...nextMessages, ...optimisticMessagesNotInHistory];
         });
       } catch (error) {
         if (!mounted || silent) return;
