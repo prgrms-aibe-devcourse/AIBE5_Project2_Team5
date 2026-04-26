@@ -35,6 +35,7 @@ export default function Feed() {
   const [showAllFollowing, setShowAllFollowing] = useState(false);
   const [carouselIndexes, setCarouselIndexes] = useState<Record<number, number>>({});
   const [modalImageIndex, setModalImageIndex] = useState(0);
+  const [isStartingProposal, setIsStartingProposal] = useState(false);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
   const shouldFocusCommentRef = useRef(false);
 
@@ -306,6 +307,7 @@ export default function Feed() {
 
   const handleProposalClick = async (item: FeedCardItem, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (isStartingProposal) return;
 
     if (!item.author.userId) {
       alert("상대 프로필 정보를 찾을 수 없습니다.");
@@ -320,25 +322,32 @@ export default function Feed() {
     const now = Date.now();
     const proposalMessage = `안녕하세요. "${item.title}" 작업을 보고 프로젝트 제안을 드리고 싶어 연락드렸습니다. 작업 가능 여부와 일정, 견적을 이야기해보고 싶습니다.`;
 
+    setIsStartingProposal(true);
     try {
       const conversation = await createMessageConversationApi(item.author.userId);
-      await sendConversationMessageApi(conversation.id, {
+      setSelectedFeed(null);
+      navigate(`/messages?conversationId=${conversation.id}`);
+      void sendConversationMessageApi(conversation.id, {
         clientId: `feed-proposal-${item.id}-${now}`,
         message: proposalMessage,
-        attachments: [
-          {
-            id: `feed-${item.id}`,
-            type: "image",
-            src: getFeedImages(item)[0] ?? item.image,
-            name: item.title,
-            uploadStatus: "ready",
-          },
-        ],
+        attachments: (getFeedImages(item)[0] ?? item.image)
+          ? [
+              {
+                id: `feed-${item.id}`,
+                type: "image",
+                src: getFeedImages(item)[0] ?? item.image,
+                name: item.title,
+                uploadStatus: "ready",
+              },
+            ]
+          : [],
+      }).catch((error) => {
+        console.error("제안 메시지 자동 전송 실패:", error);
       });
-
-      navigate(`/messages?conversationId=${conversation.id}`);
     } catch (error) {
       alert(error instanceof Error ? error.message : "대화를 시작하지 못했습니다.");
+    } finally {
+      setIsStartingProposal(false);
     }
   };
 

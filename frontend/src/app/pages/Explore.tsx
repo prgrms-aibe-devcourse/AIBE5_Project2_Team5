@@ -494,6 +494,7 @@ export default function Explore() {
 
   const handleProposalClick = async (item: ExplorePostResponseDto, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (startingProposalPostId !== null) return;
 
     if (!item.userId) {
       alert("상대방 정보를 찾을 수 없습니다.");
@@ -511,7 +512,9 @@ export default function Explore() {
     setStartingProposalPostId(item.postId);
     try {
       const conversation = await createMessageConversationApi(item.userId);
-      await sendConversationMessageApi(conversation.id, {
+      setSelectedProjectForModal(null);
+      navigate(`/messages?conversationId=${conversation.id}`);
+      void sendConversationMessageApi(conversation.id, {
         clientId: `explore-proposal-${item.postId}-${now}`,
         message: proposalMessage,
         attachments: item.imageUrl
@@ -525,9 +528,9 @@ export default function Explore() {
               },
             ]
           : [],
+      }).catch((error) => {
+        console.error("제안 메시지 자동 전송 실패:", error);
       });
-
-      navigate(`/messages?conversationId=${conversation.id}`);
     } catch (error) {
       alert(error instanceof Error ? error.message : "대화를 시작하지 못했습니다.");
     } finally {
