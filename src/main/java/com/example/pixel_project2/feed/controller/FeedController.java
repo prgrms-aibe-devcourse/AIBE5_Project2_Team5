@@ -32,9 +32,11 @@ public class FeedController {
     @GetMapping
     public ApiResponse<FeedListResponse> getFeeds(
             @AuthenticationPrincipal AuthenticatedUser currentUser,
-            @RequestParam(required = false) PostType postType
+            @RequestParam(required = false) PostType postType,
+            @RequestParam(required = false) Long cursor,
+            @RequestParam(defaultValue = "10") int size
     ) {
-        return ApiResponse.ok("피드 목록을 조회했습니다.", feedService.getFeeds(postType, currentUser.id()));
+        return ApiResponse.ok("피드 목록을 조회했습니다.", feedService.getFeeds(postType, cursor, size, currentUser.id()));
     }
 
     @GetMapping("/{feedId}")

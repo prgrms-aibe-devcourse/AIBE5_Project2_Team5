@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiRequest } from "../api/apiClient";
 import { getUserAvatar } from "../utils/avatar";
 
@@ -28,7 +28,6 @@ type FeedComment = {
     profileKey?: string;
   };
   content: string;
-  time: string;
   likes: number;
   likedByMe?: boolean;
   isMine?: boolean;
@@ -41,7 +40,6 @@ type CommentApiItem = {
   profileImageUrl: string | null;
   role: string;
   description: string;
-  timeText: string;
   mine: boolean;
 };
 
@@ -101,7 +99,6 @@ export function useFeedComments<
         profileKey: String(comment.userId),
       },
       content: comment.description,
-      time: comment.timeText || "방금 전",
       likes: 0,
       likedByMe: false,
       isMine: comment.mine,
@@ -191,6 +188,9 @@ export function useFeedComments<
   }, [selectedFeed?.id, currentUserId, loadedCommentPostIds]);
 
   function toggleCommentLike(feedId: number, commentId: string) {
+    const isCommentLikeEnabled = false;
+    if (!isCommentLikeEnabled) return;
+
     setFeedComments((prev) => ({
       ...prev,
       [feedId]: (prev[feedId] ?? []).map((comment) =>
@@ -241,7 +241,6 @@ export function useFeedComments<
           profileKey: String(savedComment.userId),
         },
         content: savedComment.description,
-        time: "방금 전",
         likes: 0,
         likedByMe: false,
         isMine: true,
@@ -320,7 +319,6 @@ export function useFeedComments<
             ? {
                 ...comment,
                 content: updatedComment.description,
-                time: "방금 수정",
               }
             : comment,
         ),

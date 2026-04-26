@@ -87,7 +87,7 @@ export function FeedCard({
                   className={`h-1.5 rounded-full transition-all ${
                     activeImageIndex === index ? "w-5 bg-white" : "w-1.5 bg-white/55"
                   }`}
-                  aria-label={`${index + 1}번째 이미지 보기`}
+                  aria-label={`${index + 1}번 이미지 보기`}
                 />
               ))}
             </div>

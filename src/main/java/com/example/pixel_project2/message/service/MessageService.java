@@ -34,7 +34,11 @@ public interface MessageService {
             MessageTypingRequest request
     );
 
-    List<ChatMessageResponse> getMessages(AuthenticatedUser currentUser, Long conversationId);
+    List<ChatMessageResponse> getMessages(
+            AuthenticatedUser currentUser,
+            Long conversationId,
+            Long afterMessageId
+    );
 
     ChatMessageResponse sendMessage(AuthenticatedUser currentUser, Long conversationId, SendMessageRequest request);
 

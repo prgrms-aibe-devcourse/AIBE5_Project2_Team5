@@ -1,5 +1,8 @@
 import { getAccessToken } from "../utils/auth";
-import type { MessageReactionSummaryResponse } from "./messageApi";
+import type {
+  MessageProcessResponse,
+  MessageReactionSummaryResponse,
+} from "./messageApi";
 
 export type MessageSocketAttachment = unknown;
 
@@ -39,6 +42,19 @@ export type IncomingConversationReadSocketMessage = {
   lastReadMessageId: number | null;
 };
 
+export type IncomingReactionUpdateSocketMessage = {
+  type: "reaction.update";
+  conversationId: number;
+  messageId: number;
+  reactions: MessageReactionSummaryResponse[];
+};
+
+export type IncomingProcessUpdateSocketMessage = {
+  type: "process.update";
+  conversationId: number;
+  processes: MessageProcessResponse[];
+};
+
 export type MessagePresenceState = {
   conversationId: number;
   userId: number;
@@ -61,12 +77,14 @@ export type IncomingMessageSocketEvent =
   | IncomingChatSocketMessage
   | IncomingTypingSocketMessage
   | IncomingConversationReadSocketMessage
+  | IncomingReactionUpdateSocketMessage
+  | IncomingProcessUpdateSocketMessage
   | IncomingPresenceSnapshotSocketMessage
   | IncomingPresenceUpdateSocketMessage;
 
 type MessageSocketCallbacks = {
   onEvent: (event: IncomingMessageSocketEvent) => void;
-  onOpen?: () => void;
+  onOpen?: (context: { reconnected: boolean }) => void;
   onClose?: () => void;
   onError?: (message: string) => void;
 };
@@ -209,11 +227,12 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
     socket = new WebSocket(url);
 
     socket.onopen = () => {
+      const wasReconnected = reconnectAttempt > 0;
       clearReconnectTimer();
       clearHeartbeatTimeout();
       reconnectAttempt = 0;
       startHeartbeat();
-      callbacks.onOpen?.();
+      callbacks.onOpen?.({ reconnected: wasReconnected });
     };
 
     socket.onmessage = (event) => {
@@ -239,6 +258,16 @@ export function createMessageSocket(callbacks: MessageSocketCallbacks) {
 
         if (payload?.type === "conversation.read") {
           callbacks.onEvent(payload as IncomingConversationReadSocketMessage);
+          return;
+        }
+
+        if (payload?.type === "reaction.update") {
+          callbacks.onEvent(payload as IncomingReactionUpdateSocketMessage);
+          return;
+        }
+
+        if (payload?.type === "process.update") {
+          callbacks.onEvent(payload as IncomingProcessUpdateSocketMessage);
           return;
         }
 

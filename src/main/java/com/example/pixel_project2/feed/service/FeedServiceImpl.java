@@ -7,6 +7,7 @@ import com.example.pixel_project2.common.entity.Post;
 import com.example.pixel_project2.common.entity.PostImage;
 import com.example.pixel_project2.common.entity.User;
 import com.example.pixel_project2.common.entity.enums.Category;
+import com.example.pixel_project2.common.entity.enums.NotificationType;
 import com.example.pixel_project2.common.entity.enums.PostType;
 import com.example.pixel_project2.common.entity.enums.UserRole;
 import com.example.pixel_project2.common.repository.CollectionRepository;
@@ -31,15 +32,15 @@ import com.example.pixel_project2.feed.dto.FeedItemResponse;
 import com.example.pixel_project2.feed.dto.FeedListResponse;
 import com.example.pixel_project2.feed.dto.FeedPickResponse;
 import com.example.pixel_project2.feed.dto.UpdateCommentResponse;
-import com.example.pixel_project2.common.entity.enums.NotificationType;
 import com.example.pixel_project2.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
+import org.springframework.data.domain.PageRequest;
+
 import java.util.Comparator;
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -59,38 +60,50 @@ public class FeedServiceImpl implements FeedService {
 
     @Override
     @Transactional(readOnly = true)
-    public FeedListResponse getFeeds(PostType postType, Long userId) {
+    public FeedListResponse getFeeds(PostType postType, Long cursor, int size, Long userId) {
         PostType resolvedPostType = postType == null ? PostType.PORTFOLIO : postType;
-        List<Post> posts = postRepository.findAllByTypeWithDetails(resolvedPostType);
         List<Long> followingUserIds = followRepository.findFollowingUserIds(userId);
 
-        if (!followingUserIds.isEmpty()) {
-            Set<Long> priorityUserIds = new LinkedHashSet<>(followingUserIds);
-            priorityUserIds.add(userId);
+        // size+1 조회로 hasNext 판단 (No-Offset 커서 기반)
+        PageRequest pageable = PageRequest.of(0, size + 1);
+        List<Long> postIds;
 
-            List<Post> prioritizedPosts = new ArrayList<>();
-
-            for (Post post : posts) {
-                if (priorityUserIds.contains(post.getUser().getId())) {
-                    prioritizedPosts.add(post);
-                }
-            }
-
-            posts = prioritizedPosts;
+        if (followingUserIds.isEmpty()) {
+            postIds = cursor == null
+                    ? postRepository.findTopIdsByType(resolvedPostType, pageable)
+                    : postRepository.findNextIdsByType(resolvedPostType, cursor, pageable);
+        } else {
+            Set<Long> userIds = new HashSet<>(followingUserIds);
+            userIds.add(userId);
+            postIds = cursor == null
+                    ? postRepository.findTopIdsByTypeAndUsers(resolvedPostType, userIds, pageable)
+                    : postRepository.findNextIdsByTypeAndUsers(resolvedPostType, userIds, cursor, pageable);
         }
+
+        boolean hasNext = postIds.size() > size;
+        List<Long> pageIds = hasNext ? postIds.subList(0, size) : postIds;
+
+        if (pageIds.isEmpty()) {
+            return new FeedListResponse(List.of(), null, false);
+        }
+
+        // ID 목록으로 상세 일괄 조회 (컬렉션 fetch join은 Pageable 없이 사용해야 in-memory 페이징 회피)
+        List<Post> posts = postRepository.findAllByIdsWithDetails(pageIds);
+        posts.sort(Comparator.comparing(Post::getId).reversed());
 
         List<FeedItemResponse> feeds = posts.stream()
                 .map(post -> toFeedItemResponse(post, userId))
                 .toList();
 
-        return new FeedListResponse(feeds);
+        Long nextCursor = hasNext ? pageIds.get(pageIds.size() - 1) : null;
+        return new FeedListResponse(feeds, nextCursor, hasNext);
     }
 
     @Override
     @Transactional(readOnly = true)
     public FeedDetailResponse getFeedDetail(Long feedId, Long userId) {
         Post post = postRepository.findByIdWithDetails(feedId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 피드입니다."));
+                .orElseThrow(() -> new IllegalArgumentException("피드를 찾을 수 없습니다."));
 
         Feed feed = post.getFeed();
         List<String> imageUrls = post.getImages().stream()
@@ -144,7 +157,6 @@ public class FeedServiceImpl implements FeedService {
             post.setPickCount(currentPickCount + 1);
             picked = true;
 
-            // 좋아요 알림 생성 (자기 자신의 게시물이 아닐 때만)
             if (!post.getUser().getId().equals(userId)) {
                 notificationService.createNotification(
                         post.getUser().getId(),
@@ -164,7 +176,7 @@ public class FeedServiceImpl implements FeedService {
     @Transactional(readOnly = true)
     public CommentListResponse getComments(Long postId, Long userId) {
         if (!postRepository.existsById(postId)) {
-            throw new IllegalArgumentException("존재하지 않는 게시글입니다.");
+            throw new IllegalArgumentException("게시글을 찾을 수 없습니다.");
         }
 
         List<CommentItemResponse> comments = commentRepository.findAllByPostId(postId).stream()
@@ -175,7 +187,6 @@ public class FeedServiceImpl implements FeedService {
                         comment.getUser().getProfileImage(),
                         comment.getUser().getRole().name(),
                         comment.getDescription(),
-                        "작성됨",
                         comment.getUser().getId().equals(userId)
                 ))
                 .toList();
@@ -186,10 +197,10 @@ public class FeedServiceImpl implements FeedService {
     @Override
     public CreateCommentResponse createComment(Long postId, Long userId, CreateCommentRequest request) {
         Post post = postRepository.findById(postId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 게시글입니다."));
+                .orElseThrow(() -> new IllegalArgumentException("게시글을 찾을 수 없습니다."));
 
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
 
         Comment comment = Comment.builder()
                 .post(post)
@@ -199,14 +210,13 @@ public class FeedServiceImpl implements FeedService {
 
         Comment savedComment = commentRepository.save(comment);
 
-        // 댓글 알림 생성 (자기 자신의 게시물이 아닐 때만)
         if (!post.getUser().getId().equals(userId)) {
             notificationService.createNotification(
                     post.getUser().getId(),
                     userId,
                     NotificationType.COMMENT,
                     post.getId(),
-                    user.getNickname() + "님이 회원님의 게시물에 댓글을 남겼습니다: " + savedComment.getDescription()
+                    user.getNickname() + "님이 회원님의 게시물에 댓글을 남겼습니다. " + savedComment.getDescription()
             );
         }
 
@@ -321,10 +331,10 @@ public class FeedServiceImpl implements FeedService {
 
     private Comment getOwnedComment(Long postId, Long commentId, Long userId) {
         Comment comment = commentRepository.findByIdWithUserAndPost(commentId, postId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 댓글입니다."));
+                .orElseThrow(() -> new IllegalArgumentException("댓글을 찾을 수 없습니다."));
 
         if (!comment.getUser().getId().equals(userId)) {
-            throw new IllegalArgumentException("본인이 작성한 댓글만 수정 또는 삭제할 수 있습니다.");
+            throw new IllegalArgumentException("본인이 작성한 댓글만 수정하거나 삭제할 수 있습니다.");
         }
 
         return comment;

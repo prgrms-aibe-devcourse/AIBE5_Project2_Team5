@@ -15,7 +15,7 @@ import com.example.pixel_project2.feed.dto.FeedPickResponse;
 import com.example.pixel_project2.feed.dto.UpdateCommentResponse;
 
 public interface FeedService {
-    FeedListResponse getFeeds(PostType postType, Long userId);
+    FeedListResponse getFeeds(PostType postType, Long cursor, int size, Long userId);
 
     FeedDetailResponse getFeedDetail(Long feedId, Long userId);
 

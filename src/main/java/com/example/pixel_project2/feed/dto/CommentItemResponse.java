@@ -7,7 +7,6 @@ public record CommentItemResponse(
         String profileImageUrl,
         String role,
         String description,
-        String timeText,
         boolean mine
 ) {
 }

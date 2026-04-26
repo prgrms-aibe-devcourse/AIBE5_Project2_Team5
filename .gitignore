@@ -13,7 +13,7 @@ dist/
 .vite/
 
 *.localjav
-.env.local
+.env./gradlew bootRun.local
 .env.*.local
 
 
@@ -68,3 +68,5 @@ Thumbs.db
 
 /api/
 /api_temp/
+
+CLAUDE.md
