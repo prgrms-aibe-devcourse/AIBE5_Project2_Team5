@@ -66,5 +66,5 @@ Thumbs.db
 /package.json
 /package-lock.json
 
-api/
-api_temp/
+/api/
+/api_temp/
