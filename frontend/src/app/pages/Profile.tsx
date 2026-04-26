@@ -298,12 +298,16 @@ const categoryTagSuggestions: Record<string, string[]> = {
 };
 
 const MAX_FEED_IMAGES = 4;
+const SUPPORTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const SUPPORTED_IMAGE_ACCEPT = ".jpg,.jpeg,.png,.webp,.gif";
 
 const normalizeExternalUrl = (url: string) => {
   const trimmedUrl = url.trim();
   if (!trimmedUrl) return "";
   return /^https?:\/\//i.test(trimmedUrl) ? trimmedUrl : `https://${trimmedUrl}`;
 };
+
+const isSupportedImageFile = (file: File) => SUPPORTED_IMAGE_TYPES.includes(file.type);
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -1249,7 +1253,12 @@ export default function Profile() {
 
   const handleProfileImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !file.type.startsWith("image/")) {
+    if (!file) {
+      event.target.value = "";
+      return;
+    }
+    if (!isSupportedImageFile(file)) {
+      setProfileEditError("프로필 이미지는 JPG, PNG, WebP, GIF 형식만 업로드할 수 있습니다.");
       event.target.value = "";
       return;
     }
@@ -1266,18 +1275,31 @@ export default function Profile() {
   };
 
   const handleWorkImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []).filter((file) =>
-      file.type.startsWith("image/")
-    ).slice(0, Math.max(0, MAX_FEED_IMAGES - workImageFiles.length));
+    const selectedFiles = Array.from(event.target.files ?? []);
+    const invalidFileExists = selectedFiles.some((file) => !isSupportedImageFile(file));
+    const files = selectedFiles
+      .filter((file) => isSupportedImageFile(file))
+      .slice(0, Math.max(0, MAX_FEED_IMAGES - workImageFiles.length));
 
     if (files.length === 0) {
+      if (invalidFileExists) {
+        setWorkComposerError("피드 이미지는 JPG, PNG, WebP, GIF 형식만 업로드할 수 있습니다.");
+      }
       event.target.value = "";
       return;
     }
 
     event.target.value = "";
 
+    let createdFeedId: number | null = null;
+    let shouldRollbackCreatedFeed = false;
+
     try {
+      if (invalidFileExists) {
+        setWorkComposerError("일부 파일은 지원되지 않아 제외되었습니다. JPG, PNG, WebP, GIF만 업로드할 수 있습니다.");
+      } else {
+        setWorkComposerError("");
+      }
       const previews = await Promise.all(files.map(readImageFileAsDataUrl));
       setWorkImageFiles((prev) => [...prev, ...files].slice(0, MAX_FEED_IMAGES));
       setWorkImages((prev) => [...prev, ...previews].slice(0, MAX_FEED_IMAGES));
@@ -1309,16 +1331,26 @@ export default function Profile() {
 
   const handleEditFeedImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const currentImageCount = editFeedExistingImages.length + editFeedNewImageFiles.length;
-    const files = Array.from(event.target.files ?? [])
-      .filter((file) => file.type.startsWith("image/"))
+    const selectedFiles = Array.from(event.target.files ?? []);
+    const invalidFileExists = selectedFiles.some((file) => !isSupportedImageFile(file));
+    const files = selectedFiles
+      .filter((file) => isSupportedImageFile(file))
       .slice(0, Math.max(0, MAX_FEED_IMAGES - currentImageCount));
 
     event.target.value = "";
     if (files.length === 0) {
+      if (invalidFileExists) {
+        setFeedEditError("피드 이미지는 JPG, PNG, WebP, GIF 형식만 업로드할 수 있습니다.");
+      }
       return;
     }
 
     try {
+      if (invalidFileExists) {
+        setFeedEditError("일부 파일은 지원되지 않아 제외되었습니다. JPG, PNG, WebP, GIF만 업로드할 수 있습니다.");
+      } else {
+        setFeedEditError("");
+      }
       const previews = await Promise.all(files.map(readImageFileAsDataUrl));
       setEditFeedNewImageFiles((prev) => [...prev, ...files].slice(0, MAX_FEED_IMAGES));
       setEditFeedNewImagePreviews((prev) => [...prev, ...previews].slice(0, MAX_FEED_IMAGES));
@@ -1343,13 +1375,18 @@ export default function Profile() {
     project.integrations?.find((integration) => integration.url)?.url ?? "";
 
   const openFeedEditor = (project: FeedProject) => {
+    const sourceProject =
+      project.persisted
+        ? apiFeedProjects.find((item) => item.id === project.id) ?? project
+        : project;
+
     setFeedEditError("");
-    setEditingFeed(project);
-    setEditFeedTitle(project.title);
-    setEditFeedDescription(project.description);
-    setEditFeedCategory(project.category ?? "");
-    setEditFeedPortfolioUrl(getProjectPortfolioUrl(project));
-    setEditFeedExistingImages(getProjectImageUrls(project));
+    setEditingFeed(sourceProject);
+    setEditFeedTitle(sourceProject.title);
+    setEditFeedDescription(sourceProject.description);
+    setEditFeedCategory(sourceProject.category ?? "");
+    setEditFeedPortfolioUrl(getProjectPortfolioUrl(sourceProject));
+    setEditFeedExistingImages(getProjectImageUrls(sourceProject));
     setEditFeedNewImageFiles([]);
     setEditFeedNewImagePreviews([]);
     setEditFeedImagesTouched(false);
@@ -1488,15 +1525,18 @@ export default function Profile() {
         category: primaryWorkCategory,
         portfolioUrl,
       });
+      createdFeedId = createdFeed.postId;
       const orderedImageFiles = [...workImageFiles];
       if (coverImageIndex > 0 && coverImageIndex < orderedImageFiles.length) {
         const [coverImageFile] = orderedImageFiles.splice(coverImageIndex, 1);
         orderedImageFiles.unshift(coverImageFile);
       }
+      shouldRollbackCreatedFeed = orderedImageFiles.length > 0;
       const uploadedImages =
         orderedImageFiles.length > 0
           ? await uploadFeedImagesApi(createdFeed.postId, orderedImageFiles)
           : null;
+      shouldRollbackCreatedFeed = false;
       const uploadedImageUrls = uploadedImages?.imageUrls ?? [];
 
       const newProject: FeedProject = {
@@ -1531,16 +1571,20 @@ export default function Profile() {
       setIsFeedSuccessOpen(true);
       setProfileError("");
     } catch (error) {
-      setWorkComposerError(error instanceof Error ? error.message : "피드 추가에 실패했습니다.");
+      if (shouldRollbackCreatedFeed && createdFeedId !== null) {
+        try {
+          await deleteFeedApi(createdFeedId);
+        } catch {
+          // Preserve the original upload error for the UI.
+        }
+      }
+      setWorkComposerError(error instanceof Error ? error.message : "피드 업로드에 실패했습니다.");
     } finally {
       setIsCreatingFeed(false);
     }
   };
 
-  const feedProjects = [
-    ...uploadedProjects,
-    ...(hasLoadedProfileFeeds ? apiFeedProjects : projects),
-  ];
+  const feedProjects = hasLoadedProfileFeeds ? apiFeedProjects : [];
   const canUploadWork =
     workTitle.trim().length > 0 &&
     workDescription.trim().length > 0 &&
@@ -2398,7 +2442,7 @@ export default function Profile() {
               <input
                 ref={workImageInputRef}
                 type="file"
-                accept="image/*"
+                accept={SUPPORTED_IMAGE_ACCEPT}
                 multiple
                 onChange={handleWorkImageChange}
                 className="hidden"
@@ -2977,7 +3021,7 @@ export default function Profile() {
                   <input
                     ref={profileImageInputRef}
                     type="file"
-                    accept="image/*"
+                    accept={SUPPORTED_IMAGE_ACCEPT}
                     onChange={handleProfileImageChange}
                     className="hidden"
                   />
@@ -3261,7 +3305,7 @@ export default function Profile() {
                 <input
                   ref={editFeedImageInputRef}
                   type="file"
-                  accept="image/*"
+                  accept={SUPPORTED_IMAGE_ACCEPT}
                   multiple
                   onChange={handleEditFeedImageChange}
                   className="hidden"

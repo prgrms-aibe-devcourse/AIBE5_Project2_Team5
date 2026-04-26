@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getFollowingUsersApi } from "../api/followApi";
 import { getProfileApi, getProfileFeedsApi } from "../api/profileApi";
 import { normalizeDesignerJobLabel } from "../utils/matchingCategories";
+import { getUserAvatar } from "../utils/avatar";
 
 export type FollowingSidebarProfile = {
   id: number;
@@ -46,9 +47,11 @@ export function useFollowingSidebar() {
               role:
                 normalizeDesignerJobLabel(profile?.job) ||
                 toFollowingRole(user.role),
-              avatar:
-                user.profileImage ||
-                `https://i.pravatar.cc/150?u=following-${user.userId}`,
+              avatar: getUserAvatar(
+                profile?.profileImage ?? user.profileImage,
+                user.userId,
+                user.nickname || user.name,
+              ),
               username: profileKey,
               followerCount: profile?.followerCount ?? 0,
               feedCount: Array.isArray(feeds) ? feeds.length : 0,

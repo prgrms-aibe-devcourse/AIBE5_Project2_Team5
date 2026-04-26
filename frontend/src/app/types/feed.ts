@@ -72,7 +72,6 @@ export type FeedComment = {
     profileKey?: string;
   };
   content: string;
-  time: string;
   likes: number;
   likedByMe?: boolean;
   isMine?: boolean;

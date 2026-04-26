@@ -16,6 +16,7 @@ import {
 } from "../api/messageApi";
 import { getCurrentUser } from "../utils/auth";
 import { getUserAvatar } from "../utils/avatar";
+import { normalizeCategoryLabel, normalizePostTypeLabel } from "../utils/matchingCategories";
 import type {
   BaseFeedItem,
   FeedCardItem,
@@ -23,45 +24,6 @@ import type {
   FeedListApiData,
   FeedPickApiData,
 } from "../types/feed";
-
-const extraFeedImages: Record<number, string[]> = {
-  1: [
-    "https://images.unsplash.com/photo-1618556450994-a6a128ef0d9d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-  ],
-  2: [
-    "https://images.unsplash.com/photo-1586717799252-bd134ad00e26?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    "https://images.unsplash.com/photo-1613909207039-6b173b755cc1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-  ],
-  3: [
-    "https://images.unsplash.com/photo-1551650975-87deedd944c3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    "https://images.unsplash.com/photo-1581291518857-4e27b48ff24e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-  ],
-  4: [
-    "https://images.unsplash.com/photo-1547826039-bfc35e0f1ea8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    "https://images.unsplash.com/photo-1618331835717-801e976710b2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-  ],
-  5: [
-    "https://images.unsplash.com/photo-1608755728617-aefab37d2edd?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    "https://images.unsplash.com/photo-1556228578-8c89e6adf883?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-  ],
-  6: [
-    "https://images.unsplash.com/photo-1518005020951-eccb494ad742?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    "https://images.unsplash.com/photo-1494526585095-c41746248156?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-  ],
-  7: [
-    "https://images.unsplash.com/photo-1541961017774-22349e4a1262?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    "https://images.unsplash.com/photo-1579541591970-e5d5ea951761?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-  ],
-  8: [
-    "https://images.unsplash.com/photo-1523275335684-37898b6baf30?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-  ],
-  9: [
-    "https://images.unsplash.com/photo-1635322966219-b75ed372eb01?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-    "https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1080",
-  ],
-};
 
 export default function Feed() {
   const navigate = useNavigate();
@@ -73,6 +35,7 @@ export default function Feed() {
   const [showAllFollowing, setShowAllFollowing] = useState(false);
   const [carouselIndexes, setCarouselIndexes] = useState<Record<number, number>>({});
   const [modalImageIndex, setModalImageIndex] = useState(0);
+  const [isStartingProposal, setIsStartingProposal] = useState(false);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
   const shouldFocusCommentRef = useRef(false);
 
@@ -201,14 +164,15 @@ export default function Feed() {
               profileKey: feedItem.profileKey,
             },
             title: feedItem.title,
-            description: `${feedItem.category} / ${feedItem.postType}`,
-            image:
-              feedItem.thumbnailUrl ??
-              "https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&w=1200&q=80",
+            description: `${normalizeCategoryLabel(feedItem.category)} / ${normalizePostTypeLabel(feedItem.postType)}`,
+            image: feedItem.thumbnailUrl ?? "",
             likes: feedItem.pickCount,
             comments: feedItem.commentCount,
-            tags: [feedItem.category, feedItem.postType],
-            category: feedItem.category,
+            tags: [
+              normalizeCategoryLabel(feedItem.category),
+              normalizePostTypeLabel(feedItem.postType),
+            ].filter(Boolean),
+            category: normalizeCategoryLabel(feedItem.category),
             likedByMe: feedItem.picked,
             isApiFeed: true,
           }))
@@ -282,7 +246,6 @@ export default function Feed() {
     const mergedImages = [
       ...(item.images ?? []),
       item.image,
-      ...(extraFeedImages[item.id] ?? []),
     ].filter((image): image is string => Boolean(image));
 
     return Array.from(new Set(mergedImages));
@@ -344,6 +307,7 @@ export default function Feed() {
 
   const handleProposalClick = async (item: FeedCardItem, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (isStartingProposal) return;
 
     if (!item.author.userId) {
       alert("상대 프로필 정보를 찾을 수 없습니다.");
@@ -358,25 +322,32 @@ export default function Feed() {
     const now = Date.now();
     const proposalMessage = `안녕하세요. "${item.title}" 작업을 보고 프로젝트 제안을 드리고 싶어 연락드렸습니다. 작업 가능 여부와 일정, 견적을 이야기해보고 싶습니다.`;
 
+    setIsStartingProposal(true);
     try {
       const conversation = await createMessageConversationApi(item.author.userId);
-      await sendConversationMessageApi(conversation.id, {
+      setSelectedFeed(null);
+      navigate(`/messages?conversationId=${conversation.id}`);
+      void sendConversationMessageApi(conversation.id, {
         clientId: `feed-proposal-${item.id}-${now}`,
         message: proposalMessage,
-        attachments: [
-          {
-            id: `feed-${item.id}`,
-            type: "image",
-            src: getFeedImages(item)[0] ?? item.image,
-            name: item.title,
-            uploadStatus: "ready",
-          },
-        ],
+        attachments: (getFeedImages(item)[0] ?? item.image)
+          ? [
+              {
+                id: `feed-${item.id}`,
+                type: "image",
+                src: getFeedImages(item)[0] ?? item.image,
+                name: item.title,
+                uploadStatus: "ready",
+              },
+            ]
+          : [],
+      }).catch((error) => {
+        console.error("제안 메시지 자동 전송 실패:", error);
       });
-
-      navigate(`/messages?conversationId=${conversation.id}`);
     } catch (error) {
       alert(error instanceof Error ? error.message : "대화를 시작하지 못했습니다.");
+    } finally {
+      setIsStartingProposal(false);
     }
   };
 
