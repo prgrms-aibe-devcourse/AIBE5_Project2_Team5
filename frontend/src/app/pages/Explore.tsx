@@ -11,145 +11,90 @@ import { motion, AnimatePresence, LayoutGroup } from "motion/react";
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
+import { FeedDetailModal } from "../components/feed/FeedDetailModal";
+import { useFeedComments } from "../hooks/useFeedComments";
 import { matchingCategories } from "../utils/matchingCategories";
-import { getExploreFeedsApi, ExplorePostResponseDto, getExploreDesignersApi, ExploreDesignerResponseDto } from "../api/exploreApi";
+import {
+  getExploreFeedsApi,
+  type ExplorePostResponseDto,
+  getExploreDesignersApi,
+  type ExploreDesignerResponseDto,
+  getExploreFeedDetailApi,
+  type ExploreFeedDetailResponseDto,
+} from "../api/exploreApi";
 import { getMyCollectionsApi, saveFeedToCollectionApi, createCollectionFolderApi, CollectionFolderResponse } from "../api/collectionApi";
 import { createMessageConversationApi, sendConversationMessageApi } from "../api/messageApi";
 import { getCurrentUser } from "../utils/auth";
+import { getUserAvatar } from "../utils/avatar";
 import Footer from "../components/Footer";
+import type { FeedCardItem } from "../types/feed";
 
 const creatorProfiles = [
   {
     id: 1,
-    name: "김지은",
-    role: "브랜드 디자이너",
+    name: "김소연",
+    role: "브랜딩 디자이너",
     category: "브랜딩",
     avatar: "https://i.pravatar.cc/150?img=1",
     banner: "https://images.unsplash.com/photo-1623932078839-44eb01fbee63?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
     followers: "4.2K",
     works: 78,
-    bio: "브랜드 아이덴티티와 로고 디자인 전문",
+    bio: "브랜드 아이덴티티와 로고 시스템 작업을 주로 합니다.",
   },
   {
     id: 2,
     name: "박서준",
     role: "그래픽 디자이너",
-    category: "그래픽 디자인",
+    category: "그래픽",
     avatar: "https://i.pravatar.cc/150?img=2",
     banner: "https://images.unsplash.com/photo-1770581939371-326fc1537f10?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
     followers: "3.5K",
     works: 92,
-    bio: "타이포그래피와 포스터 디자인을 사랑합니다",
+    bio: "타이포그래피와 포스터 디자인을 중심으로 작업합니다.",
   },
   {
     id: 3,
-    name: "이민호",
+    name: "이하늘",
     role: "UI/UX 디자이너",
     category: "UI/UX",
     avatar: "https://i.pravatar.cc/150?img=3",
     banner: "https://images.unsplash.com/photo-1618761714954-0b8cd0026356?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
     followers: "5.1K",
     works: 134,
-    bio: "사용자 중심 인터페이스 설계 전문가",
+    bio: "사용자 중심 인터페이스와 서비스 설계를 다룹니다.",
   },
   {
     id: 4,
-    name: "최유나",
+    name: "최유진",
     role: "일러스트레이터",
-    category: "일러스트레이션",
+    category: "일러스트",
     avatar: "https://i.pravatar.cc/150?img=4",
     banner: "https://images.unsplash.com/photo-1700605295478-2478ac29d2ec?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
     followers: "2.9K",
     works: 67,
-    bio: "자연에서 영감을 받은 디지털 일러스트",
+    bio: "캐릭터와 에디토리얼 일러스트 작업을 합니다.",
   },
   {
     id: 5,
-    name: "정재현",
+    name: "정재훈",
     role: "패키지 디자이너",
-    category: "브랜딩",
+    category: "패키지",
     avatar: "https://i.pravatar.cc/150?img=5",
     banner: "https://images.unsplash.com/photo-1748765968965-7e18d4f7192b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
     followers: "3.3K",
     works: 85,
-    bio: "럭셔리 브랜드 패키지 디자인 전문",
+    bio: "리테일 브랜드 패키지와 라벨 시스템을 설계합니다.",
   },
   {
     id: 6,
     name: "강민지",
-    role: "건축 사진작가",
+    role: "사진작가",
     category: "포토그래피",
     avatar: "https://i.pravatar.cc/150?img=6",
     banner: "https://images.unsplash.com/photo-1646123202971-cb84915a4108?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
     followers: "6.8K",
     works: 203,
-    bio: "도시 건축의 기하학적 아름다움을 담습니다",
-  },
-  {
-    id: 7,
-    name: "윤서아",
-    role: "추상 아티스트",
-    category: "미술",
-    avatar: "https://i.pravatar.cc/150?img=7",
-    banner: "https://images.unsplash.com/photo-1705254613735-1abb457f8a60?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-    followers: "4.7K",
-    works: 119,
-    bio: "감정을 색과 형태로 표현하는 추상 작가",
-  },
-  {
-    id: 8,
-    name: "한지훈",
-    role: "제품 사진작가",
-    category: "포토그래피",
-    avatar: "https://i.pravatar.cc/150?img=8",
-    banner: "https://images.unsplash.com/photo-1682078234868-412ec5566118?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-    followers: "3.1K",
-    works: 58,
-    bio: "프리미엄 제품 사진 및 리터칭 전문",
-  },
-  {
-    id: 9,
-    name: "송혜교",
-    role: "3D 아티스트",
-    category: "3D Art",
-    avatar: "https://i.pravatar.cc/150?img=9",
-    banner: "https://images.unsplash.com/photo-1595411425732-e69c1abe2763?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-    followers: "2.4K",
-    works: 44,
-    bio: "독창적인 3D 캐릭터와 환경 디자인",
-  },
-  {
-    id: 10,
-    name: "오준혁",
-    role: "모션 그래픽 디자이너",
-    category: "그래픽 디자인",
-    avatar: "https://i.pravatar.cc/150?img=10",
-    banner: "https://images.unsplash.com/photo-1740174459691-5b93c2fa0592?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-    followers: "5.6K",
-    works: 156,
-    bio: "브랜드 스토리를 모션으로 전달합니다",
-  },
-  {
-    id: 11,
-    name: "임나영",
-    role: "패션 디자이너",
-    category: "패션",
-    avatar: "https://i.pravatar.cc/150?img=20",
-    banner: "https://images.unsplash.com/photo-1633533451997-8b6079082e3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-    followers: "7.2K",
-    works: 88,
-    bio: "미래 지향적 패션과 텍스타일 디자인",
-  },
-  {
-    id: 12,
-    name: "조현우",
-    role: "게임 아트 디렉터",
-    category: "게임 디자인",
-    avatar: "https://i.pravatar.cc/150?img=15",
-    banner: "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-    followers: "8.3K",
-    works: 231,
-    bio: "게임 세계관과 캐릭터 아트 전문가",
+    bio: "브랜드와 룩북 중심의 비주얼 촬영을 진행합니다.",
   },
 ];
 
@@ -159,7 +104,7 @@ const projects = [
     title: "Fluid Geometry Study",
     author: "Alex Rivera",
     badge: "NEW",
-    category: "그래픽 디자인",
+    category: "그래픽",
     likes: 1420,
     views: 9800,
     tags: ["3D", "추상", "브랜딩"],
@@ -179,17 +124,17 @@ const projects = [
     id: 3,
     title: "Vibrant Patterns",
     author: "Marc Chen",
-    category: "일러스트레이션",
+    category: "일러스트",
     likes: 980,
     views: 7600,
-    tags: ["패턴", "컬러", "텍스타일"],
+    tags: ["패턴", "컬러", "텍스처"],
     imageUrl: "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkaWdpdGFsJTIwYXJ0JTIwaWxsdXN0cmF0aW9ufGVufDF8fHx8MTc3NTU1ODM1OHww&ixlib=rb-4.1.0&q=80&w=1080",
   },
   {
     id: 4,
     title: "Organic Flow Series",
     author: "Sarah Jenkins",
-    category: "미술",
+    category: "아트",
     likes: 1240,
     views: 8900,
     tags: ["유기적", "페인팅", "실험"],
@@ -202,7 +147,7 @@ const projects = [
     category: "브랜딩",
     likes: 1680,
     views: 11200,
-    tags: ["브랜드", "타이포", "미니멀"],
+    tags: ["브랜딩", "타이포", "미니멀"],
     imageUrl: "https://images.unsplash.com/photo-1718220216044-006f43e3a9b1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBvZmZpY2UlMjB3b3Jrc3BhY2V8ZW58MXx8fHwxNzc1NTU1MzcxfDA&ixlib=rb-4.1.0&q=80&w=1080",
   },
   {
@@ -215,50 +160,9 @@ const projects = [
     tags: ["네온", "플로라", "매크로"],
     imageUrl: "https://images.unsplash.com/photo-1623932078839-44eb01fbee63?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcmVhdGl2ZSUyMGRlc2lnbiUyMHdvcmt8ZW58MXx8fHwxNzc1NjAzODU5fDA&ixlib=rb-4.1.0&q=80&w=1080",
   },
-  {
-    id: 7,
-    title: "Gradient Dream",
-    author: "Sofi Kim",
-    category: "그래픽 디자인",
-    likes: 1520,
-    views: 10100,
-    tags: ["그라디언트", "포스터", "실험"],
-    imageUrl: "https://images.unsplash.com/photo-1740174459691-5b93c2fa0592?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3Rpb24lMjBncmFwaGljcyUyMGFuaW1hdGlvbnxlbnwxfHx8fDE3NzU1OTI4Mzh8MA&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 8,
-    title: "Arch Theory",
-    author: "Tom Brooks",
-    category: "건축",
-    likes: 1100,
-    views: 7200,
-    tags: ["건축", "렌더", "구조"],
-    imageUrl: "https://images.unsplash.com/photo-1595411425732-e69c1abe2763?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGdlb21ldHJpYyUyMHNoYXBlc3xlbnwxfHx8fDE3NzU2MzMzODZ8MA&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 9,
-    title: "Deep Ocean UI",
-    author: "Luna Sky",
-    category: "UI/UX",
-    likes: 1870,
-    views: 12600,
-    tags: ["다크모드", "대시보드", "컴포넌트"],
-    imageUrl: "https://images.unsplash.com/photo-1772272935464-2e90d8218987?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx1aSUyMHV4JTIwZGVzaWduJTIwaW50ZXJmYWNlfGVufDF8fHx8MTc3NTU0MTE1MXww&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 10,
-    title: "Core Fusion",
-    author: "Ian Smith",
-    category: "제품 디자인",
-    likes: 1340,
-    views: 8700,
-    tags: ["제품", "컨셉", "렌더링"],
-    imageUrl: "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkaWdpdGFsJTIwYXJ0JTIwaWxsdXN0cmF0aW9ufGVufDF8fHx8MTc3NTU1ODM1OHww&ixlib=rb-4.1.0&q=80&w=1080",
-  },
 ];
 
-// ── 카테고리 아이콘 매핑 ──
-const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+const CATEGORY_ICONS: Record<string, (props: { className?: string }) => JSX.Element> = {
   "그래픽 디자인": Palette,
   "포토그래피": Camera,
   "일러스트레이션": PenTool,
@@ -272,60 +176,37 @@ const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>
   "제품 디자인": Package,
   "게임 디자인": Gamepad2,
   "사운드": Music,
+  "브랜딩": Palette,
+  "패키지": Package,
 };
 
-// ── AI 검색 mock 응답 ──
 const AI_MOCK_RESPONSES: Record<string, { summary: string; designers: typeof creatorProfiles; tags: string[] }> = {
   default: {
-    summary: "요청하신 키워드와 관련된 디자이너를 분석했어요. 아래 크리에이터들이 잘 맞을 것 같습니다!",
+    summary: "요청하신 키워드와 잘 맞는 디자이너와 작업 스타일을 정리해봤습니다.",
     designers: creatorProfiles.slice(0, 3),
-    tags: ["브랜딩", "UI/UX", "일러스트레이션"],
+    tags: ["브랜딩", "UI/UX", "포트폴리오"],
+  },
+  branding: {
+    summary: "브랜드 아이덴티티와 비주얼 시스템을 잘 다루는 디자이너를 우선 추천합니다.",
+    designers: creatorProfiles.filter((profile) => [1, 2, 5].includes(profile.id)),
+    tags: ["브랜딩", "로고", "패키지"],
+  },
+  ui: {
+    summary: "서비스 설계와 화면 구조에 강한 UI/UX 디자이너를 중심으로 묶었습니다.",
+    designers: creatorProfiles.filter((profile) => [2, 3].includes(profile.id)),
+    tags: ["UI", "UX", "프로토타입"],
+  },
+  photo: {
+    summary: "비주얼 촬영과 룩북 스타일에 가까운 작업자를 우선 배치했습니다.",
+    designers: creatorProfiles.filter((profile) => profile.category === "포토그래피"),
+    tags: ["포토그래피", "룩북", "캠페인"],
   },
 };
-
-// ── 컬렉션 및 댓글 타입 ──
+// 탐색 페이지 컬렉션 저장용 타입
 type SavedCollection = CollectionFolderResponse;
-type FeedComment = {
-  id: string;
-  author: {
-    name: string;
-    avatar: string;
-    role: string;
-  };
-  content: string;
-  time: string;
-  likes: number;
-  likedByMe?: boolean;
-  isMine?: boolean;
-};
 
 const COLLECTION_KEY = "pickxel-explore-collections";
 
-const mockComments = [
-  {
-    id: 1,
-    author: {
-      name: "김태영",
-      avatar: "https://i.pravatar.cc/150?img=11",
-      role: "일러스트레이터"
-    },
-    content: "정말 멋진 작업이네요! 컬러 조합이 특히 인상적입니다 👍",
-    time: "2시간 전",
-    likes: 12,
-  },
-  {
-    id: 2,
-    author: {
-      name: "이수진",
-      avatar: "https://i.pravatar.cc/150?img=12",
-      role: "브랜드 디자이너"
-    },
-    content: "이런 스타일 정말 좋아요. 클라이언트 반응도 궁금하네요!",
-    time: "5시간 전",
-    likes: 8,
-  },
-];
-// 컬렉션 목록 불러오기 (API 연동)
 const fetchCollections = async (setCollections: React.Dispatch<React.SetStateAction<SavedCollection[]>>) => {
   try {
     const data = await getMyCollectionsApi();
@@ -338,38 +219,43 @@ const fetchCollections = async (setCollections: React.Dispatch<React.SetStateAct
 export default function Explore() {
   const navigate = useNavigate();
   const currentUser = getCurrentUser();
+  const currentUserAvatar = getUserAvatar(
+    currentUser?.profileImage,
+    currentUser?.userId,
+    currentUser?.nickname,
+  );
+  const currentUserName = currentUser?.nickname || currentUser?.name || "내 프로필";
   const categories = matchingCategories;
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"feed" | "profile">("feed");
 
-  // 실제 서버 데이터 상태
+  // 서버 데이터 상태
   const [feeds, setFeeds] = useState<ExplorePostResponseDto[]>([]);
   const [isFeedsLoading, setIsFeedsLoading] = useState(false);
   const [designers, setDesigners] = useState<ExploreDesignerResponseDto[]>([]);
   const [isDesignersLoading, setIsDesignersLoading] = useState(false);
 
-  // 상호작용 상태 (Feed.tsx와 동일)
+  // 상호작용 상태
   const [likedItems, setLikedItems] = useState<Set<number>>(new Set());
-  const [feedComments, setFeedComments] = useState<Record<number, FeedComment[]>>({});
-  const [commentText, setCommentText] = useState("");
-  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
-  const [commentSubmitError, setCommentSubmitError] = useState<string | null>(null);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
 
   // 모달 상태
   const [selectedProjectForModal, setSelectedProjectForModal] = useState<ExplorePostResponseDto | null>(null);
+  const [selectedProjectDetail, setSelectedProjectDetail] = useState<ExploreFeedDetailResponseDto | null>(null);
+  const [selectedExploreFeed, setSelectedExploreFeed] = useState<FeedCardItem | null>(null);
+  const [commentFeedItems, setCommentFeedItems] = useState<FeedCardItem[]>([]);
+  const [isModalDetailLoading, setIsModalDetailLoading] = useState(false);
   const [modalImageIndex, setModalImageIndex] = useState(0);
   const [startingProposalPostId, setStartingProposalPostId] = useState<number | null>(null);
 
-  // 컬렉션 관리
   const [collections, setCollections] = useState<SavedCollection[]>([]);
   const [collectionModalProject, setCollectionModalProject] = useState<ExplorePostResponseDto | null>(null);
   const [newCollectionName, setNewCollectionName] = useState("");
   const [collectionNotice, setCollectionNotice] = useState("");
   const [isCollectionsLoading, setIsCollectionsLoading] = useState(false);
 
-  // 컬렉션 관리용 로드 함수
+  // 컬렉션 목록 로드
   const loadCollections = useCallback(async () => {
     setIsCollectionsLoading(true);
     await fetchCollections(setCollections);
@@ -381,7 +267,7 @@ export default function Explore() {
     void loadCollections();
   }, [loadCollections]);
 
-  // 저장 여부 판단 (백엔드 구조상 폴더별 아이템 목록을 따로 가져와야 하지만, 일단 UI 연동 우선)
+  // 저장 상태는 우선 프론트 로컬 상태로 관리
   const [savedProjectIds, setSavedProjectIds] = useState<Set<number>>(new Set());
 
   // AI 검색 상태
@@ -394,26 +280,42 @@ export default function Explore() {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
-  // 초기 댓글 설정
-  useEffect(() => {
-    if (feeds.length > 0) {
-      setFeedComments(prev => {
-        const newComments = { ...prev };
-        feeds.forEach(f => {
-          if (!newComments[f.postId]) {
-            newComments[f.postId] = mockComments.map(c => ({
-              ...c,
-              id: `${f.postId}-${c.id}`,
-              likedByMe: false
-            }));
-          }
-        });
-        return newComments;
-      });
-    }
-  }, [feeds]);
+  function toCommentAuthorRole(role: string) {
+    if (role === "CLIENT") return "프로젝트 클라이언트";
+    if (role === "DESIGNER") return "디자이너";
+    return role;
+  }
 
-  // ── 도움 함수들 (Feed.tsx와 동일 로직) ──
+  const {
+    commentText,
+    setCommentText,
+    commentSubmitError,
+    isSubmittingComment,
+    isCommentsLoading,
+    commentLoadError,
+    editingCommentId,
+    editingCommentText,
+    setEditingCommentText,
+    isUpdatingComment,
+    isDeletingCommentId,
+    selectedFeedComments,
+    handleSubmitComment,
+    handleCommentKeyDown,
+    startEditingComment,
+    cancelEditingComment,
+    handleUpdateComment,
+    handleDeleteComment,
+    toggleCommentLike,
+  } = useFeedComments<FeedCardItem, FeedCardItem>({
+    selectedFeed: selectedExploreFeed,
+    currentUser,
+    currentUserId: currentUser?.userId ?? null,
+    setApiFeedItems: setCommentFeedItems,
+    setSelectedFeed: setSelectedExploreFeed,
+    toFeedCommentRole: toCommentAuthorRole,
+  });
+
+  // 피드 액션 헬퍼
   const toggleLike = (id: number, e?: React.MouseEvent) => {
     e?.stopPropagation();
     setLikedItems(prev => {
@@ -424,27 +326,12 @@ export default function Explore() {
     });
   };
 
-  const toggleCommentLike = (feedId: number, commentId: string) => {
-    setFeedComments(prev => ({
-      ...prev,
-      [feedId]: (prev[feedId] ?? []).map(comment =>
-        comment.id === commentId
-          ? {
-              ...comment,
-              likedByMe: !comment.likedByMe,
-              likes: comment.likedByMe ? Math.max(0, comment.likes - 1) : comment.likes + 1
-            }
-          : comment
-      )
-    }));
-  };
-
   const handleShare = (item: ExplorePostResponseDto, e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (navigator.share) {
       navigator.share({ title: item.title, text: item.description || "", url: window.location.href });
     } else {
-      alert("공유 링크가 클립보드에 복사되었습니다!");
+      alert("공유 링크가 클립보드에 복사되었습니다.");
     }
   };
 
@@ -453,7 +340,7 @@ export default function Explore() {
     setCollectionModalProject(project);
     setCollectionNotice("");
     setNewCollectionName("");
-    void loadCollections(); // 모달 오픈 시 서버 최신 데이터 로드
+    void loadCollections();
   };
 
   const saveToCollection = async (folderId: number) => {
@@ -461,12 +348,12 @@ export default function Explore() {
     
     try {
       await saveFeedToCollectionApi(folderId, collectionModalProject.postId);
-      setCollectionNotice("컬렉션에 저장되었습니다!");
+      setCollectionNotice("컬렉션에 저장되었습니다.");
       setSavedProjectIds(prev => new Set(prev).add(collectionModalProject.postId));
       void loadCollections();
       setTimeout(() => setCollectionModalProject(null), 1000);
     } catch (error) {
-      setCollectionNotice("저장에 실패했습니다. (이미 저장되어 있을 수 있습니다)");
+      setCollectionNotice("저장에 실패했습니다. 이미 저장된 항목일 수 있습니다.");
     }
   };
 
@@ -480,52 +367,133 @@ export default function Explore() {
         setNewCollectionName("");
       }
     } catch (error) {
-      setCollectionNotice("컬렉션 생성 및 저장에 실패했습니다.");
+      setCollectionNotice("컬렉션 생성 또는 저장에 실패했습니다.");
     }
   };
+
+  useEffect(() => {
+    if (!selectedProjectForModal) {
+      setSelectedProjectDetail(null);
+      setIsModalDetailLoading(false);
+      setModalImageIndex(0);
+      return;
+    }
+
+    let ignore = false;
+
+    async function loadExploreFeedDetail() {
+      try {
+        setIsModalDetailLoading(true);
+        const detail = await getExploreFeedDetailApi(selectedProjectForModal.postId);
+        if (ignore) return;
+        setSelectedProjectDetail(detail);
+      } catch (error) {
+        if (ignore) return;
+        console.error("탐색 피드 상세 로딩 실패:", error);
+        setSelectedProjectDetail(null);
+      } finally {
+        if (!ignore) {
+          setIsModalDetailLoading(false);
+        }
+      }
+    }
+
+    void loadExploreFeedDetail();
+
+    return () => {
+      ignore = true;
+    };
+  }, [selectedProjectForModal?.postId]);
+
+  const mappedSelectedExploreFeed = useMemo<FeedCardItem | null>(() => {
+    if (!selectedProjectForModal) return null;
+
+    const detail = selectedProjectDetail;
+    const imageUrls =
+      detail?.imageUrls?.filter(Boolean).length
+        ? detail.imageUrls.filter(Boolean)
+        : selectedProjectForModal.imageUrl
+          ? [selectedProjectForModal.imageUrl]
+          : [];
+    const commentCount =
+      selectedExploreFeed?.id === selectedProjectForModal.postId
+        ? selectedExploreFeed.comments
+        : detail?.commentCount ?? 0;
+
+    return {
+      id: selectedProjectForModal.postId,
+      feedKey: selectedProjectForModal.postId,
+      author: {
+        userId: selectedProjectForModal.userId,
+        name: detail?.nickname ?? selectedProjectForModal.nickname,
+        role: detail?.job || selectedProjectForModal.job || "디자이너",
+        avatar: getUserAvatar(
+          detail?.profileImageUrl ?? selectedProjectForModal.profileImage,
+          selectedProjectForModal.userId,
+          selectedProjectForModal.nickname,
+        ),
+        profileKey: detail?.profileKey ?? String(selectedProjectForModal.userId),
+      },
+      title: detail?.title ?? selectedProjectForModal.title,
+      description: detail?.description ?? selectedProjectForModal.description ?? "",
+      image: imageUrls[0] ?? "",
+      images: imageUrls,
+      likes:
+        (detail?.pickCount ?? selectedProjectForModal.pickCount) +
+        (likedItems.has(selectedProjectForModal.postId) ? 1 : 0),
+      comments: commentCount,
+      tags: [detail?.category ?? selectedProjectForModal.category, detail?.postType ?? "PORTFOLIO"].filter(
+        Boolean,
+      ) as string[],
+      category: detail?.category ?? selectedProjectForModal.category ?? undefined,
+      integrations: detail?.portfolioUrl
+        ? [{ provider: "figma", label: "Portfolio", url: detail.portfolioUrl }]
+        : undefined,
+      createdAt: detail?.createdAt,
+      userId: selectedProjectForModal.userId,
+      portfolioUrl: detail?.portfolioUrl ?? null,
+      likedByMe: likedItems.has(selectedProjectForModal.postId),
+      isMine: detail?.mine ?? currentUser?.userId === selectedProjectForModal.userId,
+      isApiFeed: true,
+    };
+  }, [selectedProjectForModal, selectedProjectDetail, selectedExploreFeed, likedItems, currentUser?.userId]);
+
+  useEffect(() => {
+    if (!mappedSelectedExploreFeed) {
+      setSelectedExploreFeed(null);
+      setCommentFeedItems([]);
+      return;
+    }
+
+    setSelectedExploreFeed((prev) =>
+      prev && prev.id === mappedSelectedExploreFeed.id
+        ? { ...mappedSelectedExploreFeed, comments: prev.comments }
+        : mappedSelectedExploreFeed,
+    );
+
+    setCommentFeedItems((prev) => {
+      const current = prev.find((item) => item.id === mappedSelectedExploreFeed.id);
+      const nextItem =
+        current && current.id === mappedSelectedExploreFeed.id
+          ? { ...mappedSelectedExploreFeed, comments: current.comments }
+          : mappedSelectedExploreFeed;
+
+      return [nextItem];
+    });
+  }, [mappedSelectedExploreFeed]);
 
   const moveModalCarousel = (direction: -1 | 1, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    const images = selectedProjectForModal?.imageUrl ? [selectedProjectForModal.imageUrl] : [];
+    const images = mappedSelectedExploreFeed?.images ?? [];
     if (images.length <= 1) return;
     setModalImageIndex(prev => (prev + direction + images.length) % images.length);
-  };
-
-  const handleSubmitComment = async () => {
-    if (!selectedProjectForModal) return;
-    const trimmed = commentText.trim();
-    if (!trimmed) return;
-
-    try {
-      setIsSubmittingComment(true);
-      const newComment: FeedComment = {
-        id: String(Date.now()),
-        author: {
-          name: "나",
-          avatar: "https://i.pravatar.cc/150?img=20",
-          role: "디자이너"
-        },
-        content: trimmed,
-        time: "방금 전",
-        likes: 0,
-        likedByMe: false,
-        isMine: true
-      };
-      setFeedComments(prev => ({
-        ...prev,
-        [selectedProjectForModal.postId]: [...(prev[selectedProjectForModal.postId] ?? []), newComment]
-      }));
-      setCommentText("");
-    } finally {
-      setIsSubmittingComment(false);
-    }
   };
 
   const handleProposalClick = async (item: ExplorePostResponseDto, e?: React.MouseEvent) => {
     e?.stopPropagation();
 
     if (!item.userId) {
-      alert("대화 상대 정보를 찾을 수 없습니다.");
+      alert("상대방 정보를 찾을 수 없습니다.");
       return;
     }
 
@@ -535,7 +503,7 @@ export default function Explore() {
     }
 
     const now = Date.now();
-    const proposalMessage = `안녕하세요. "${item.title}" 작업을 보고 프로젝트 제안을 드리고 싶어 연락드렸어요. 작업 가능 여부와 예상 일정, 견적을 이야기해보고 싶습니다.`;
+    const proposalMessage = `안녕하세요. "${item.title}" 작업을 보고 프로젝트 제안을 드리고 싶어 연락드립니다. 작업 가능 여부와 일정, 견적을 함께 이야기해보고 싶습니다.`;
 
     setStartingProposalPostId(item.postId);
     try {
@@ -564,7 +532,7 @@ export default function Explore() {
     }
   };
 
-  // ── lenis smooth scroll ──
+  // Lenis smooth scroll 설정
   useEffect(() => {
     const lenis = new Lenis({ lerp: 0.08, smoothWheel: true });
     
@@ -594,14 +562,14 @@ export default function Explore() {
     catScrollRef.current?.scrollBy({ left: dir === "left" ? -200 : 200, behavior: "smooth" });
   };
 
-  // 피드 데이터 가져오기 (실제 API 호출)
+  // 피드 목록 조회
   useEffect(() => {
     if (activeTab !== "feed") return;
 
     const fetchFeeds = async () => {
       try {
         setIsFeedsLoading(true);
-        // 카테고리가 null이면 "all"로 처리 (API 상의 약속)
+        // 선택 카테고리가 없으면 all로 조회
         const data = await getExploreFeedsApi(selectedCategory || "all");
         setFeeds(data);
       } catch (error) {
@@ -614,7 +582,7 @@ export default function Explore() {
     fetchFeeds();
   }, [selectedCategory, activeTab]);
 
-  // 디자이너 데이터 가져오기 (실제 API 호출)
+  // 디자이너 목록 조회
   useEffect(() => {
     if (activeTab !== "profile") return;
 
@@ -634,8 +602,7 @@ export default function Explore() {
   }, [activeTab]);
 
   const filteredProjects = useMemo(() => {
-    // 검색어가 있을 때만 프론트엔드에서 필터링하거나, 
-    // 나중에 검색 API가 생기면 서버로 요청하도록 할 예정입니다.
+    // 검색어가 있으면 클라이언트에서 제목/닉네임 기준 필터링
     if (!searchQuery.trim()) return feeds;
     
     return feeds.filter((p) => {
@@ -660,7 +627,7 @@ export default function Explore() {
     setAiLoading(true);
     setAiResult(null);
     setAiTypedText("");
-    // mock: 1.2초 후 결과
+      // mock 응답 딜레이
     setTimeout(() => {
       const mock = AI_MOCK_RESPONSES.default;
       setAiResult(mock);
@@ -687,7 +654,7 @@ export default function Explore() {
     <div className="min-h-screen flex flex-col bg-[#F7F7F5]">
       <Navigation />
 
-      {/* ━━ 검색바 + AI 토글 + 탭 ━━ */}
+      {/* 탐색 검색바 + AI 검색 + 탭 전환 */}
       <section className="relative z-30 flex justify-center">
         <div className="bg-transparent w-full max-w-none px-0 pt-6 pb-2 mx-auto">
           <div className="mx-auto w-full max-w-[1800px] px-5">
@@ -708,7 +675,7 @@ export default function Explore() {
                 value={searchQuery}
                 onChange={(e) => { setSearchQuery(e.target.value); if (aiResult) setAiResult(null); }}
                 onKeyDown={handleSearchKeyDown}
-                placeholder={aiMode ? "어떤 디자이너를 찾고 계세요? AI가 도와드릴게요..." : "pickxel에서 검색..."}
+                placeholder={aiMode ? "어떤 디자이너를 찾고 계세요? AI가 추천해드릴게요..." : "pickxel에서 검색..."}
                 className="w-full h-10 pl-10 pr-4 bg-transparent text-sm text-[#0F0F0F] placeholder:text-gray-400 focus:outline-none rounded-xl"
               />
               {searchQuery && (
@@ -718,7 +685,7 @@ export default function Explore() {
               )}
             </div>
 
-            {/* AI 토글 */}
+            {/* AI 버튼 */}
             <motion.button
               whileTap={{ scale: 0.95 }}
               onClick={() => { setAiMode(!aiMode); setAiResult(null); }}
@@ -734,7 +701,7 @@ export default function Explore() {
 
             <div className="w-px h-6 bg-gray-200 shrink-0" />
 
-            {/* 탭 토글 */}
+            {/* 탭 전환 */}
             <div className="flex rounded-lg bg-white border border-gray-200/80 shadow-sm p-0.5 shrink-0">
               <button
                 onClick={() => setActiveTab("feed")}
@@ -774,7 +741,7 @@ export default function Explore() {
                       </div>
                       <div>
                         <p className="text-sm font-semibold text-[#0F0F0F]">AI가 분석 중이에요...</p>
-                        <p className="text-xs text-gray-400">최적의 디자이너를 찾고 있습니다</p>
+                        <p className="text-xs text-gray-400">조건에 맞는 디자이너를 찾고 있습니다.</p>
                       </div>
                     </div>
                   ) : aiResult && (
@@ -814,11 +781,11 @@ export default function Explore() {
         </div>
       </section>
 
-      {/* ━━ 카테고리 필터 ━━ */}
+      {/* 탐색 카테고리 필터 */}
       {activeTab === "feed" && (
         <section className="bg-transparent pb-3">
           <div className="max-w-[1800px] mx-auto px-5 relative">
-            {/* 좌측 페이드 + 화살표 */}
+            {/* 왼쪽 스크롤 버튼 */}
             {canScrollLeft && (
               <div className="absolute left-0 top-0 bottom-0 z-10 flex items-center">
                 <div className="w-20 h-full bg-gradient-to-r from-[#F7F7F5] via-[#F7F7F5]/80 to-transparent pointer-events-none absolute left-0" />
@@ -827,7 +794,7 @@ export default function Explore() {
                 </button>
               </div>
             )}
-            {/* 우측 페이드 + 화살표 */}
+            {/* 오른쪽 스크롤 버튼 */}
             {canScrollRight && (
               <div className="absolute right-0 top-0 bottom-0 z-10 flex items-center">
                 <div className="w-20 h-full bg-gradient-to-l from-[#F7F7F5] via-[#F7F7F5]/80 to-transparent pointer-events-none absolute right-0" />
@@ -888,13 +855,13 @@ export default function Explore() {
         </section>
       )}
 
-      {/* ━━ 메인 콘텐츠 (flex-1로 푸터 하단 고정) ━━ */}
+      {/* 탐색 메인 콘텐츠 */}
       <div className="flex-1">
-        {/* ━━ 피드 탭: 균일 그리드 ━━ */}
+        {/* 피드 카드 그리드 */}
         {activeTab === "feed" && (
           <section className="max-w-[1800px] mx-auto px-5 pt-1 pb-16">
             {isFeedsLoading ? (
-              // 로딩 중일 때 표시할 스켈레톤이나 로퍼 (기존 디자인 유지)
+              // 로딩 스피너
               <div className="flex justify-center py-20">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00C9A7]"></div>
               </div>
@@ -902,7 +869,7 @@ export default function Explore() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {filteredProjects.map((project, index) => (
                   <motion.div
-                    key={project.postId} // project.id 대신 postId 사용
+                    key={project.postId}
                     initial={{ opacity: 0, y: 30 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true, margin: "-60px" }}
@@ -911,18 +878,18 @@ export default function Explore() {
                     onClick={() => setSelectedProjectForModal(project)}
                   >
                     <div className="relative rounded-2xl overflow-hidden bg-white shadow-[0_2px_8px_rgba(0,0,0,0.06)] group-hover:shadow-[0_20px_50px_rgba(0,0,0,0.12)] group-hover:-translate-y-2 transition-all duration-500 ease-out">
-                      {/* 이미지 (고정 비율) */}
+                      {/* 이미지 영역 */}
                       <div className="relative aspect-[4/3] overflow-hidden">
                         <ImageWithFallback
-                          src={project.imageUrl || ""} // null 처리
+                          src={project.imageUrl || ""}
                           alt={project.title}
                           className="w-full h-full object-cover group-hover:scale-[1.08] transition-transform duration-700 ease-out"
                         />
-                        {/* 호버 오버레이: 상단 비네팅 + 하단 그라디언트 */}
+                        {/* hover 오버레이 */}
                         <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none" />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-400 pointer-events-none" />
 
-                        {/* 우상단: 저장 버튼 (pill) */}
+                        {/* 저장 버튼 */}
                         <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 -translate-y-1 group-hover:translate-y-0 transition-all duration-300 z-10">
                           <button
                             onClick={(e) => { e.stopPropagation(); openCollectionModal(project, e); }}
@@ -955,7 +922,7 @@ export default function Explore() {
                           </div>
                         </div>
                       </div>
-                      {/* 하단 정보 */}
+                      {/* 카드 하단 정보 */}
                       <div className="px-4 py-3.5">
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
@@ -987,13 +954,13 @@ export default function Explore() {
           </section>
         )}
 
-        {/* ━━ 프로필 탭 ━━ */}
+        {/* 디자이너 목록 */}
         {activeTab === "profile" && (
           <section className="max-w-[1800px] mx-auto px-5 py-6">
             <div className="mb-5 flex items-center gap-2">
               <Users className="size-4 text-[#00C9A7]" />
-              <span className="text-sm font-semibold text-[#374151]">크리에이터 {filteredDesigners.length}명</span>
-              {searchQuery && <span className="text-sm text-gray-400">— "{searchQuery}"</span>}
+              <span className="text-sm font-semibold text-[#374151]">디자이너 {filteredDesigners.length}명</span>
+              {searchQuery && <span className="text-sm text-gray-400">검색어 "{searchQuery}"</span>}
             </div>
             {isDesignersLoading ? (
               <div className="flex justify-center py-20">
@@ -1011,7 +978,7 @@ export default function Explore() {
                     className="group pb-2"
                   >
                     <Link to={`/profile/${profile.nickname}`} className="flex h-[156px] bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)] group-hover:border-[#00C9A7]/40 group-hover:shadow-[0_16px_40px_rgba(0,0,0,0.1)] group-hover:-translate-y-1 transition-all duration-500">
-                      {/* 좌측: 배너 */}
+                      {/* 왼쪽 배너 */}
                       <div className="w-32 shrink-0 relative overflow-hidden">
                         <ImageWithFallback
                           src={profile.bannerImage || "https://images.unsplash.com/photo-1618761714954-0b8cd0026356?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400"}
@@ -1020,7 +987,7 @@ export default function Explore() {
                         />
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent to-black/10" />
                       </div>
-                      {/* 우측: 정보 */}
+                      {/* 오른쪽 정보 */}
                       <div className="flex-1 p-3.5 flex flex-col justify-between min-w-0">
                         <div>
                           <div className="flex items-center gap-2 mb-1.5">
@@ -1031,10 +998,10 @@ export default function Explore() {
                             </div>
                           </div>
                           <span className="inline-block text-[10px] font-semibold bg-[#A8F0E4]/25 text-[#00A88C] px-2 py-0.5 rounded-full mb-1.5">{profile.job || "디자이너"}</span>
-                          <p className="text-[11px] text-gray-400 line-clamp-1 leading-relaxed">{profile.introduction || "멋진 디자인을 만듭니다."}</p>
+                          <p className="text-[11px] text-gray-400 line-clamp-1 leading-relaxed">{profile.introduction || "멋진 작업을 만드는 디자이너입니다."}</p>
                         </div>
                         <div className="flex items-center gap-3 mt-auto pt-2 border-t border-gray-50 text-[10px]">
-                          <span className="text-gray-500"><strong className="text-[#0F0F0F] text-xs">{profile.followCount}</strong> 팔로워</span>
+                          <span className="text-gray-500"><strong className="text-[#0F0F0F] text-xs">{profile.followCount}</strong> 팔로우</span>
                           <span className="text-gray-500"><strong className="text-[#0F0F0F] text-xs">{profile.postCount}</strong> 작품</span>
                           <ArrowRight className="ml-auto size-3 text-gray-300 group-hover:text-[#00A88C] transition-colors" />
                         </div>
@@ -1049,7 +1016,7 @@ export default function Explore() {
                   <UserSearch className="size-12 text-gray-300" />
                 </div>
                 <h3 className="text-lg font-semibold text-gray-700 mb-1">
-                  {searchQuery ? `"${searchQuery}"에 해당하는 크리에이터가 없습니다` : "크리에이터를 찾을 수 없습니다"}
+                  {searchQuery ? `"${searchQuery}"에 해당하는 디자이너가 없습니다` : "디자이너를 찾을 수 없습니다"}
                 </h3>
                 <p className="text-sm text-gray-400 mb-5">다른 이름이나 분야로 검색해보세요.</p>
                 {searchQuery && (
@@ -1063,176 +1030,74 @@ export default function Explore() {
         )}
       </div>
 
-      {/* 상세 모달 (Feed.tsx와 동일 UI) */}
-      <AnimatePresence>
-        {selectedProjectForModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setSelectedProjectForModal(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="bg-white rounded-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden shadow-2xl flex flex-col md:flex-row"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* 좌측: 이미지 영역 */}
-              <div className="flex-1 bg-[#0F0F0F] flex items-center justify-center relative min-h-[300px]">
-                <ImageWithFallback
-                  src={selectedProjectForModal.imageUrl || ""}
-                  alt={selectedProjectForModal.title}
-                  className="max-w-full max-h-[90vh] object-contain"
-                />
 
-                {/* Close Button */}
-                <button
-                  onClick={() => setSelectedProjectForModal(null)}
-                  className="absolute top-4 left-4 p-2 bg-black/50 hover:bg-black/70 backdrop-blur-md text-white rounded-full transition-all border border-white/20"
-                >
-                  <X className="size-6" />
-                </button>
-              </div>
-
-              {/* 우측: 상세 정보 및 댓글 */}
-              <div className="w-full md:w-[400px] flex flex-col bg-white border-l border-gray-100">
-                {/* 작성자 헤더 */}
-                <div className="p-5 border-b border-gray-100">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <ImageWithFallback
-                        src={selectedProjectForModal.profileImage || `https://i.pravatar.cc/150?u=${selectedProjectForModal.postId}`}
-                        alt={selectedProjectForModal.nickname}
-                        className="size-11 rounded-full ring-2 ring-[#00C9A7]/30"
-                      />
-                      <div>
-                        <h4 className="font-bold text-sm text-[#0F0F0F]">{selectedProjectForModal.nickname}</h4>
-                        <p className="text-xs text-gray-500">{selectedProjectForModal.job || "디자이너"}</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={(e) => handleProposalClick(selectedProjectForModal, e)}
-                      disabled={startingProposalPostId === selectedProjectForModal.postId}
-                      className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#FF5C3A] px-4 text-xs font-bold text-white shadow-lg shadow-[#FF5C3A]/20 transition-all hover:bg-[#E94F2F] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <Send className="size-3.5" />
-                      {startingProposalPostId === selectedProjectForModal.postId ? "연결 중..." : "제안하기"}
-                    </button>
-                  </div>
-
-                  <h2 className="font-bold text-xl text-[#0F0F0F] mb-2">{selectedProjectForModal.title}</h2>
-                  <p className="text-sm text-gray-600 line-clamp-3">{selectedProjectForModal.description || "상세 설명이 없습니다."}</p>
-                  
-                  {selectedProjectForModal.category && (
-                    <div className="mt-3">
-                      <span className="px-3 py-1 bg-[#A8F0E4]/30 text-[#00A88C] rounded-full text-xs font-bold border border-[#00C9A7]/10">
-                        {selectedProjectForModal.category}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* 액션 바 */}
-                <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={(e) => toggleLike(selectedProjectForModal.postId, e)}
-                      className={`flex items-center gap-2 transition-colors ${
-                        likedItems.has(selectedProjectForModal.postId) ? "text-[#FF5C3A]" : "text-gray-600 hover:text-[#FF5C3A]"
-                      }`}
-                    >
-                      <Heart className={`size-6 ${likedItems.has(selectedProjectForModal.postId) ? "fill-[#FF5C3A]" : ""}`} />
-                      <span className="font-bold">{selectedProjectForModal.pickCount + (likedItems.has(selectedProjectForModal.postId) ? 1 : 0)}</span>
-                    </button>
-                    <button className="flex items-center gap-2 text-gray-600 hover:text-[#00A88C] transition-colors">
-                      <MessageCircle className="size-6" />
-                      <span className="font-bold">{(feedComments[selectedProjectForModal.postId] || []).length}</span>
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={(e) => openCollectionModal(selectedProjectForModal, e)}
-                      className={`p-2 rounded-lg transition-all ${
-                        savedProjectIds.has(selectedProjectForModal.postId) ? "bg-[#00C9A7] text-white" : "hover:bg-[#E7FAF6] text-gray-600"
-                      }`}
-                    >
-                      <Bookmark className={`size-5 ${savedProjectIds.has(selectedProjectForModal.postId) ? "fill-white" : ""}`} />
-                    </button>
-                    <button 
-                      onClick={(e) => handleShare(selectedProjectForModal, e)}
-                      className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 transition-colors"
-                    >
-                      <Share2 className="size-5" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* 댓글 영역 */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#F9FAFB]">
-                  {(feedComments[selectedProjectForModal.postId] || []).length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center opacity-40">
-                      <MessageCircle className="size-8 mb-2" />
-                      <p className="text-xs">첫 댓글을 남겨보세요!</p>
-                    </div>
-                  ) : (
-                    (feedComments[selectedProjectForModal.postId] || []).map((comment) => (
-                      <div key={comment.id} className="flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                        <ImageWithFallback
-                          src={comment.author.avatar}
-                          alt={comment.author.name}
-                          className="size-9 rounded-full shrink-0"
-                        />
-                        <div className="flex-1">
-                          <div className="bg-white border border-gray-100 rounded-2xl p-3 shadow-sm">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="font-bold text-xs text-[#0F0F0F]">{comment.author.name}</span>
-                              <span className="text-[10px] text-gray-400">{comment.time}</span>
-                            </div>
-                            <p className="text-sm text-gray-700 leading-relaxed">{comment.content}</p>
-                          </div>
-                          <button
-                            onClick={() => toggleCommentLike(selectedProjectForModal.postId, comment.id)}
-                            className={`text-[11px] mt-1.5 ml-2 transition-colors ${comment.likedByMe ? "text-[#FF5C3A] font-bold" : "text-gray-400"}`}
-                          >
-                            좋아요 {comment.likes}개
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                {/* 댓글 입력 */}
-                <div className="p-4 border-t border-gray-100">
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 relative">
-                      <input
-                        ref={commentInputRef}
-                        type="text"
-                        value={commentText}
-                        onChange={(e) => setCommentText(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && handleSubmitComment()}
-                        placeholder="댓글을 입력하세요..."
-                        className="w-full pl-4 pr-10 py-2.5 bg-[#F3F4F6] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7]/50 transition-all"
-                      />
-                      <button
-                        onClick={handleSubmitComment}
-                        disabled={!commentText.trim() || isSubmittingComment}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-[#00C9A7] hover:text-[#00A88C] disabled:opacity-30 transition-colors"
-                      >
-                        <Send className="size-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {selectedProjectForModal && mappedSelectedExploreFeed && (
+        <FeedDetailModal
+          selectedFeed={mappedSelectedExploreFeed}
+          activeModalImage={
+            (mappedSelectedExploreFeed.images ?? [mappedSelectedExploreFeed.image])[modalImageIndex] ??
+            mappedSelectedExploreFeed.image
+          }
+          selectedFeedImages={mappedSelectedExploreFeed.images ?? [mappedSelectedExploreFeed.image]}
+          modalImageIndex={modalImageIndex}
+          savedItemIds={savedProjectIds}
+          selectedFeedComments={selectedFeedComments}
+          isFeedDetailLoading={isModalDetailLoading}
+          feedDetailError={null}
+          commentSubmitError={commentSubmitError}
+          commentLoadError={commentLoadError}
+          isCommentsLoading={isCommentsLoading}
+          editingCommentId={editingCommentId}
+          editingCommentText={editingCommentText}
+          isUpdatingComment={isUpdatingComment}
+          isDeletingCommentId={isDeletingCommentId}
+          commentText={commentText}
+          isSubmittingComment={isSubmittingComment}
+          currentUserAvatar={currentUserAvatar}
+          currentUserName={currentUserName}
+          commentInputRef={commentInputRef}
+          formatFeedDateTime={(value?: string) => {
+            if (!value) return null;
+            const parsedDate = new Date(value);
+            if (Number.isNaN(parsedDate.getTime())) return null;
+            return parsedDate.toLocaleString("ko-KR", {
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+          }}
+          isFeedLiked={() => likedItems.has(selectedProjectForModal.postId)}
+          getLikeCount={() => mappedSelectedExploreFeed.likes}
+          getCommentCount={() => selectedExploreFeed?.comments ?? selectedFeedComments.length}
+          onClose={() => {
+            setSelectedProjectForModal(null);
+            setSelectedProjectDetail(null);
+            setSelectedExploreFeed(null);
+            setCommentFeedItems([]);
+            setModalImageIndex(0);
+          }}
+          onMoveModalCarousel={moveModalCarousel}
+          onSetModalImageIndex={(index, e) => {
+            e.stopPropagation();
+            setModalImageIndex(index);
+          }}
+          onToggleLike={(_, e) => toggleLike(selectedProjectForModal.postId, e)}
+          onOpenCollectionModal={(_, e) => openCollectionModal(selectedProjectForModal, e)}
+          onShare={(_, e) => handleShare(selectedProjectForModal, e)}
+          onProposalClick={(_, e) => handleProposalClick(selectedProjectForModal, e)}
+          onToggleCommentLike={(feedId, commentId) => toggleCommentLike(feedId, commentId)}
+          onStartEditingComment={startEditingComment}
+          onEditingCommentTextChange={setEditingCommentText}
+          onUpdateComment={handleUpdateComment}
+          onCancelEditingComment={cancelEditingComment}
+          onDeleteComment={handleDeleteComment}
+          onCommentTextChange={setCommentText}
+          onCommentKeyDown={handleCommentKeyDown}
+          onSubmitComment={handleSubmitComment}
+        />
+      )}
 
       {/* Floating Action Button */}
       <motion.div whileHover={{ scale: 1.1, rotate: 45 }} whileTap={{ scale: 0.9 }} className="fixed bottom-8 right-8 z-40">
@@ -1270,9 +1135,7 @@ export default function Explore() {
 
               <div className="p-5 space-y-2 max-h-[400px] overflow-y-auto">
                 {collections.map((col) => {
-                  // 현재 폴더별 상세 아이템 리스트를 받기 전까지는 
-                  // 전역 savedProjectIds를 활용하거나, API 확장을 고려해야 함.
-                  // 우선 디자인을 Feed 페이지와 100% 일치시킴.
+                  // 탐색 페이지에서는 저장 여부를 로컬 상태로만 표시
                   const isSaved = false; 
 
                   return (
@@ -1308,7 +1171,7 @@ export default function Explore() {
                     type="text"
                     value={newCollectionName}
                     onChange={(e) => setNewCollectionName(e.target.value)}
-                    placeholder="예: 메인페이지 레퍼런스"
+                    placeholder="예: 메인 페이지 레퍼런스"
                     className="flex-1 px-3 py-2.5 rounded-lg bg-[#F7F7F5] border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7]"
                   />
                   <button
@@ -1334,4 +1197,3 @@ export default function Explore() {
     </div>
   );
 }
-

@@ -2,6 +2,7 @@ package com.example.pixel_project2.message.service;
 
 import com.example.pixel_project2.common.entity.Designer;
 import com.example.pixel_project2.common.entity.User;
+import com.example.pixel_project2.common.entity.enums.NotificationType;
 import com.example.pixel_project2.common.repository.UserRepository;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.message.dto.ChatMessageResponse;
@@ -32,6 +33,7 @@ import com.example.pixel_project2.message.repository.ChatMessageRepository;
 import com.example.pixel_project2.message.repository.MessageConversationRepository;
 import com.example.pixel_project2.message.repository.MessageProcessRepository;
 import com.example.pixel_project2.message.websocket.MessagePresenceTracker;
+import com.example.pixel_project2.notification.service.NotificationService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,9 +46,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -63,6 +65,7 @@ public class MessageServiceImpl implements MessageService {
     private final ObjectMapper objectMapper;
     private final JdbcTemplate jdbcTemplate;
     private final MessagePresenceTracker messagePresenceTracker;
+    private final NotificationService notificationService;
 
     @Override
     public MessagePolicyResponse getMessagePolicy() {
@@ -203,6 +206,16 @@ public class MessageServiceImpl implements MessageService {
                 : savedMessage.getCreatedAt();
         conversation.updateLastMessage(createPreview(message, attachments), messageCreatedAt);
         conversation.markRead(currentUser.id(), savedMessage.getId());
+
+        // 알림 생성
+        User receiver = conversation.getOtherParticipant(currentUser.id());
+        notificationService.createNotification(
+                receiver.getId(),
+                sender.getId(),
+                NotificationType.MESSAGE,
+                savedMessage.getId(),
+                "새로운 메시지가 도착했습니다: " + createPreview(message, attachments)
+        );
 
         return toChatMessageResponse(savedMessage, currentUser.id(), conversation.getPartnerLastReadMessageId(currentUser.id()));
     }
@@ -777,15 +790,15 @@ public class MessageServiceImpl implements MessageService {
         return value == null || value.isBlank() ? fallback : value.trim();
     }
 
-    private void putIfPresent(ObjectNode objectNode, String fieldName, String value) {
-        if (value != null && !value.isBlank()) {
-            objectNode.put(fieldName, value.trim());
+    private void putIfPresent(ObjectNode node, String fieldName, String value) {
+        if (value != null) {
+            node.put(fieldName, value);
         }
     }
 
-    private void putIfPositiveNumber(ObjectNode objectNode, String fieldName, JsonNode value) {
-        if (value != null && value.canConvertToLong() && value.asLong() > 0) {
-            objectNode.put(fieldName, value.asLong());
+    private void putIfPositiveNumber(ObjectNode node, String fieldName, JsonNode value) {
+        if (value.isNumber() && value.asLong() > 0) {
+            node.put(fieldName, value.asLong());
         }
     }
 }
