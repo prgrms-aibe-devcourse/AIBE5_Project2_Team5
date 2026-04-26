@@ -521,6 +521,70 @@ class MessageFlowIntegrationTest {
                 .andExpect(jsonPath("$.data.suggestions[0]").value(org.hamcrest.Matchers.containsString("review deck")));
     }
 
+    @Test
+    void usersCanSendFallbackAssistantSuggestionWithoutTriggeringPreviewStorageError() throws Exception {
+        String uniqueSuffix = String.valueOf(System.nanoTime());
+        String shortSuffix = uniqueSuffix.substring(Math.max(0, uniqueSuffix.length() - 6));
+        String firstLoginId = "fa" + shortSuffix + "@t.io";
+        String secondLoginId = "fb" + shortSuffix + "@t.io";
+
+        JsonNode firstUser = signUp(firstLoginId, "Fallback Sender", "fs" + shortSuffix, "CLIENT");
+        JsonNode secondUser = signUp(secondLoginId, "Fallback Partner", "fp" + shortSuffix, "DESIGNER");
+
+        String firstToken = login(firstLoginId, "testPass1!");
+        String secondToken = login(secondLoginId, "testPass1!");
+
+        long secondUserId = secondUser.path("userId").asLong();
+
+        MvcResult createConversationResult = mockMvc.perform(post("/api/messages/conversations")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("partnerUserId", secondUserId))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andReturn();
+
+        long conversationId = readData(createConversationResult).path("id").asLong();
+
+        mockMvc.perform(post("/api/messages/conversations/{conversationId}/messages", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + secondToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "clientId", "assistant-fallback-seed",
+                                "message", "Can you send the Zoom link and confirm whether tomorrow at 3 PM still works?",
+                                "attachments", List.of()
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        MvcResult suggestionResult = mockMvc.perform(post("/api/messages/conversations/{conversationId}/assistant/suggestions", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "goal", "schedule_meeting",
+                                "draft", ""
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.usedAi").value(false))
+                .andExpect(jsonPath("$.data.suggestions.length()").value(3))
+                .andReturn();
+
+        String suggestion = readData(suggestionResult).path("suggestions").get(0).asText();
+
+        mockMvc.perform(post("/api/messages/conversations/{conversationId}/messages", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "clientId", "assistant-fallback-send",
+                                "message", suggestion,
+                                "attachments", List.of()
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.message").value(suggestion));
+    }
+
     private JsonNode signUp(String loginId, String name, String nickname, String role) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/auth/signup")
                         .contentType(MediaType.APPLICATION_JSON)

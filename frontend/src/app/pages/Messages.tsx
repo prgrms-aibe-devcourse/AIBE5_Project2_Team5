@@ -151,6 +151,11 @@ const assistantActionItems: AssistantActionItem[] = [
   { goal: "schedule_meeting", label: "미팅 일정 잡기" },
   { goal: "share_document", label: "문서 전달 안내" },
 ];
+const assistantLoadingPreviewItems = [
+  { primaryWidth: "88%", secondaryWidth: "54%" },
+  { primaryWidth: "80%", secondaryWidth: "62%" },
+  { primaryWidth: "92%", secondaryWidth: "48%" },
+];
 
 const debugMessageTyping = (...args: unknown[]) => {
   if (DEBUG_MESSAGE_TYPING) {
@@ -3408,6 +3413,16 @@ export default function Messages() {
           30% { opacity: 1; transform: translateY(-3px); }
         }
 
+        @keyframes pickxelAssistantCardPulse {
+          0%, 100% { opacity: 0.78; transform: translateY(0); }
+          50% { opacity: 1; transform: translateY(-1px); }
+        }
+
+        @keyframes pickxelAssistantLineShimmer {
+          0% { background-position: 0% 50%; }
+          100% { background-position: 100% 50%; }
+        }
+
         @keyframes pickxelDeliveryPop {
           from { opacity: 0; transform: scale(0.86); }
           to { opacity: 1; transform: scale(1); }
@@ -3977,8 +3992,61 @@ export default function Messages() {
                   </div>
                   <div className="space-y-2">
                     {isAssistantLoading ? (
-                      <div className="rounded-lg border border-[#FFD6DE] bg-white/90 px-3 py-2.5 text-sm font-medium text-[#7C3044]">
-                        최근 대화와 작업 프로세스를 보고 추천 문구를 만들고 있어요.
+                      <div className="rounded-lg border border-[#FFD6DE] bg-white/92 px-3 py-3 text-sm text-[#7C3044]">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-[#9A3652]">
+                          <div className="flex shrink-0 items-center gap-1">
+                            {[0, 1, 2].map((index) => (
+                              <span
+                                key={index}
+                                className="size-1.5 rounded-full bg-[#E8456D]"
+                                style={{
+                                  animation: "pickxelTypingDot 1s ease-in-out infinite",
+                                  animationDelay: `${index * 0.16}s`,
+                                }}
+                              />
+                            ))}
+                          </div>
+                          <span>Gemini가 최근 대화와 작업 단계를 읽고 있어요.</span>
+                        </div>
+                        <p className="mt-1 text-xs font-medium text-[#8C4458]">
+                          상대가 방금 보낸 말에 맞는 추천 문구를 정리하는 중이에요.
+                        </p>
+                        <div className="mt-3 space-y-2">
+                          {assistantLoadingPreviewItems.map((item, index) => (
+                            <div
+                              key={`${item.primaryWidth}-${index}`}
+                              className="rounded-lg border border-[#FFE0E7] bg-[#FFF9FB] px-3 py-2.5"
+                              style={{
+                                animation: "pickxelAssistantCardPulse 1.5s ease-in-out infinite",
+                                animationDelay: `${index * 0.14}s`,
+                              }}
+                            >
+                              <div
+                                className="h-2.5 rounded-full"
+                                style={{
+                                  width: item.primaryWidth,
+                                  background:
+                                    "linear-gradient(90deg, rgba(232,69,109,0.16) 0%, rgba(232,69,109,0.3) 45%, rgba(255,214,222,0.45) 100%)",
+                                  backgroundSize: "200% 100%",
+                                  animation:
+                                    "pickxelAssistantLineShimmer 1.5s linear infinite",
+                                }}
+                              />
+                              <div
+                                className="mt-2 h-2 rounded-full"
+                                style={{
+                                  width: item.secondaryWidth,
+                                  background:
+                                    "linear-gradient(90deg, rgba(140,68,88,0.12) 0%, rgba(232,69,109,0.22) 55%, rgba(255,214,222,0.38) 100%)",
+                                  backgroundSize: "200% 100%",
+                                  animation:
+                                    "pickxelAssistantLineShimmer 1.6s linear infinite",
+                                  animationDelay: `${index * 0.1}s`,
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ) : assistantSuggestions.length > 0 ? (
                       <>

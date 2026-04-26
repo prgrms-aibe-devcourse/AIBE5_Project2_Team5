@@ -95,7 +95,7 @@ public class MessageServiceImpl implements MessageService {
     @Value("${app.gemini.api-key:}")
     private String geminiApiKey;
 
-    @Value("${app.gemini.model:gemini-1.5-flash}")
+    @Value("${app.gemini.model:gemini-2.5-flash}")
     private String geminiModel;
 
     @Override
@@ -235,7 +235,7 @@ public class MessageServiceImpl implements MessageService {
         LocalDateTime messageCreatedAt = savedMessage.getCreatedAt() == null
                 ? LocalDateTime.now()
                 : savedMessage.getCreatedAt();
-        conversation.updateLastMessage(createPreview(message, attachments), messageCreatedAt);
+        conversation.updateLastMessage(createStoredConversationPreview(message, attachments), messageCreatedAt);
         conversation.markRead(currentUser.id(), savedMessage.getId());
 
         // 알림 생성
@@ -245,7 +245,7 @@ public class MessageServiceImpl implements MessageService {
                 sender.getId(),
                 NotificationType.MESSAGE,
                 savedMessage.getId(),
-                "새로운 메시지가 도착했습니다: " + createPreview(message, attachments)
+                createNotificationPreview(message, attachments)
         );
 
         return toChatMessageResponse(savedMessage, currentUser.id(), conversation.getPartnerLastReadMessageId(currentUser.id()));
@@ -772,12 +772,26 @@ public class MessageServiceImpl implements MessageService {
         }
     }
 
-    private String createPreview(String message, JsonNode attachments) {
+    private String createStoredConversationPreview(String message, JsonNode attachments) {
         String preview = message.isBlank() ? "첨부파일" : message;
-        if (preview.length() <= 500) {
-            return MessageTextCodec.encode(preview);
-        }
-        return MessageTextCodec.encode(preview.substring(0, 500));
+        return MessageTextCodec.encodeWithinStoredLength(createPlainPreview(message, attachments), 500);
+    }
+
+    private String createNotificationPreview(String message, JsonNode attachments) {
+        String preview = stripNonBmpCharacters(createPlainPreview(message, attachments));
+        String truncatedPreview = preview.length() > 80 ? preview.substring(0, 80) : preview;
+        return "새로운 메시지가 도착했습니다: " + truncatedPreview;
+    }
+
+    private String createPlainPreview(String message, JsonNode attachments) {
+        return message.isBlank() ? "첨부파일" : message;
+    }
+
+    private String stripNonBmpCharacters(String value) {
+        return value.codePoints()
+                .filter(Character::isBmpCodePoint)
+                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
+                .toString();
     }
 
     private List<String> requestGeminiSuggestions(
