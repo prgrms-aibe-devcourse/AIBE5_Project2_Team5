@@ -2,6 +2,8 @@ package com.example.pixel_project2.message.websocket;
 
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.message.dto.ChatMessageResponse;
+import com.example.pixel_project2.message.dto.MessageProcessResponse;
+import com.example.pixel_project2.message.dto.MessageReactionUpdateResponse;
 import com.example.pixel_project2.message.dto.MessageReadReceiptResponse;
 import com.example.pixel_project2.message.dto.SendMessageRequest;
 import com.example.pixel_project2.message.service.MessageService;
@@ -29,6 +31,8 @@ public class MessageSocketHandler extends TextWebSocketHandler {
     private static final String TYPE_CHAT_MESSAGE = "chat.message";
     private static final String TYPE_TYPING = "typing";
     private static final String TYPE_CONVERSATION_READ = "conversation.read";
+    private static final String TYPE_REACTION_UPDATE = "reaction.update";
+    private static final String TYPE_PROCESS_UPDATE = "process.update";
     private static final String TYPE_PRESENCE_SNAPSHOT = "presence.snapshot";
     private static final String TYPE_PRESENCE_UPDATE = "presence.update";
     private static final String TYPE_PING = "ping";
@@ -186,18 +190,7 @@ public class MessageSocketHandler extends TextWebSocketHandler {
         }
 
         ObjectNode outbound = objectMapper.createObjectNode();
-        outbound.put("type", TYPE_CHAT_MESSAGE);
-        outbound.put("serverId", String.valueOf(savedMessage.id()));
-        outbound.put("clientId", savedMessage.clientId() == null ? String.valueOf(savedMessage.id()) : savedMessage.clientId());
-        outbound.put("conversationId", savedMessage.conversationId());
-        outbound.put("senderUserId", savedMessage.senderUserId());
-        outbound.put("senderName", savedMessage.senderName());
-        outbound.put("message", savedMessage.message());
-        outbound.put("createdAt", savedMessage.createdAt().toString());
-        outbound.set("attachments", savedMessage.attachments());
-        outbound.set("reactions", objectMapper.valueToTree(savedMessage.reactions()));
-        outbound.put("readByPartner", savedMessage.readByPartner());
-
+        populateChatMessage(outbound, savedMessage);
         broadcast(conversationId, session.getId(), messageService.getConversationParticipantIds(conversationId), outbound);
     }
 
@@ -397,6 +390,94 @@ public class MessageSocketHandler extends TextWebSocketHandler {
             outbound.put("isOnline", isOnline);
             broadcast(conversationId, null, messageService.getConversationParticipantIds(conversationId), outbound);
         }
+    }
+
+    public void broadcastChatMessage(ChatMessageResponse savedMessage) {
+        ObjectNode outbound = objectMapper.createObjectNode();
+        populateChatMessage(outbound, savedMessage);
+        broadcast(
+                savedMessage.conversationId(),
+                null,
+                messageService.getConversationParticipantIds(savedMessage.conversationId()),
+                outbound
+        );
+    }
+
+    public void broadcastConversationRead(MessageReadReceiptResponse readReceipt) {
+        ObjectNode outbound = objectMapper.createObjectNode();
+        outbound.put("type", TYPE_CONVERSATION_READ);
+        outbound.put("conversationId", readReceipt.conversationId());
+        outbound.put("readerUserId", readReceipt.readerUserId());
+        if (readReceipt.lastReadMessageId() == null) {
+            outbound.putNull("lastReadMessageId");
+        } else {
+            outbound.put("lastReadMessageId", readReceipt.lastReadMessageId());
+        }
+
+        broadcast(
+                readReceipt.conversationId(),
+                null,
+                messageService.getConversationParticipantIds(readReceipt.conversationId()),
+                outbound
+        );
+    }
+
+    public void broadcastReactionUpdate(long conversationId, MessageReactionUpdateResponse reactionUpdate) {
+        ObjectNode outbound = objectMapper.createObjectNode();
+        outbound.put("type", TYPE_REACTION_UPDATE);
+        outbound.put("conversationId", conversationId);
+        outbound.put("messageId", reactionUpdate.messageId());
+        outbound.set("reactions", objectMapper.valueToTree(reactionUpdate.reactions()));
+
+        broadcast(
+                conversationId,
+                null,
+                messageService.getConversationParticipantIds(conversationId),
+                outbound
+        );
+    }
+
+    public void broadcastProcessUpdate(long conversationId, List<MessageProcessResponse> processes) {
+        ObjectNode outbound = objectMapper.createObjectNode();
+        outbound.put("type", TYPE_PROCESS_UPDATE);
+        outbound.put("conversationId", conversationId);
+        outbound.set("processes", objectMapper.valueToTree(processes));
+
+        broadcast(
+                conversationId,
+                null,
+                messageService.getConversationParticipantIds(conversationId),
+                outbound
+        );
+    }
+
+    public void broadcastTyping(long conversationId, long senderUserId, boolean isTyping) {
+        ObjectNode outbound = objectMapper.createObjectNode();
+        outbound.put("type", TYPE_TYPING);
+        outbound.put("conversationId", conversationId);
+        outbound.put("senderUserId", senderUserId);
+        outbound.put("isTyping", isTyping);
+
+        broadcast(
+                conversationId,
+                null,
+                messageService.getConversationParticipantIds(conversationId),
+                outbound
+        );
+    }
+
+    private void populateChatMessage(ObjectNode outbound, ChatMessageResponse savedMessage) {
+        outbound.put("type", TYPE_CHAT_MESSAGE);
+        outbound.put("serverId", String.valueOf(savedMessage.id()));
+        outbound.put("clientId", savedMessage.clientId() == null ? String.valueOf(savedMessage.id()) : savedMessage.clientId());
+        outbound.put("conversationId", savedMessage.conversationId());
+        outbound.put("senderUserId", savedMessage.senderUserId());
+        outbound.put("senderName", savedMessage.senderName());
+        outbound.put("message", savedMessage.message());
+        outbound.put("createdAt", savedMessage.createdAt().toString());
+        outbound.set("attachments", savedMessage.attachments());
+        outbound.set("reactions", objectMapper.valueToTree(savedMessage.reactions()));
+        outbound.put("readByPartner", savedMessage.readByPartner());
     }
 
 }

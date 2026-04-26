@@ -235,6 +235,107 @@ class MessageFlowIntegrationTest {
     }
 
     @Test
+    void usersCanCatchUpMissedMessagesAfterLastSeenMessageId() throws Exception {
+        JsonNode firstUser = signUp("message-catchup-a@test.io", "Catchup A", "catchupA", "DESIGNER");
+        JsonNode secondUser = signUp("message-catchup-b@test.io", "Catchup B", "catchupB", "CLIENT");
+
+        String firstToken = login("message-catchup-a@test.io", "testPass1!");
+        String secondToken = login("message-catchup-b@test.io", "testPass1!");
+
+        long firstUserId = firstUser.path("userId").asLong();
+        long secondUserId = secondUser.path("userId").asLong();
+
+        MvcResult createConversationResult = mockMvc.perform(post("/api/messages/conversations")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("partnerUserId", secondUserId))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.partnerUserId").value(secondUserId))
+                .andReturn();
+
+        long conversationId = readData(createConversationResult).path("id").asLong();
+
+        mockMvc.perform(post("/api/messages/conversations")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + secondToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("partnerUserId", firstUserId))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value(conversationId));
+
+        MvcResult firstSendResult = mockMvc.perform(post("/api/messages/conversations/{conversationId}/messages", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "clientId", "catchup-message-1",
+                                "message", "첫 번째 기준 메시지"
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        long firstMessageId = readData(firstSendResult).path("id").asLong();
+
+        mockMvc.perform(get("/api/messages/conversations/{conversationId}/messages", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + secondToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value(firstMessageId));
+
+        mockMvc.perform(get("/api/messages/conversations/{conversationId}/messages", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].readByPartner").value(true));
+
+        MvcResult secondSendResult = mockMvc.perform(post("/api/messages/conversations/{conversationId}/messages", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "clientId", "catchup-message-2",
+                                "message", "재연결 후 따라와야 하는 두 번째 메시지"
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        long secondMessageId = readData(secondSendResult).path("id").asLong();
+
+        MvcResult thirdSendResult = mockMvc.perform(post("/api/messages/conversations/{conversationId}/messages", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "clientId", "catchup-message-3",
+                                "message", "재연결 후 따라와야 하는 세 번째 메시지"
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        long thirdMessageId = readData(thirdSendResult).path("id").asLong();
+
+        mockMvc.perform(get("/api/messages/conversations/{conversationId}/messages", conversationId)
+                        .param("afterMessageId", String.valueOf(firstMessageId))
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + secondToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].id").value(secondMessageId))
+                .andExpect(jsonPath("$.data[1].id").value(thirdMessageId));
+
+        mockMvc.perform(get("/api/messages/conversations/{conversationId}/messages", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[1].readByPartner").value(false))
+                .andExpect(jsonPath("$.data[2].readByPartner").value(false));
+
+        mockMvc.perform(post("/api/messages/conversations/{conversationId}/read", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + secondToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.lastReadMessageId").value(thirdMessageId));
+
+        mockMvc.perform(get("/api/messages/conversations/{conversationId}/messages", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[1].readByPartner").value(true))
+                .andExpect(jsonPath("$.data[2].readByPartner").value(true));
+    }
+
+    @Test
     void conversationPresenceReflectsAvailabilityAndTyping() throws Exception {
         JsonNode firstUser = signUp("presence-a@test.io", "Presence A", "presenceA", "DESIGNER");
         JsonNode secondUser = signUp("presence-b@test.io", "Presence B", "presenceB", "CLIENT");

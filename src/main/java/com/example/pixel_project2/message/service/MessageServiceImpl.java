@@ -177,13 +177,19 @@ public class MessageServiceImpl implements MessageService {
 
     @Override
     @Transactional
-    public List<ChatMessageResponse> getMessages(AuthenticatedUser currentUser, Long conversationId) {
+    public List<ChatMessageResponse> getMessages(
+            AuthenticatedUser currentUser,
+            Long conversationId,
+            Long afterMessageId
+    ) {
         MessageConversation conversation = findConversationForUser(conversationId, currentUser.id());
         messagePresenceTracker.touchUser(currentUser.id());
-        List<ChatMessage> messages = chatMessageRepository.findAllByConversationId(conversationId);
+        List<ChatMessage> messages = afterMessageId == null
+                ? chatMessageRepository.findAllByConversationId(conversationId)
+                : chatMessageRepository.findAllByConversationIdAfterMessageId(conversationId, afterMessageId);
         Long partnerLastReadMessageId = conversation.getPartnerLastReadMessageId(currentUser.id());
 
-        if (!messages.isEmpty()) {
+        if (afterMessageId == null && !messages.isEmpty()) {
             conversation.markRead(currentUser.id(), messages.get(messages.size() - 1).getId());
         }
 
