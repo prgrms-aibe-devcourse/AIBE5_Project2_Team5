@@ -4,6 +4,7 @@ public record FeedItemResponse(
         Long postId,
         Long userId,
         String title,
+        String description,
         String nickname,
         String profileKey,
         String profileImageUrl,

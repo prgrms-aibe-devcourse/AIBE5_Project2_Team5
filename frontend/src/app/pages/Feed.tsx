@@ -1,5 +1,5 @@
 ﻿import Navigation from "../components/Navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { apiRequest } from "../api/apiClient";
 import { CollectionSaveModal } from "../components/feed/CollectionSaveModal";
@@ -36,8 +36,13 @@ export default function Feed() {
   const [carouselIndexes, setCarouselIndexes] = useState<Record<number, number>>({});
   const [modalImageIndex, setModalImageIndex] = useState(0);
   const [isStartingProposal, setIsStartingProposal] = useState(false);
+  const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [hasNext, setHasNext] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const commentInputRef = useRef<HTMLInputElement | null>(null);
   const shouldFocusCommentRef = useRef(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const loadMoreRef = useRef<() => void>(() => undefined);
 
   const currentUser = getCurrentUser();
   const currentUserId = currentUser?.userId ?? null;
@@ -100,7 +105,6 @@ export default function Feed() {
     cancelEditingComment,
     handleUpdateComment,
     handleDeleteComment,
-    toggleCommentLike,
   } = useFeedComments<BaseFeedItem, FeedCardItem>({
     selectedFeed,
     apiFeedItems,
@@ -137,6 +141,31 @@ export default function Feed() {
     : followingSidebarProfiles.slice(0, 3);
   const hiddenFollowingCount = Math.max(followingSidebarProfiles.length - 3, 0);
 
+  function mapFeedItem(feedItem: FeedApiItem): BaseFeedItem {
+    return {
+      id: feedItem.postId,
+      author: {
+        userId: feedItem.userId,
+        name: feedItem.nickname,
+        role: feedItem.job || toFeedAuthorRole(feedItem.role),
+        avatar: getUserAvatar(feedItem.profileImageUrl, feedItem.userId, feedItem.nickname),
+        profileKey: feedItem.profileKey,
+      },
+      title: feedItem.title,
+      description: feedItem.description ?? "",
+      image: feedItem.thumbnailUrl ?? "",
+      likes: feedItem.pickCount,
+      comments: feedItem.commentCount,
+      tags: [
+        normalizeCategoryLabel(feedItem.category),
+        normalizePostTypeLabel(feedItem.postType),
+      ].filter(Boolean),
+      category: normalizeCategoryLabel(feedItem.category),
+      likedByMe: feedItem.picked,
+      isApiFeed: true,
+    };
+  }
+
   useEffect(() => {
     let mounted = true;
 
@@ -153,30 +182,9 @@ export default function Feed() {
 
         if (!mounted) return;
 
-        setApiFeedItems(
-          (feedData?.feeds ?? []).map((feedItem) => ({
-            id: feedItem.postId,
-            author: {
-              userId: feedItem.userId,
-              name: feedItem.nickname,
-              role: feedItem.job || toFeedAuthorRole(feedItem.role),
-              avatar: getUserAvatar(feedItem.profileImageUrl, feedItem.userId, feedItem.nickname),
-              profileKey: feedItem.profileKey,
-            },
-            title: feedItem.title,
-            description: `${normalizeCategoryLabel(feedItem.category)} / ${normalizePostTypeLabel(feedItem.postType)}`,
-            image: feedItem.thumbnailUrl ?? "",
-            likes: feedItem.pickCount,
-            comments: feedItem.commentCount,
-            tags: [
-              normalizeCategoryLabel(feedItem.category),
-              normalizePostTypeLabel(feedItem.postType),
-            ].filter(Boolean),
-            category: normalizeCategoryLabel(feedItem.category),
-            likedByMe: feedItem.picked,
-            isApiFeed: true,
-          }))
-        );
+        setApiFeedItems((feedData?.feeds ?? []).map(mapFeedItem));
+        setNextCursor(feedData?.nextCursor ?? null);
+        setHasNext(feedData?.hasNext ?? false);
       } catch (error) {
         if (!mounted) return;
         setFeedError(error instanceof Error ? error.message : "피드 목록을 불러오지 못했습니다.");
@@ -193,6 +201,49 @@ export default function Feed() {
     return () => {
       mounted = false;
     };
+  }, []);
+
+  const loadMoreFeeds = useCallback(async () => {
+    if (!hasNext || isLoadingMore || nextCursor === null) return;
+
+    try {
+      setIsLoadingMore(true);
+
+      const feedData = await apiRequest<FeedListApiData>(
+        `/api/feeds?cursor=${nextCursor}`,
+        {},
+        "피드를 더 불러오지 못했습니다."
+      );
+
+      setApiFeedItems((prev) => [...prev, ...(feedData?.feeds ?? []).map(mapFeedItem)]);
+      setNextCursor(feedData?.nextCursor ?? null);
+      setHasNext(feedData?.hasNext ?? false);
+    } catch (error) {
+      setFeedError(error instanceof Error ? error.message : "피드를 더 불러오지 못했습니다.");
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [hasNext, isLoadingMore, nextCursor]);
+
+  useEffect(() => {
+    loadMoreRef.current = loadMoreFeeds;
+  });
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          void loadMoreRef.current();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -294,14 +345,18 @@ export default function Feed() {
 
   const handleShare = (item: BaseFeedItem, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    const copyToClipboard = () => {
+      navigator.clipboard
+        .writeText(window.location.href)
+        .then(() => alert("공유 링크가 클립보드에 복사되었습니다."))
+        .catch(() => alert("링크 복사에 실패했습니다."));
+    };
     if (navigator.share) {
-      navigator.share({
-        title: item.title,
-        text: item.description,
-        url: window.location.href,
-      });
+      navigator
+        .share({ title: item.title, text: item.description, url: window.location.href })
+        .catch(() => copyToClipboard());
     } else {
-      alert("공유 링크가 클립보드에 복사되었습니다.");
+      copyToClipboard();
     }
   };
 
@@ -414,6 +469,21 @@ export default function Feed() {
               })}
             </div>
 
+            {/* Infinite scroll sentinel */}
+            <div ref={sentinelRef} className="h-4" />
+
+            {isLoadingMore && (
+              <div className="py-6 text-center text-sm text-gray-500">
+                피드를 더 불러오는 중입니다...
+              </div>
+            )}
+
+            {!isFeedLoading && !hasNext && visibleFeedItems.length > 0 && (
+              <div className="py-6 text-center text-sm text-gray-400">
+                모든 피드를 불러왔습니다.
+              </div>
+            )}
+
           </div>
 
           <FollowingSidebar
@@ -466,7 +536,7 @@ export default function Feed() {
           onOpenCollectionModal={openCollectionModal}
           onShare={handleShare}
           onProposalClick={handleProposalClick}
-          onToggleCommentLike={toggleCommentLike}
+
           onStartEditingComment={startEditingComment}
           onEditingCommentTextChange={setEditingCommentText}
           onUpdateComment={handleUpdateComment}

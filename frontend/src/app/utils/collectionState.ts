@@ -1,3 +1,5 @@
+import { DEFAULT_AVATAR } from "./avatar";
+
 export type SavedCollection = {
   id: string;
   name: string;
@@ -238,7 +240,7 @@ const loadProfileFeedItems = (): CollectionFeedItem[] => {
           author: {
             name: project.author?.name || fallbackName,
             role: project.author?.role || "디자이너",
-            avatar: project.author?.avatar || "https://i.pravatar.cc/150?img=20",
+            avatar: project.author?.avatar || DEFAULT_AVATAR,
           },
           likes: typeof project.likes === "number" ? project.likes : 0,
           comments: typeof project.comments === "number" ? project.comments : 0,

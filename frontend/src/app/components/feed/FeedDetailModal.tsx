@@ -47,7 +47,6 @@ type FeedDetailModalProps = {
   onOpenCollectionModal: (item: FeedCardItem, e?: React.MouseEvent) => void;
   onShare: (item: BaseFeedItem, e?: React.MouseEvent) => void;
   onProposalClick: (item: FeedCardItem, e?: React.MouseEvent) => void;
-  onToggleCommentLike: (feedId: number, commentId: string) => void;
   onStartEditingComment: (comment: FeedComment) => void;
   onEditingCommentTextChange: (value: string) => void;
   onUpdateComment: () => void;
@@ -90,7 +89,6 @@ export function FeedDetailModal({
   onOpenCollectionModal,
   onShare,
   onProposalClick,
-  onToggleCommentLike,
   onStartEditingComment,
   onEditingCommentTextChange,
   onUpdateComment,
@@ -100,8 +98,6 @@ export function FeedDetailModal({
   onCommentKeyDown,
   onSubmitComment,
 }: FeedDetailModalProps) {
-  const isCommentLikeEnabled = false;
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
@@ -395,34 +391,6 @@ export function FeedDetailModal({
                       )}
                     </div>
                     <div className="ml-3 mt-1 flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!isCommentLikeEnabled) return;
-                          onToggleCommentLike(selectedFeed.id, comment.id);
-                        }}
-                        disabled={!isCommentLikeEnabled}
-                        className={`inline-flex items-center gap-1.5 text-xs transition-colors ${
-                          !isCommentLikeEnabled
-                            ? "cursor-not-allowed text-gray-300"
-                            : comment.likedByMe
-                            ? "font-semibold text-[#FF5C3A]"
-                            : "text-gray-500 hover:text-[#00C9A7]"
-                        }`}
-                        aria-pressed={Boolean(comment.likedByMe)}
-                        aria-label={
-                          isCommentLikeEnabled
-                            ? `댓글 좋아요 ${comment.likes}개`
-                            : "댓글 좋아요 기능 보류 중"
-                        }
-                      >
-                        <Heart
-                          className={`size-4 ${
-                            comment.likedByMe ? "fill-[#FF5C3A]" : ""
-                          }`}
-                        />
-                        <span>{comment.likes}</span>
-                      </button>
                       {comment.isMine && editingCommentId !== comment.id && (
                         <>
                           <button

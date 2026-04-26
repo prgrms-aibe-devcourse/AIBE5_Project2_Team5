@@ -58,16 +58,8 @@ public class FeedController {
         return ApiResponse.ok("피드 좋아요 상태를 변경했습니다.", feedService.toggleFeedPick(feedId, currentUser.id()));
     }
 
-    @PostMapping
-    public ApiResponse<CreateFeedResponse> createFeed(
-            @AuthenticationPrincipal AuthenticatedUser currentUser,
-            @Valid @RequestBody CreateFeedRequest request
-    ) {
-        return ApiResponse.ok("Feed created.", feedService.createPortfolioFeed(currentUser, request));
-    }
-
     @PostMapping("/new")
-    public ApiResponse<CreateFeedResponse> createNewFeed(
+    public ApiResponse<CreateFeedResponse> createFeed(
             @AuthenticationPrincipal AuthenticatedUser currentUser,
             @Valid @RequestBody CreateFeedRequest request
     ) {

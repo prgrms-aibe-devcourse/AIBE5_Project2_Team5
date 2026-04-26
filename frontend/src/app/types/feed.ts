@@ -36,6 +36,7 @@ export type FeedApiItem = {
   postId: number;
   userId: number;
   title: string;
+  description: string | null;
   nickname: string;
   profileKey: string;
   profileImageUrl: string | null;
@@ -51,6 +52,8 @@ export type FeedApiItem = {
 
 export type FeedListApiData = {
   feeds: FeedApiItem[];
+  nextCursor: number | null;
+  hasNext: boolean;
 };
 
 export type FeedPickApiData = {
@@ -72,7 +75,7 @@ export type FeedComment = {
     profileKey?: string;
   };
   content: string;
-  likes: number;
+  likes?: number;
   likedByMe?: boolean;
   isMine?: boolean;
 };

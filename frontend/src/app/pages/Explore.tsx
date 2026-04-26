@@ -1,4 +1,5 @@
 import Navigation from "../components/Navigation";
+import { apiRequest } from "../api/apiClient";
 import {
   Search, Sparkles, Heart, Eye, Users, UserSearch, ImageOff,
   LayoutGrid, Palette, Camera, PenTool, Box, Monitor, Building2,
@@ -98,69 +99,6 @@ const creatorProfiles = [
   },
 ];
 
-const projects = [
-  {
-    id: 1,
-    title: "Fluid Geometry Study",
-    author: "Alex Rivera",
-    badge: "NEW",
-    category: "그래픽",
-    likes: 1420,
-    views: 9800,
-    tags: ["3D", "추상", "브랜딩"],
-    imageUrl: "https://images.unsplash.com/photo-1595411425732-e69c1abe2763?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGdlb21ldHJpYyUyMHNoYXBlc3xlbnwxfHx8fDE3NzU2MzMzODZ8MA&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 2,
-    title: "Glassmorphism UI Kit",
-    author: "Elena Choi",
-    category: "UI/UX",
-    likes: 2310,
-    views: 14500,
-    tags: ["UI", "모바일", "프로토타입"],
-    imageUrl: "https://images.unsplash.com/photo-1772272935464-2e90d8218987?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx1aSUyMHV4JTIwZGVzaWduJTIwaW50ZXJmYWNlfGVufDF8fHx8MTc3NTU0MTE1MXww&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 3,
-    title: "Vibrant Patterns",
-    author: "Marc Chen",
-    category: "일러스트",
-    likes: 980,
-    views: 7600,
-    tags: ["패턴", "컬러", "텍스처"],
-    imageUrl: "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkaWdpdGFsJTIwYXJ0JTIwaWxsdXN0cmF0aW9ufGVufDF8fHx8MTc3NTU1ODM1OHww&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 4,
-    title: "Organic Flow Series",
-    author: "Sarah Jenkins",
-    category: "아트",
-    likes: 1240,
-    views: 8900,
-    tags: ["유기적", "페인팅", "실험"],
-    imageUrl: "https://images.unsplash.com/photo-1633533451997-8b6079082e3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxicmFuZCUyMGlkZW50aXR5JTIwZGVzaWdufGVufDF8fHx8MTc3NTU2NDQ1MXww&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 5,
-    title: "Monochrome Branding",
-    author: "David Park",
-    category: "브랜딩",
-    likes: 1680,
-    views: 11200,
-    tags: ["브랜딩", "타이포", "미니멀"],
-    imageUrl: "https://images.unsplash.com/photo-1718220216044-006f43e3a9b1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBvZmZpY2UlMjB3b3Jrc3BhY2V8ZW58MXx8fHwxNzc1NTU1MzcxfDA&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 6,
-    title: "Neon Flora Study",
-    author: "Ji-won Lee",
-    category: "포토그래피",
-    likes: 2050,
-    views: 13000,
-    tags: ["네온", "플로라", "매크로"],
-    imageUrl: "https://images.unsplash.com/photo-1623932078839-44eb01fbee63?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcmVhdGl2ZSUyMGRlc2lnbiUyMHdvcmt8ZW58MXx8fHwxNzc1NjAzODU5fDA&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-];
 
 const CATEGORY_ICONS: Record<string, (props: { className?: string }) => JSX.Element> = {
   "그래픽 디자인": Palette,
@@ -305,7 +243,6 @@ export default function Explore() {
     cancelEditingComment,
     handleUpdateComment,
     handleDeleteComment,
-    toggleCommentLike,
   } = useFeedComments<FeedCardItem, FeedCardItem>({
     selectedFeed: selectedExploreFeed,
     currentUser,
@@ -316,22 +253,44 @@ export default function Explore() {
   });
 
   // 피드 액션 헬퍼
-  const toggleLike = (id: number, e?: React.MouseEvent) => {
+  const toggleLike = async (id: number, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    setLikedItems(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) newSet.delete(id);
-      else newSet.add(id);
-      return newSet;
-    });
+    try {
+      const result = await apiRequest<{ postId: number; picked: boolean; pickCount: number }>(
+        `/api/feeds/${id}/like`,
+        { method: "POST" },
+        "좋아요 처리에 실패했습니다.",
+      );
+      setFeeds((prev) =>
+        prev.map((item) =>
+          item.postId === result.postId ? { ...item, pickCount: result.pickCount } : item,
+        ),
+      );
+      setLikedItems((prev) => {
+        const newSet = new Set(prev);
+        if (result.picked) newSet.add(result.postId);
+        else newSet.delete(result.postId);
+        return newSet;
+      });
+    } catch {
+      // 실패 시 낙관적 업데이트 없이 무시
+    }
   };
 
   const handleShare = (item: ExplorePostResponseDto, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    const copyToClipboard = () => {
+      navigator.clipboard
+        .writeText(window.location.href)
+        .then(() => alert("공유 링크가 클립보드에 복사되었습니다."))
+        .catch(() => alert("링크 복사에 실패했습니다."));
+    };
     if (navigator.share) {
-      navigator.share({ title: item.title, text: item.description || "", url: window.location.href });
+      navigator
+        .share({ title: item.title, text: item.description || "", url: window.location.href })
+        .catch(() => copyToClipboard());
     } else {
-      alert("공유 링크가 클립보드에 복사되었습니다.");
+      copyToClipboard();
     }
   };
 
@@ -999,7 +958,7 @@ export default function Explore() {
                       <div className="flex-1 p-3.5 flex flex-col justify-between min-w-0">
                         <div>
                           <div className="flex items-center gap-2 mb-1.5">
-                            <ImageWithFallback src={profile.profileImage || `https://i.pravatar.cc/150?u=${profile.userId}`} alt={profile.nickname} className="size-9 rounded-full ring-2 ring-[#00C9A7]/15 shadow-sm shrink-0" />
+                            <ImageWithFallback src={getUserAvatar(profile.profileImage)} alt={profile.nickname} className="size-9 rounded-full ring-2 ring-[#00C9A7]/15 shadow-sm shrink-0" />
                             <div className="min-w-0">
                               <h3 className="font-bold text-sm text-[#0F0F0F] group-hover:text-[#00A88C] transition-colors truncate leading-tight">{profile.nickname}</h3>
                               <p className="text-[11px] text-gray-500 truncate">{profile.job}</p>
@@ -1095,7 +1054,6 @@ export default function Explore() {
           onOpenCollectionModal={(_, e) => openCollectionModal(selectedProjectForModal, e)}
           onShare={(_, e) => handleShare(selectedProjectForModal, e)}
           onProposalClick={(_, e) => handleProposalClick(selectedProjectForModal, e)}
-          onToggleCommentLike={(feedId, commentId) => toggleCommentLike(feedId, commentId)}
           onStartEditingComment={startEditingComment}
           onEditingCommentTextChange={setEditingCommentText}
           onUpdateComment={handleUpdateComment}
@@ -1143,8 +1101,7 @@ export default function Explore() {
 
               <div className="p-5 space-y-2 max-h-[400px] overflow-y-auto">
                 {collections.map((col) => {
-                  // 탐색 페이지에서는 저장 여부를 로컬 상태로만 표시
-                  const isSaved = false; 
+                  const isSaved = savedProjectIds.has(collectionModalProject.postId);
 
                   return (
                     <button
