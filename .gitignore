@@ -25,7 +25,7 @@ dist/
 .settings
 .springBeans
 .sts4-cache
-28: bin/
+bin/
 !**/src/main/**/bin/
 !**/src/test/**/bin/
 
@@ -66,4 +66,5 @@ Thumbs.db
 /package.json
 /package-lock.json
 
-
+/api/
+/api_temp/
