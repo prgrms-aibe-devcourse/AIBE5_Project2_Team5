@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "../api/apiClient";
 import { getUserAvatar } from "../utils/avatar";
 
@@ -28,8 +28,6 @@ type FeedComment = {
     profileKey?: string;
   };
   content: string;
-  likes: number;
-  likedByMe?: boolean;
   isMine?: boolean;
 };
 
@@ -85,7 +83,7 @@ export function useFeedComments<
   const [isUpdatingComment, setIsUpdatingComment] = useState(false);
   const [isDeletingCommentId, setIsDeletingCommentId] = useState<string | null>(null);
   const [feedComments, setFeedComments] = useState<Record<number, FeedComment[]>>({});
-  const [loadedCommentPostIds, setLoadedCommentPostIds] = useState<Record<number, true>>({});
+  const loadedCommentPostIds = useRef<Record<number, true>>({});
 
   const selectedFeedComments = selectedFeed ? feedComments[selectedFeed.id] ?? [] : [];
 
@@ -99,15 +97,13 @@ export function useFeedComments<
         profileKey: String(comment.userId),
       },
       content: comment.description,
-      likes: 0,
-      likedByMe: false,
       isMine: comment.mine,
     };
   }
 
   useEffect(() => {
     setFeedComments({});
-    setLoadedCommentPostIds({});
+    loadedCommentPostIds.current = {};
     setEditingCommentId(null);
     setEditingCommentText("");
     setCommentLoadError(null);
@@ -136,10 +132,7 @@ export function useFeedComments<
           ...prev,
           [postId]: comments,
         }));
-        setLoadedCommentPostIds((prev) => ({
-          ...prev,
-          [postId]: true,
-        }));
+        loadedCommentPostIds.current[postId] = true;
         setApiFeedItems((prev) =>
           prev.map((item) =>
             item.id === postId ? ({ ...item, comments: comments.length } as TFeed) : item,
@@ -172,7 +165,7 @@ export function useFeedComments<
       };
     }
 
-    if (loadedCommentPostIds[selectedFeed.id]) {
+    if (loadedCommentPostIds.current[selectedFeed.id]) {
       setIsCommentsLoading(false);
       setCommentLoadError(null);
       return () => {
@@ -185,27 +178,7 @@ export function useFeedComments<
     return () => {
       mounted = false;
     };
-  }, [selectedFeed?.id, currentUserId, loadedCommentPostIds]);
-
-  function toggleCommentLike(feedId: number, commentId: string) {
-    const isCommentLikeEnabled = false;
-    if (!isCommentLikeEnabled) return;
-
-    setFeedComments((prev) => ({
-      ...prev,
-      [feedId]: (prev[feedId] ?? []).map((comment) =>
-        comment.id === commentId
-          ? {
-              ...comment,
-              likedByMe: !comment.likedByMe,
-              likes: comment.likedByMe
-                ? Math.max(0, comment.likes - 1)
-                : comment.likes + 1,
-            }
-          : comment,
-      ),
-    }));
-  }
+  }, [selectedFeed?.id, currentUserId]);
 
   async function handleSubmitComment() {
     if (!selectedFeed) return;
@@ -237,12 +210,10 @@ export function useFeedComments<
             savedComment.userId,
             savedComment.nickname || currentUser?.nickname,
           ),
-          role: currentUser?.role === "client" ? "프로젝트 클라이언트" : "디자이너",
+          role: toFeedCommentRole(currentUser?.role ?? ""),
           profileKey: String(savedComment.userId),
         },
         content: savedComment.description,
-        likes: 0,
-        likedByMe: false,
         isMine: true,
       };
 
@@ -398,6 +369,5 @@ export function useFeedComments<
     cancelEditingComment,
     handleUpdateComment,
     handleDeleteComment,
-    toggleCommentLike,
   };
 }
