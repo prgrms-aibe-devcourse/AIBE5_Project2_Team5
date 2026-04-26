@@ -77,7 +77,7 @@ public class MessageServiceImpl implements MessageService {
     private static final HttpClient GEMINI_HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
-    private static final Duration GEMINI_REQUEST_TIMEOUT = Duration.ofSeconds(8);
+    private static final Duration GEMINI_REQUEST_TIMEOUT = Duration.ofSeconds(20);
     private static final int ASSISTANT_HISTORY_LIMIT = 12;
     private static final int ASSISTANT_SUGGESTION_LIMIT = 3;
     private static final int ASSISTANT_SUGGESTION_MAX_LENGTH = 320;
@@ -1412,12 +1412,22 @@ public class MessageServiceImpl implements MessageService {
             return "reply";
         }
 
-        return switch (goal.trim().toLowerCase(Locale.ROOT)) {
-            case "schedule_meeting" -> "schedule_meeting";
-            case "share_document" -> "share_document";
-            case "next_step" -> "next_step";
-            default -> "reply";
-        };
+        String normalized = goal.trim().toLowerCase(Locale.ROOT);
+        String compact = normalized.replace(" ", "").replace("-", "").replace("_", "");
+
+        if ("reply".equals(normalized) || compact.contains("답장추천")) {
+            return "reply";
+        }
+        if ("schedule_meeting".equals(normalized) || compact.contains("미팅") || compact.contains("일정")) {
+            return "schedule_meeting";
+        }
+        if ("share_document".equals(normalized) || compact.contains("문서") || compact.contains("전달")) {
+            return "share_document";
+        }
+        if ("next_step".equals(normalized) || compact.contains("다음단계")) {
+            return "next_step";
+        }
+        return "reply";
     }
 
     private String displayUserName(String name, String nickname) {
