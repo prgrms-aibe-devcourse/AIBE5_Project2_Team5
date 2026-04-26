@@ -13,7 +13,7 @@ dist/
 .vite/
 
 *.localjav
-.env.local
+.env./gradlew bootRun.local
 .env.*.local
 
 

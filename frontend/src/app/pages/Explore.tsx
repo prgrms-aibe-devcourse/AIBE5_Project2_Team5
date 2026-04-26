@@ -13,7 +13,7 @@ import "lenis/dist/lenis.css";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { FeedDetailModal } from "../components/feed/FeedDetailModal";
 import { useFeedComments } from "../hooks/useFeedComments";
-import { matchingCategories } from "../utils/matchingCategories";
+import { matchingCategories, normalizeCategoryLabel, normalizePostTypeLabel } from "../utils/matchingCategories";
 import {
   getExploreFeedsApi,
   type ExplorePostResponseDto,
@@ -442,10 +442,13 @@ export default function Explore() {
         (detail?.pickCount ?? selectedProjectForModal.pickCount) +
         (likedItems.has(selectedProjectForModal.postId) ? 1 : 0),
       comments: commentCount,
-      tags: [detail?.category ?? selectedProjectForModal.category, detail?.postType ?? "PORTFOLIO"].filter(
+      tags: [
+        normalizeCategoryLabel(detail?.category ?? selectedProjectForModal.category ?? ""),
+        normalizePostTypeLabel(detail?.postType ?? "PORTFOLIO"),
+      ].filter(
         Boolean,
       ) as string[],
-      category: detail?.category ?? selectedProjectForModal.category ?? undefined,
+      category: normalizeCategoryLabel(detail?.category ?? selectedProjectForModal.category ?? ""),
       integrations: detail?.portfolioUrl
         ? [{ provider: "figma", label: "Portfolio", url: detail.portfolioUrl }]
         : undefined,
@@ -709,7 +712,8 @@ export default function Explore() {
                   activeTab === "feed" ? "bg-[#00C9A7] text-white shadow-md shadow-[#00C9A7]/20" : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
                 }`}
               >
-                <LayoutGrid className="size-3.5" /> 피드
+                <LayoutGrid className="size-3.5" />
+                <span>피드</span>
               </button>
               <button
                 onClick={() => setActiveTab("profile")}
@@ -717,7 +721,8 @@ export default function Explore() {
                   activeTab === "profile" ? "bg-[#00C9A7] text-white shadow-md shadow-[#00C9A7]/20" : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
                 }`}
               >
-                <Users className="size-3.5" /> 프로필
+                <Users className="size-3.5" />
+                <span>프로필</span>
               </button>
             </div>
           </div>
