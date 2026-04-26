@@ -244,7 +244,7 @@ public class MessageServiceImpl implements MessageService {
                 receiver.getId(),
                 sender.getId(),
                 NotificationType.MESSAGE,
-                savedMessage.getId(),
+                conversation.getId(),
                 "새로운 메시지가 도착했습니다: " + createPreview(message, attachments)
         );
 

@@ -76,7 +76,7 @@ const buildNavigatePath = (item: NotificationResponse): string | undefined => {
       // 피드 게시물로 이동 (해당 포스트 앵커)
       return item.referenceId ? `/feed` : "/feed";
     case "MESSAGE":
-      return "/messages";
+      return item.referenceId ? `/messages?conversationId=${item.referenceId}` : "/messages";
     case "PROJECT_APPLY":
     case "PROJECT_ACCEPT":
       return item.referenceId ? `/projects/${item.referenceId}` : "/projects";

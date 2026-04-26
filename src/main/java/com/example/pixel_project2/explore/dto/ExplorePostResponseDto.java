@@ -15,6 +15,7 @@ public record ExplorePostResponseDto(
         String profileImage, // 작성자 프로필 이미지 URL
         String category,   // 카테고리 (분야)
         String job,        // 디자이너 직업
-        String description // 피드 설명글
+        String description, // 피드 설명글
+        Boolean picked     // 현재 사용자의 좋아요 여부
 ) {
 }

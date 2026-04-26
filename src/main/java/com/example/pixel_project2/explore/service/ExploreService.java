@@ -8,7 +8,7 @@ import java.util.List;
 
 public interface ExploreService {
     // 피드 목록 조회 (카테고리, 페이징, 검색어 포함)
-    List<ExplorePostResponseDto> getExploreFeeds(String category, int page, int size, String keyword);
+    List<ExplorePostResponseDto> getExploreFeeds(String category, int page, int size, String keyword, Long userId);
 
     //탐색 페이지 정책 조회 (기존 코드 유지)
     ExplorePolicyResponse getExplorePolicy();

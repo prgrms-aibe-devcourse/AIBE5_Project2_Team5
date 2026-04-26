@@ -21,8 +21,16 @@ import {
   type ExploreDesignerResponseDto,
   getExploreFeedDetailApi,
   type ExploreFeedDetailResponseDto,
+  runAiSearchApi,
 } from "../api/exploreApi";
-import { getMyCollectionsApi, saveFeedToCollectionApi, createCollectionFolderApi, CollectionFolderResponse } from "../api/collectionApi";
+import { useFeedDetail } from "../hooks/useFeedDetail";
+import { toggleFeedPickApi } from "../api/feedApi";
+import {
+  getMyCollectionsApi,
+  saveFeedToCollectionApi,
+  createCollectionFolderApi,
+  CollectionFolderResponse,
+} from "../api/collectionApi";
 import { createMessageConversationApi, sendConversationMessageApi } from "../api/messageApi";
 import { getCurrentUser } from "../utils/auth";
 import { getUserAvatar } from "../utils/avatar";
@@ -227,12 +235,13 @@ export default function Explore() {
   const currentUserName = currentUser?.nickname || currentUser?.name || "내 프로필";
   const categories = matchingCategories;
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"feed" | "profile">("feed");
 
   // 서버 데이터 상태
-  const [feeds, setFeeds] = useState<ExplorePostResponseDto[]>([]);
-  const [isFeedsLoading, setIsFeedsLoading] = useState(false);
+  const [feeds, setFeeds] = useState<FeedCardItem[]>([]);
+  const [isFeedsLoading, setIsFeedsLoading] = useState(true);
   const [designers, setDesigners] = useState<ExploreDesignerResponseDto[]>([]);
   const [isDesignersLoading, setIsDesignersLoading] = useState(false);
 
@@ -241,16 +250,13 @@ export default function Explore() {
   const commentInputRef = useRef<HTMLInputElement | null>(null);
 
   // 모달 상태
-  const [selectedProjectForModal, setSelectedProjectForModal] = useState<ExplorePostResponseDto | null>(null);
-  const [selectedProjectDetail, setSelectedProjectDetail] = useState<ExploreFeedDetailResponseDto | null>(null);
   const [selectedExploreFeed, setSelectedExploreFeed] = useState<FeedCardItem | null>(null);
   const [commentFeedItems, setCommentFeedItems] = useState<FeedCardItem[]>([]);
-  const [isModalDetailLoading, setIsModalDetailLoading] = useState(false);
   const [modalImageIndex, setModalImageIndex] = useState(0);
   const [startingProposalPostId, setStartingProposalPostId] = useState<number | null>(null);
 
   const [collections, setCollections] = useState<SavedCollection[]>([]);
-  const [collectionModalProject, setCollectionModalProject] = useState<ExplorePostResponseDto | null>(null);
+  const [collectionModalProject, setCollectionModalProject] = useState<FeedCardItem | null>(null);
   const [newCollectionName, setNewCollectionName] = useState("");
   const [collectionNotice, setCollectionNotice] = useState("");
   const [isCollectionsLoading, setIsCollectionsLoading] = useState(false);
@@ -273,8 +279,22 @@ export default function Explore() {
   // AI 검색 상태
   const [aiMode, setAiMode] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
+  const [aiMessages, setAiMessages] = useState<Array<{ role: "user" | "ai"; content: string; category?: string; keywords?: string[] }>>([
+    { role: "ai", content: "안녕하세요! 저는 Pickxel AI 탐색 어시스턴트입니다. 어떤 디자인이나 디자이너를 찾으시나요?" }
+  ]);
+  const [aiInput, setAiInput] = useState("");
+  const aiChatEndRef = useRef<HTMLDivElement>(null);
   const [aiResult, setAiResult] = useState<typeof AI_MOCK_RESPONSES["default"] | null>(null);
   const [aiTypedText, setAiTypedText] = useState("");
+  // 검색어 디바운스 처리
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 400); // 400ms 디바운스
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const searchRef = useRef<HTMLInputElement>(null);
   const catScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -315,18 +335,55 @@ export default function Explore() {
     toFeedCommentRole: toCommentAuthorRole,
   });
 
-  // 피드 액션 헬퍼
-  const toggleLike = (id: number, e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    setLikedItems(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) newSet.delete(id);
-      else newSet.add(id);
-      return newSet;
-    });
+  // useFeedDetail 훅 적용 (피드 페이지와 동일한 상세 로딩 로직)
+  const { isLoading: isFeedDetailLoading } = useFeedDetail({
+    selectedFeed: selectedExploreFeed,
+    setApiFeedItems: setFeeds as React.Dispatch<React.SetStateAction<FeedCardItem[]>>,
+    setSelectedFeed: setSelectedExploreFeed,
+  });
+
+  const openFeedDetail = (project: FeedCardItem) => {
+    setSelectedExploreFeed(project);
+    setModalImageIndex(0);
   };
 
-  const handleShare = (item: ExplorePostResponseDto, e?: React.MouseEvent) => {
+  // 피드 액션 헬퍼
+  const toggleLike = async (id: number, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    try {
+      // 서버에 좋아요 요청 전송
+      const response = await toggleFeedPickApi(id);
+      
+      // 1. 하트 활성화 상태 업데이트 (Set)
+      setLikedItems(prev => {
+        const newSet = new Set(prev);
+        if (response.picked) newSet.add(id);
+        else newSet.delete(id);
+        return newSet;
+      });
+
+      // 2. 피드 목록(feeds) 데이터의 좋아요 수 동기화
+      setFeeds(prevFeeds => 
+        prevFeeds.map(feed => 
+          feed.id === id 
+            ? { ...feed, likes: response.pickCount, likedByMe: response.picked } 
+            : feed
+        )
+      );
+
+      // 3. 만약 상세 모달이 열려있다면 상세 데이터도 동기화
+      if (selectedExploreFeed && selectedExploreFeed.id === id) {
+        setSelectedExploreFeed(prev => 
+          prev ? { ...prev, likes: response.pickCount, likedByMe: response.picked } : null
+        );
+      }
+    } catch (error) {
+      console.error("좋아요 처리 중 오류 발생:", error);
+      alert("좋아요 처리에 실패했습니다. 다시 시도해주세요.");
+    }
+  };
+
+  const handleShare = (item: FeedCardItem, e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (navigator.share) {
       navigator.share({ title: item.title, text: item.description || "", url: window.location.href });
@@ -347,9 +404,9 @@ export default function Explore() {
     if (!collectionModalProject) return;
     
     try {
-      await saveFeedToCollectionApi(folderId, collectionModalProject.postId);
+      await saveFeedToCollectionApi(folderId, collectionModalProject.id);
       setCollectionNotice("컬렉션에 저장되었습니다.");
-      setSavedProjectIds(prev => new Set(prev).add(collectionModalProject.postId));
+      setSavedProjectIds(prev => new Set(prev).add(collectionModalProject.id));
       void loadCollections();
       setTimeout(() => setCollectionModalProject(null), 1000);
     } catch (error) {
@@ -371,133 +428,23 @@ export default function Explore() {
     }
   };
 
-  useEffect(() => {
-    if (!selectedProjectForModal) {
-      setSelectedProjectDetail(null);
-      setIsModalDetailLoading(false);
-      setModalImageIndex(0);
-      return;
-    }
-
-    let ignore = false;
-
-    async function loadExploreFeedDetail() {
-      try {
-        setIsModalDetailLoading(true);
-        const detail = await getExploreFeedDetailApi(selectedProjectForModal.postId);
-        if (ignore) return;
-        setSelectedProjectDetail(detail);
-      } catch (error) {
-        if (ignore) return;
-        console.error("탐색 피드 상세 로딩 실패:", error);
-        setSelectedProjectDetail(null);
-      } finally {
-        if (!ignore) {
-          setIsModalDetailLoading(false);
-        }
-      }
-    }
-
-    void loadExploreFeedDetail();
-
-    return () => {
-      ignore = true;
-    };
-  }, [selectedProjectForModal?.postId]);
-
-  const mappedSelectedExploreFeed = useMemo<FeedCardItem | null>(() => {
-    if (!selectedProjectForModal) return null;
-
-    const detail = selectedProjectDetail;
-    const imageUrls =
-      detail?.imageUrls?.filter(Boolean).length
-        ? detail.imageUrls.filter(Boolean)
-        : selectedProjectForModal.imageUrl
-          ? [selectedProjectForModal.imageUrl]
-          : [];
-    const commentCount =
-      selectedExploreFeed?.id === selectedProjectForModal.postId
-        ? selectedExploreFeed.comments
-        : detail?.commentCount ?? 0;
-
-    return {
-      id: selectedProjectForModal.postId,
-      feedKey: selectedProjectForModal.postId,
-      author: {
-        userId: selectedProjectForModal.userId,
-        name: detail?.nickname ?? selectedProjectForModal.nickname,
-        role: detail?.job || selectedProjectForModal.job || "디자이너",
-        avatar: getUserAvatar(
-          detail?.profileImageUrl ?? selectedProjectForModal.profileImage,
-          selectedProjectForModal.userId,
-          selectedProjectForModal.nickname,
-        ),
-        profileKey: detail?.profileKey ?? String(selectedProjectForModal.userId),
-      },
-      title: detail?.title ?? selectedProjectForModal.title,
-      description: detail?.description ?? selectedProjectForModal.description ?? "",
-      image: imageUrls[0] ?? "",
-      images: imageUrls,
-      likes:
-        (detail?.pickCount ?? selectedProjectForModal.pickCount) +
-        (likedItems.has(selectedProjectForModal.postId) ? 1 : 0),
-      comments: commentCount,
-      tags: [detail?.category ?? selectedProjectForModal.category, detail?.postType ?? "PORTFOLIO"].filter(
-        Boolean,
-      ) as string[],
-      category: detail?.category ?? selectedProjectForModal.category ?? undefined,
-      integrations: detail?.portfolioUrl
-        ? [{ provider: "figma", label: "Portfolio", url: detail.portfolioUrl }]
-        : undefined,
-      createdAt: detail?.createdAt,
-      userId: selectedProjectForModal.userId,
-      portfolioUrl: detail?.portfolioUrl ?? null,
-      likedByMe: likedItems.has(selectedProjectForModal.postId),
-      isMine: detail?.mine ?? currentUser?.userId === selectedProjectForModal.userId,
-      isApiFeed: true,
-    };
-  }, [selectedProjectForModal, selectedProjectDetail, selectedExploreFeed, likedItems, currentUser?.userId]);
-
-  useEffect(() => {
-    if (!mappedSelectedExploreFeed) {
-      setSelectedExploreFeed(null);
-      setCommentFeedItems([]);
-      return;
-    }
-
-    setSelectedExploreFeed((prev) =>
-      prev && prev.id === mappedSelectedExploreFeed.id
-        ? { ...mappedSelectedExploreFeed, comments: prev.comments }
-        : mappedSelectedExploreFeed,
-    );
-
-    setCommentFeedItems((prev) => {
-      const current = prev.find((item) => item.id === mappedSelectedExploreFeed.id);
-      const nextItem =
-        current && current.id === mappedSelectedExploreFeed.id
-          ? { ...mappedSelectedExploreFeed, comments: current.comments }
-          : mappedSelectedExploreFeed;
-
-      return [nextItem];
-    });
-  }, [mappedSelectedExploreFeed]);
-
-  const moveModalCarousel = (direction: -1 | 1, e?: React.MouseEvent) => {
+  const moveModalCarousel = (dir: -1 | 1, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    const images = mappedSelectedExploreFeed?.images ?? [];
+    if (!selectedExploreFeed) return;
+    const images = selectedExploreFeed.images || [selectedExploreFeed.image];
     if (images.length <= 1) return;
-    setModalImageIndex(prev => (prev + direction + images.length) % images.length);
+    setModalImageIndex(prev => (prev + dir + images.length) % images.length);
   };
 
-  const handleProposalClick = async (item: ExplorePostResponseDto, e?: React.MouseEvent) => {
+  const handleProposalClick = async (item: FeedCardItem, e?: React.MouseEvent) => {
     e?.stopPropagation();
 
-    if (!item.userId) {
+    if (!item.author?.userId) {
       alert("상대방 정보를 찾을 수 없습니다.");
       return;
     }
 
-    if (currentUser?.userId === item.userId) {
+    if (currentUser?.userId === item.author.userId) {
       alert("내 피드에는 제안을 보낼 수 없습니다.");
       return;
     }
@@ -505,18 +452,18 @@ export default function Explore() {
     const now = Date.now();
     const proposalMessage = `안녕하세요. "${item.title}" 작업을 보고 프로젝트 제안을 드리고 싶어 연락드립니다. 작업 가능 여부와 일정, 견적을 함께 이야기해보고 싶습니다.`;
 
-    setStartingProposalPostId(item.postId);
+    setStartingProposalPostId(item.id);
     try {
-      const conversation = await createMessageConversationApi(item.userId);
+      const conversation = await createMessageConversationApi(item.author.userId);
       await sendConversationMessageApi(conversation.id, {
-        clientId: `explore-proposal-${item.postId}-${now}`,
+        clientId: `explore-proposal-${item.id}-${now}`,
         message: proposalMessage,
-        attachments: item.imageUrl
+        attachments: item.image
           ? [
               {
-                id: `explore-feed-${item.postId}`,
+                id: `explore-feed-${item.id}`,
                 type: "image",
-                src: item.imageUrl,
+                src: item.image,
                 name: item.title,
                 uploadStatus: "ready",
               },
@@ -569,9 +516,37 @@ export default function Explore() {
     const fetchFeeds = async () => {
       try {
         setIsFeedsLoading(true);
-        // 선택 카테고리가 없으면 all로 조회
-        const data = await getExploreFeedsApi(selectedCategory || "all");
-        setFeeds(data);
+        const data = await getExploreFeedsApi(selectedCategory || "all", debouncedSearchQuery);
+        
+        // 서버 데이터를 FeedCardItem 형식으로 변환
+        const mappedFeeds: FeedCardItem[] = data.map(item => ({
+          id: item.postId,
+          author: {
+            userId: item.userId,
+            name: item.nickname,
+            role: item.job || "디자이너",
+            avatar: getUserAvatar(item.profileImage, item.userId, item.nickname),
+            profileKey: String(item.userId),
+          },
+          title: item.title,
+          description: item.description || "",
+          image: item.imageUrl || "",
+          images: item.imageUrl ? [item.imageUrl] : [],
+          likes: item.pickCount,
+          comments: 0,
+          tags: [item.category].filter(Boolean) as string[],
+          category: item.category || undefined,
+          likedByMe: item.picked,
+          isApiFeed: true
+        }));
+
+        setFeeds(mappedFeeds);
+        
+        const initiallyLiked = new Set<number>();
+        data.forEach(feed => {
+          if (feed.picked) initiallyLiked.add(feed.postId);
+        });
+        setLikedItems(initiallyLiked);
       } catch (error) {
         console.error("피드 로딩 중 오류:", error);
       } finally {
@@ -580,7 +555,7 @@ export default function Explore() {
     };
 
     fetchFeeds();
-  }, [selectedCategory, activeTab]);
+  }, [selectedCategory, debouncedSearchQuery, activeTab]);
 
   // 디자이너 목록 조회
   useEffect(() => {
@@ -589,7 +564,7 @@ export default function Explore() {
     const fetchDesigners = async () => {
       try {
         setIsDesignersLoading(true);
-        const data = await getExploreDesignersApi();
+        const data = await getExploreDesignersApi(debouncedSearchQuery);
         setDesigners(data);
       } catch (error) {
         console.error("디자이너 로딩 중 오류:", error);
@@ -599,54 +574,64 @@ export default function Explore() {
     };
 
     fetchDesigners();
-  }, [activeTab]);
+  }, [debouncedSearchQuery, activeTab]);
 
-  const filteredProjects = useMemo(() => {
-    // 검색어가 있으면 클라이언트에서 제목/닉네임 기준 필터링
-    if (!searchQuery.trim()) return feeds;
-    
-    return feeds.filter((p) => {
-      const q = searchQuery.toLowerCase();
-      return p.title.toLowerCase().includes(q) || p.nickname.toLowerCase().includes(q);
-    });
-  }, [feeds, searchQuery]);
+  const filteredProjects = useMemo(() => feeds, [feeds]);
 
-  const filteredDesigners = useMemo(() => {
-    if (!searchQuery.trim()) return designers;
-    const q = searchQuery.toLowerCase();
-    return designers.filter(
-      (d) => 
-        d.nickname.toLowerCase().includes(q) || 
-        (d.job && d.job.toLowerCase().includes(q))
-    );
-  }, [designers, searchQuery]);
+  const filteredDesigners = useMemo(() => designers, [designers]);
 
-  // AI 검색 실행
-  const runAiSearch = useCallback(() => {
-    if (!searchQuery.trim()) return;
+  // AI 검색 실행 (새로운 대화형 로직)
+  const handleAiSearch = async (e?: React.FormEvent, directQuery?: string) => {
+    e?.preventDefault();
+    const queryToUse = directQuery || aiInput.trim();
+    if (!queryToUse || aiLoading) return;
+
+    setAiMessages(prev => [...prev, { role: "user", content: queryToUse }]);
+    if (!directQuery) setAiInput("");
     setAiLoading(true);
-    setAiResult(null);
-    setAiTypedText("");
-      // mock 응답 딜레이
-    setTimeout(() => {
-      const mock = AI_MOCK_RESPONSES.default;
-      setAiResult(mock);
+
+    try {
+      const response = await runAiSearchApi(queryToUse);
+      
+      setAiMessages(prev => [...prev, { 
+        role: "ai", 
+        content: response.message,
+        category: response.category || undefined,
+        keywords: response.keywords
+      }]);
+
+      // AI의 추천을 실제 검색에 적용
+      if (response.category) {
+        setSelectedCategory(response.category);
+      }
+      if (response.keywords && response.keywords.length > 0) {
+        setSearchQuery(response.keywords[0]);
+      }
+
+    } catch (error: any) {
+      console.error("AI Search Error:", error);
+      const errorMessage = error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+      setAiMessages(prev => [...prev, { 
+        role: "ai", 
+        content: `죄송합니다. 문제가 발생했습니다: ${errorMessage}\n(네트워크 상태나 로그인을 확인해 주세요.)` 
+      }]);
+    } finally {
       setAiLoading(false);
-      // 타이핑 애니메이션
-      let i = 0;
-      const txt = mock.summary;
-      const interval = setInterval(() => {
-        i++;
-        setAiTypedText(txt.slice(0, i));
-        if (i >= txt.length) clearInterval(interval);
-      }, 25);
-    }, 1200);
-  }, [searchQuery]);
+    }
+  };
+
+  useEffect(() => {
+    aiChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [aiMessages]);
 
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && aiMode) {
       e.preventDefault();
-      runAiSearch();
+      const query = searchQuery.trim();
+      if (query) {
+        setIsAiAssistantOpen(true);
+        handleAiSearch(undefined, query);
+      }
     }
   };
 
@@ -869,19 +854,19 @@ export default function Explore() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {filteredProjects.map((project, index) => (
                   <motion.div
-                    key={project.postId}
+                    key={project.id}
                     initial={{ opacity: 0, y: 30 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true, margin: "-60px" }}
                     transition={{ delay: (index % 4) * 0.08, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
                     className="group cursor-pointer pb-2"
-                    onClick={() => setSelectedProjectForModal(project)}
+                    onClick={() => openFeedDetail(project)}
                   >
                     <div className="relative rounded-2xl overflow-hidden bg-white shadow-[0_2px_8px_rgba(0,0,0,0.06)] group-hover:shadow-[0_20px_50px_rgba(0,0,0,0.12)] group-hover:-translate-y-2 transition-all duration-500 ease-out">
                       {/* 이미지 영역 */}
                       <div className="relative aspect-[4/3] overflow-hidden">
                         <ImageWithFallback
-                          src={project.imageUrl || ""}
+                          src={project.image || ""}
                           alt={project.title}
                           className="w-full h-full object-cover group-hover:scale-[1.08] transition-transform duration-700 ease-out"
                         />
@@ -894,14 +879,14 @@ export default function Explore() {
                           <button
                             onClick={(e) => { e.stopPropagation(); openCollectionModal(project, e); }}
                             className={`flex items-center gap-1.5 h-8 px-3.5 rounded-full text-xs font-semibold shadow-lg cursor-pointer hover:scale-105 active:scale-95 transition-all duration-200 ${
-                              savedProjectIds.has(project.postId)
+                              savedProjectIds.has(project.id)
                                 ? "bg-[#00C9A7] text-white shadow-[#00C9A7]/30 hover:bg-[#00b89a]"
                                 : "bg-black/60 backdrop-blur-xl text-white hover:bg-black/80 border border-white/15"
                             }`}
                             title="컬렉션에 저장"
                           >
-                            <Bookmark className={`size-3.5 ${savedProjectIds.has(project.postId) ? "fill-white" : ""}`} />
-                            {savedProjectIds.has(project.postId) ? "저장됨" : "저장"}
+                            <Bookmark className={`size-3.5 ${savedProjectIds.has(project.id) ? "fill-white" : ""}`} />
+                            {savedProjectIds.has(project.id) ? "저장됨" : "저장"}
                           </button>
                         </div>
 
@@ -911,11 +896,11 @@ export default function Explore() {
                             <div className="flex items-end justify-between">
                               <div className="min-w-0 flex-1">
                                 <p className="text-white font-bold text-[15px] leading-tight mb-1 truncate" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.5)" }}>{project.title}</p>
-                                <p className="text-white/80 text-sm" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.4)" }}>{project.nickname}</p>
+                                <p className="text-white/80 text-sm" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.4)" }}>{project.author.name}</p>
                               </div>
                               <div className="flex gap-1.5 shrink-0 ml-3">
                                 <span className="flex items-center gap-1 bg-black/40 backdrop-blur-xl text-white text-[11px] px-2.5 py-1 rounded-full font-medium">
-                                  <Heart className="size-3 fill-white" />{project.pickCount}
+                                  <Heart className="size-3 fill-white" />{project.likes}
                                 </span>
                               </div>
                             </div>
@@ -927,7 +912,7 @@ export default function Explore() {
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <h3 className="font-semibold text-sm text-[#0F0F0F] truncate group-hover:text-[#00A88C] transition-colors duration-300">{project.title}</h3>
-                            <p className="text-xs text-gray-400 mt-1">{project.nickname}</p>
+                            <p className="text-xs text-gray-400 mt-1">{project.author.name}</p>
                           </div>
                         </div>
                       </div>
@@ -1031,18 +1016,18 @@ export default function Explore() {
       </div>
 
 
-      {selectedProjectForModal && mappedSelectedExploreFeed && (
+      {selectedExploreFeed && (
         <FeedDetailModal
-          selectedFeed={mappedSelectedExploreFeed}
+          selectedFeed={selectedExploreFeed}
           activeModalImage={
-            (mappedSelectedExploreFeed.images ?? [mappedSelectedExploreFeed.image])[modalImageIndex] ??
-            mappedSelectedExploreFeed.image
+            (selectedExploreFeed.images ?? [selectedExploreFeed.image])[modalImageIndex] ??
+            selectedExploreFeed.image
           }
-          selectedFeedImages={mappedSelectedExploreFeed.images ?? [mappedSelectedExploreFeed.image]}
+          selectedFeedImages={selectedExploreFeed.images ?? [selectedExploreFeed.image]}
           modalImageIndex={modalImageIndex}
           savedItemIds={savedProjectIds}
           selectedFeedComments={selectedFeedComments}
-          isFeedDetailLoading={isModalDetailLoading}
+          isFeedDetailLoading={isFeedDetailLoading}
           feedDetailError={null}
           commentSubmitError={commentSubmitError}
           commentLoadError={commentLoadError}
@@ -1068,12 +1053,10 @@ export default function Explore() {
               minute: "2-digit",
             });
           }}
-          isFeedLiked={() => likedItems.has(selectedProjectForModal.postId)}
-          getLikeCount={() => mappedSelectedExploreFeed.likes}
-          getCommentCount={() => selectedExploreFeed?.comments ?? selectedFeedComments.length}
+          isFeedLiked={() => Boolean(selectedExploreFeed.likedByMe)}
+          getLikeCount={() => selectedExploreFeed.likes}
+          getCommentCount={() => selectedExploreFeed.comments}
           onClose={() => {
-            setSelectedProjectForModal(null);
-            setSelectedProjectDetail(null);
             setSelectedExploreFeed(null);
             setCommentFeedItems([]);
             setModalImageIndex(0);
@@ -1083,10 +1066,10 @@ export default function Explore() {
             e.stopPropagation();
             setModalImageIndex(index);
           }}
-          onToggleLike={(_, e) => toggleLike(selectedProjectForModal.postId, e)}
-          onOpenCollectionModal={(_, e) => openCollectionModal(selectedProjectForModal, e)}
-          onShare={(_, e) => handleShare(selectedProjectForModal, e)}
-          onProposalClick={(_, e) => handleProposalClick(selectedProjectForModal, e)}
+          onToggleLike={(_, e) => toggleLike(selectedExploreFeed.id, e)}
+          onOpenCollectionModal={(_, e) => openCollectionModal(selectedExploreFeed, e)}
+          onShare={(_, e) => handleShare(selectedExploreFeed, e)}
+          onProposalClick={(_, e) => handleProposalClick(selectedExploreFeed, e)}
           onToggleCommentLike={(feedId, commentId) => toggleCommentLike(feedId, commentId)}
           onStartEditingComment={startEditingComment}
           onEditingCommentTextChange={setEditingCommentText}
@@ -1094,10 +1077,133 @@ export default function Explore() {
           onCancelEditingComment={cancelEditingComment}
           onDeleteComment={handleDeleteComment}
           onCommentTextChange={setCommentText}
-          onCommentKeyDown={handleCommentKeyDown}
+          onCommentKeyDown={handleSearchKeyDown}
           onSubmitComment={handleSubmitComment}
         />
       )}
+
+      {/* AI Assistant FAB */}
+      <motion.button
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={() => setIsAiAssistantOpen(true)}
+        className="fixed bottom-28 right-8 z-40 size-14 rounded-full bg-gradient-to-tr from-[#FF5C3A] via-[#00C9A7] to-[#A8F0E4] p-[3px] shadow-[0_8px_30px_rgb(0,201,167,0.3)] group"
+      >
+        <div className="flex size-full items-center justify-center rounded-full bg-white transition-colors group-hover:bg-transparent">
+          <Sparkles className="size-6 text-[#00A88C] group-hover:text-white transition-colors" />
+        </div>
+        <div className="absolute -top-1 -right-1 size-4 bg-[#FF5C3A] rounded-full border-2 border-white animate-pulse" />
+      </motion.button>
+
+      {/* AI Assistant Sidebar */}
+      <AnimatePresence>
+        {isAiAssistantOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsAiAssistantOpen(false)}
+              className="fixed inset-0 z-[100] bg-black/20 backdrop-blur-[2px] lg:hidden"
+            />
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed inset-y-0 right-0 z-[101] w-full max-w-md bg-white shadow-[-20px_0_50px_rgba(0,0,0,0.1)] border-l border-gray-100 flex flex-col"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-white to-[#F0FDF9]">
+                <div className="flex items-center gap-3">
+                  <div className="size-10 rounded-xl bg-gradient-to-br from-[#00C9A7] to-[#00A88C] flex items-center justify-center shadow-lg shadow-[#00C9A7]/20">
+                    <Sparkles className="size-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-[#0F0F0F]">Pickxel AI Assistant</h2>
+                    <div className="flex items-center gap-1.5">
+                      <div className="size-1.5 rounded-full bg-[#00C9A7] animate-pulse" />
+                      <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">AI Search Active</span>
+                    </div>
+                  </div>
+                </div>
+                <button onClick={() => setIsAiAssistantOpen(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                  <X className="size-5 text-gray-400" />
+                </button>
+              </div>
+
+              {/* Chat Content */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {aiMessages.map((msg, idx) => (
+                  <motion.div
+                    key={idx}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div className={`max-w-[85%] p-4 rounded-2xl ${
+                      msg.role === "user" 
+                        ? "bg-[#0F0F0F] text-white rounded-tr-sm shadow-md" 
+                        : "bg-[#F7F7F5] text-gray-800 rounded-tl-sm border border-gray-100"
+                    }`}>
+                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                      {msg.role === "ai" && (msg.category || (msg.keywords && msg.keywords.length > 0)) && (
+                        <div className="mt-4 pt-3 border-t border-gray-200/50 space-y-2">
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">추천 적용 조건</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {msg.category && (
+                              <span className="px-2.5 py-1 rounded-full bg-[#00C9A7] text-white text-[11px] font-bold">
+                                #{msg.category}
+                              </span>
+                            )}
+                            {msg.keywords?.map(k => (
+                              <span key={k} className="px-2.5 py-1 rounded-full bg-white border border-[#BDEFD8] text-[#00A88C] text-[11px] font-bold">
+                                {k}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                ))}
+                {aiLoading && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
+                    <div className="bg-[#F7F7F5] p-4 rounded-2xl rounded-tl-sm border border-gray-100 flex gap-1.5">
+                      <span className="size-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <span className="size-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <span className="size-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </div>
+                  </motion.div>
+                )}
+                <div ref={aiChatEndRef} />
+              </div>
+
+              {/* Input Area */}
+              <div className="p-6 border-t border-gray-100 bg-gray-50/50">
+                <form onSubmit={(e) => handleAiSearch(e)} className="relative">
+                  <input
+                    value={aiInput}
+                    onChange={(e) => setAiInput(e.target.value)}
+                    placeholder="무엇을 도와드릴까요?"
+                    className="w-full pl-4 pr-12 py-4 bg-white border border-gray-200 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7] shadow-inner"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!aiInput.trim() || aiLoading}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-[#00C9A7] text-white rounded-xl shadow-lg hover:bg-[#00A88C] disabled:opacity-30 transition-all"
+                  >
+                    <Send className="size-5" />
+                  </button>
+                </form>
+                <p className="mt-3 text-[10px] text-center text-gray-400">
+                  AI 어시스턴트는 더 똑똑한 검색을 위해 지속적으로 학습하고 있습니다.
+                </p>
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       {/* Floating Action Button */}
       <motion.div whileHover={{ scale: 1.1, rotate: 45 }} whileTap={{ scale: 0.9 }} className="fixed bottom-8 right-8 z-40">

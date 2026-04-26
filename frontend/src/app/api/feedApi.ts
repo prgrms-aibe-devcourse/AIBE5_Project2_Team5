@@ -56,3 +56,12 @@ export async function deleteFeedApi(postId: number) {
     "Failed to delete feed.",
   );
 }
+export async function toggleFeedPickApi(feedId: number) {
+  return apiRequest<{ postId: number; picked: boolean; pickCount: number }>(
+    `/api/feeds/${feedId}/like`,
+    {
+      method: "POST",
+    },
+    "좋아요 상태를 변경하는 데 실패했습니다.",
+  );
+}

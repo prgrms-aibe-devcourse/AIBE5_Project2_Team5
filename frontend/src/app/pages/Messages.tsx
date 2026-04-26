@@ -1,4 +1,4 @@
-﻿import Navigation from "../components/Navigation";
+import Navigation from "../components/Navigation";
 import { Edit, Search, Info, Send, Image, Smile, AtSign, Sparkles, Calendar, FileText, CheckCircle, Circle, ChevronDown, ChevronUp, ThumbsUp, XCircle, Paperclip, Figma, ExternalLink, Plus, Clock, Check, CheckCheck, Trash2, GripVertical, Eye, ArrowLeft, Bookmark } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
@@ -1027,7 +1027,7 @@ export default function Messages() {
     .map((conversation) => conversation.id)
     .join("|");
   const [activeTab, setActiveTab] = useState<"profile" | "process">("profile");
-  const [activeConversationId, setActiveConversationId] = useState(0);
+  const [activeConversationId, setActiveConversationId] = useState(requestedConversationId);
   const [mobileView, setMobileView] = useState<"list" | "chat" | "detail">("list");
   const [conversationSearch, setConversationSearch] = useState("");
   const [processes, setProcesses] = useState<ProjectProcess[]>(initialProcesses);
@@ -3356,7 +3356,7 @@ export default function Messages() {
     }
   };
 
-  if (!activeConversation) {
+  if (!activeConversation && !isConversationsLoading) {
     return (
       <div className="min-h-screen bg-[#F7F7F5]">
         <Navigation />
@@ -3594,7 +3594,7 @@ export default function Messages() {
 
           <div className="flex-1 overflow-y-auto">
             {filteredConversations.map((conv) => {
-              const isSelected = conv.id === activeConversation.id;
+              const isSelected = conv.id === activeConversation?.id;
               const unreadCount = getConversationUnreadCount(conv);
               const lastMessagePreview = getConversationLastMessagePreview(conv.id);
 
@@ -3704,19 +3704,19 @@ export default function Messages() {
                 <ArrowLeft className="size-5" />
               </button>
               <ImageWithFallback
-                src={activeConversation.avatar}
-                alt={activeConversation.name}
+                src={activeConversation?.avatar}
+                alt={activeConversation?.name || "대화 상대"}
                 className="size-10 shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm"
               />
               <div className="min-w-0">
-                <h3 className="truncate font-semibold">{activeConversation.name}</h3>
+                <h3 className="truncate font-semibold">{activeConversation?.name}</h3>
                 <p className="flex items-center gap-1.5 text-xs text-gray-500">
                   <span
                     className={`size-1.5 rounded-full ${
-                      activeConversation.online ? "bg-[#72CDBD]" : "bg-gray-300"
+                      activeConversation?.online ? "bg-[#72CDBD]" : "bg-gray-300"
                     }`}
                   />
-                  {activeConversation.online ? "메시지 가능" : "자리비움"}
+                  {activeConversation?.online ? "메시지 가능" : "자리비움"}
                 </p>
               </div>
             </div>
@@ -3750,7 +3750,7 @@ export default function Messages() {
                   </span>
                 </div>
                 <p className="mb-3 text-sm leading-relaxed text-gray-700">
-                  {activeConversation.role}를 단계별로 정리해두면 일정, 피드백,
+                  {activeConversation?.role}를 단계별로 정리해두면 일정, 피드백,
                   최종 납품까지 한눈에 관리할 수 있어요.
                 </p>
                 <button
@@ -3783,8 +3783,8 @@ export default function Messages() {
                   {!msg.isSelf && (
                     <div className="flex items-center gap-2 mb-2">
                       <ImageWithFallback
-                        src={activeConversation.avatar}
-                        alt={activeConversation.name}
+                        src={activeConversation?.avatar}
+                        alt={activeConversation?.name}
                         className="size-6 rounded-full object-cover"
                       />
                     </div>
@@ -4034,7 +4034,7 @@ export default function Messages() {
                     ))}
                   </div>
                   <p className="min-w-0 break-words leading-5">
-                    {activeConversation.profileName}님이 입력 중...
+                    {activeConversation?.profileName}님이 입력 중...
                   </p>
                 </div>
               )}
@@ -4210,7 +4210,7 @@ export default function Messages() {
                   onCompositionStart={handleMessageCompositionStart}
                   onCompositionUpdate={handleMessageCompositionUpdate}
                   onCompositionEnd={handleMessageCompositionEnd}
-                  placeholder={`${activeConversation.name}님에게 메시지 보내기...`}
+                  placeholder={`${activeConversation?.name}님에게 메시지 보내기...`}
                   className="min-w-0 flex-1 bg-transparent text-sm focus:outline-none"
                 />
                 <button
@@ -4298,7 +4298,7 @@ export default function Messages() {
             <div className="min-w-0">
               <p className="text-sm font-bold text-[#12382D]">대화 정보</p>
               <p className="truncate text-xs text-gray-500">
-                {activeConversation.name}
+                {activeConversation?.name}
               </p>
             </div>
           </div>
@@ -4331,23 +4331,23 @@ export default function Messages() {
               <>
                 <div className="text-center mb-6">
                   <ImageWithFallback
-                    src={activeConversation.avatar}
-                    alt={activeConversation.name}
+                    src={activeConversation?.avatar}
+                    alt={activeConversation?.name || ""}
                     className="mx-auto mb-4 size-24 rounded-full object-cover ring-4 ring-[#A8F0E4]/40 shadow-lg"
                   />
                   <div className="mb-1 flex items-center justify-center gap-2">
                     <span
                       className={`inline-flex size-2.5 rounded-full ${
-                        activeConversation.online ? "bg-[#00C853] shadow-[0_0_0_4px_rgba(0,200,83,0.14)]" : "bg-gray-300"
+                        activeConversation?.online ? "bg-[#00C853] shadow-[0_0_0_4px_rgba(0,200,83,0.14)]" : "bg-gray-300"
                       }`}
                       aria-hidden="true"
                     />
-                    <h3 className="font-bold text-lg">{activeConversation.profileName}</h3>
+                    <h3 className="font-bold text-lg">{activeConversation?.profileName}</h3>
                   </div>
                   <p className="text-sm text-gray-600">
-                    {activeConversation.title}
+                    {activeConversation?.title}
                     <span className="mx-1.5 text-gray-300">·</span>
-                    {activeConversation.online ? "메시지 가능" : "자리비움"}
+                    {activeConversation?.online ? "메시지 가능" : "자리비움"}
                   </p>
                 </div>
 
@@ -4364,14 +4364,14 @@ export default function Messages() {
                   <div>
                     <h4 className="font-medium mb-2">소개</h4>
                     <p className="text-sm text-gray-600">
-                      {activeConversation.bio}
+                      {activeConversation?.bio}
                     </p>
                   </div>
 
                   <div>
                     <h4 className="font-medium mb-2">공유된 미디어</h4>
                     <div className="grid grid-cols-3 gap-2">
-                      {activeConversation.sharedMedia.map((media) => (
+                      {activeConversation?.sharedMedia.map((media) => (
                         <button
                           key={media.id}
                           type="button"
