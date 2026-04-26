@@ -77,7 +77,7 @@ public class MessageServiceImpl implements MessageService {
     private static final HttpClient GEMINI_HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
-    private static final Duration GEMINI_REQUEST_TIMEOUT = Duration.ofSeconds(8);
+    private static final Duration GEMINI_REQUEST_TIMEOUT = Duration.ofSeconds(20);
     private static final int ASSISTANT_HISTORY_LIMIT = 12;
     private static final int ASSISTANT_SUGGESTION_LIMIT = 3;
     private static final int ASSISTANT_SUGGESTION_MAX_LENGTH = 320;
@@ -95,7 +95,7 @@ public class MessageServiceImpl implements MessageService {
     @Value("${app.gemini.api-key:}")
     private String geminiApiKey;
 
-    @Value("${app.gemini.model:gemini-1.5-flash}")
+    @Value("${app.gemini.model:gemini-2.5-flash}")
     private String geminiModel;
 
     @Override
@@ -177,13 +177,19 @@ public class MessageServiceImpl implements MessageService {
 
     @Override
     @Transactional
-    public List<ChatMessageResponse> getMessages(AuthenticatedUser currentUser, Long conversationId) {
+    public List<ChatMessageResponse> getMessages(
+            AuthenticatedUser currentUser,
+            Long conversationId,
+            Long afterMessageId
+    ) {
         MessageConversation conversation = findConversationForUser(conversationId, currentUser.id());
         messagePresenceTracker.touchUser(currentUser.id());
-        List<ChatMessage> messages = chatMessageRepository.findAllByConversationId(conversationId);
+        List<ChatMessage> messages = afterMessageId == null
+                ? chatMessageRepository.findAllByConversationId(conversationId)
+                : chatMessageRepository.findAllByConversationIdAfterMessageId(conversationId, afterMessageId);
         Long partnerLastReadMessageId = conversation.getPartnerLastReadMessageId(currentUser.id());
 
-        if (!messages.isEmpty()) {
+        if (afterMessageId == null && !messages.isEmpty()) {
             conversation.markRead(currentUser.id(), messages.get(messages.size() - 1).getId());
         }
 
@@ -235,7 +241,7 @@ public class MessageServiceImpl implements MessageService {
         LocalDateTime messageCreatedAt = savedMessage.getCreatedAt() == null
                 ? LocalDateTime.now()
                 : savedMessage.getCreatedAt();
-        conversation.updateLastMessage(createPreview(message, attachments), messageCreatedAt);
+        conversation.updateLastMessage(createStoredConversationPreview(message, attachments), messageCreatedAt);
         conversation.markRead(currentUser.id(), savedMessage.getId());
 
         // 알림 생성
@@ -245,7 +251,7 @@ public class MessageServiceImpl implements MessageService {
                 sender.getId(),
                 NotificationType.MESSAGE,
                 savedMessage.getId(),
-                "새로운 메시지가 도착했습니다: " + createPreview(message, attachments)
+                createNotificationPreview(message, attachments)
         );
 
         return toChatMessageResponse(savedMessage, currentUser.id(), conversation.getPartnerLastReadMessageId(currentUser.id()));
@@ -772,12 +778,26 @@ public class MessageServiceImpl implements MessageService {
         }
     }
 
-    private String createPreview(String message, JsonNode attachments) {
+    private String createStoredConversationPreview(String message, JsonNode attachments) {
         String preview = message.isBlank() ? "첨부파일" : message;
-        if (preview.length() <= 500) {
-            return MessageTextCodec.encode(preview);
-        }
-        return MessageTextCodec.encode(preview.substring(0, 500));
+        return MessageTextCodec.encodeWithinStoredLength(createPlainPreview(message, attachments), 500);
+    }
+
+    private String createNotificationPreview(String message, JsonNode attachments) {
+        String preview = stripNonBmpCharacters(createPlainPreview(message, attachments));
+        String truncatedPreview = preview.length() > 80 ? preview.substring(0, 80) : preview;
+        return "새로운 메시지가 도착했습니다: " + truncatedPreview;
+    }
+
+    private String createPlainPreview(String message, JsonNode attachments) {
+        return message.isBlank() ? "첨부파일" : message;
+    }
+
+    private String stripNonBmpCharacters(String value) {
+        return value.codePoints()
+                .filter(Character::isBmpCodePoint)
+                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
+                .toString();
     }
 
     private List<String> requestGeminiSuggestions(
@@ -1412,12 +1432,22 @@ public class MessageServiceImpl implements MessageService {
             return "reply";
         }
 
-        return switch (goal.trim().toLowerCase(Locale.ROOT)) {
-            case "schedule_meeting" -> "schedule_meeting";
-            case "share_document" -> "share_document";
-            case "next_step" -> "next_step";
-            default -> "reply";
-        };
+        String normalized = goal.trim().toLowerCase(Locale.ROOT);
+        String compact = normalized.replace(" ", "").replace("-", "").replace("_", "");
+
+        if ("reply".equals(normalized) || compact.contains("답장추천")) {
+            return "reply";
+        }
+        if ("schedule_meeting".equals(normalized) || compact.contains("미팅") || compact.contains("일정")) {
+            return "schedule_meeting";
+        }
+        if ("share_document".equals(normalized) || compact.contains("문서") || compact.contains("전달")) {
+            return "share_document";
+        }
+        if ("next_step".equals(normalized) || compact.contains("다음단계")) {
+            return "next_step";
+        }
+        return "reply";
     }
 
     private String displayUserName(String name, String nickname) {

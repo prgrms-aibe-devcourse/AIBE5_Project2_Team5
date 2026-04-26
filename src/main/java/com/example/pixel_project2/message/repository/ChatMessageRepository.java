@@ -19,6 +19,16 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     @Query("select m from ChatMessage m " +
             "join fetch m.sender s " +
             "where m.conversation.id = :conversationId " +
+            "and m.id > :afterMessageId " +
+            "order by m.createdAt asc, m.id asc")
+    List<ChatMessage> findAllByConversationIdAfterMessageId(
+            @Param("conversationId") Long conversationId,
+            @Param("afterMessageId") Long afterMessageId
+    );
+
+    @Query("select m from ChatMessage m " +
+            "join fetch m.sender s " +
+            "where m.conversation.id = :conversationId " +
             "and m.sender.id = :senderId " +
             "and m.clientId = :clientId")
     Optional<ChatMessage> findByConversationIdAndSenderIdAndClientId(
