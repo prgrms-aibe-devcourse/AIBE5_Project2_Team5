@@ -136,10 +136,11 @@ const PROCESS_CREATED_STORAGE_KEY = "pickxel:message-processes-created:v2";
 const MESSAGE_DRAFTS_STORAGE_KEY = "pickxel:message-drafts";
 const LEFT_CONVERSATIONS_STORAGE_KEY = "pickxel:left-message-conversations";
 const CONNECTED_CONVERSATION_POLL_INTERVAL = 5000;
-const CONNECTED_MESSAGE_POLL_INTERVAL = 3000;
 const CONNECTED_PRESENCE_POLL_INTERVAL = 5000;
 const CONNECTED_PROCESS_POLL_INTERVAL = 3000;
-const DISCONNECTED_POLL_INTERVAL = 1000;
+const RECOVERY_POLL_GRACE_PERIOD = 8000;
+const RECOVERY_MESSAGE_POLL_INTERVAL = 1000;
+const RECOVERY_STATE_POLL_INTERVAL = 2000;
 const TYPING_IDLE_DELAY = 1200;
 const TYPING_SYNC_INTERVAL = 800;
 const MAX_CHAT_MESSAGE_LENGTH = 4000;
@@ -150,6 +151,11 @@ const assistantActionItems: AssistantActionItem[] = [
   { goal: "next_step", label: "다음 단계 안내" },
   { goal: "schedule_meeting", label: "미팅 일정 잡기" },
   { goal: "share_document", label: "문서 전달 안내" },
+];
+const assistantLoadingPreviewItems = [
+  { primaryWidth: "88%", secondaryWidth: "54%" },
+  { primaryWidth: "80%", secondaryWidth: "62%" },
+  { primaryWidth: "92%", secondaryWidth: "48%" },
 ];
 
 const debugMessageTyping = (...args: unknown[]) => {
@@ -859,6 +865,24 @@ const isSameChatMessage = (
   );
 };
 
+const parseNumericMessageId = (value: string | number | null | undefined) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  const parsedValue = Number(trimmedValue);
+  return Number.isFinite(parsedValue) ? parsedValue : null;
+};
+
 const mapProcessResponse = (
   process: ApiMessageProcessResponse
 ): ProjectProcess => ({
@@ -1072,6 +1096,7 @@ export default function Messages() {
     shouldBounceCount: boolean;
   } | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
+  const [isRecoveryPollingActive, setIsRecoveryPollingActive] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ src: string; name: string } | null>(null);
   const [processToast, setProcessToast] = useState<ProcessToast | null>(null);
   const [assistantGoal, setAssistantGoal] = useState<MessageAssistantGoal>("reply");
@@ -1088,13 +1113,18 @@ export default function Messages() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageSocketRef = useRef<ReturnType<typeof createMessageSocket> | null>(null);
   const activeConversationIdRef = useRef(activeConversationId);
+  const expandedProcessRef = useRef<number | null>(expandedProcess);
+  const allConversationsRef = useRef<Conversation[]>([]);
   const onlineByConversationIdRef = useRef<Record<number, boolean>>({});
+  const latestServerMessageIdByConversationRef = useRef<Record<number, number>>({});
+  const recoveryPollingTimeoutRef = useRef<number | null>(null);
   const typingTimeoutRef = useRef<number | null>(null);
   const typingConversationRef = useRef<number | null>(null);
   const isMessageComposingRef = useRef(false);
   const partnerTypingConversationIdRef = useRef<number | null>(null);
   const lastTypingSyncAtRef = useRef<Record<number, number>>({});
   const partnerTypingTimeoutRef = useRef<number | null>(null);
+  const isProcessModalOpenRef = useRef(false);
   const activeConversation =
     allConversations.find((conversation) => conversation.id === activeConversationId) ??
     allConversations[0] ??
@@ -1143,6 +1173,143 @@ export default function Messages() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (recoveryPollingTimeoutRef.current !== null) {
+      window.clearTimeout(recoveryPollingTimeoutRef.current);
+      recoveryPollingTimeoutRef.current = null;
+    }
+
+    if (isSocketConnected) {
+      setIsRecoveryPollingActive(false);
+      return;
+    }
+
+    setIsRecoveryPollingActive(false);
+    recoveryPollingTimeoutRef.current = window.setTimeout(() => {
+      if (!messageSocketRef.current?.isOpen()) {
+        setIsRecoveryPollingActive(true);
+      }
+      recoveryPollingTimeoutRef.current = null;
+    }, RECOVERY_POLL_GRACE_PERIOD);
+
+    return () => {
+      if (recoveryPollingTimeoutRef.current !== null) {
+        window.clearTimeout(recoveryPollingTimeoutRef.current);
+        recoveryPollingTimeoutRef.current = null;
+      }
+    };
+  }, [isSocketConnected]);
+
+  const updateLatestServerMessageId = (
+    conversationId: number,
+    messageId: string | number | null | undefined
+  ) => {
+    const parsedMessageId = parseNumericMessageId(messageId);
+    if (parsedMessageId === null) {
+      return;
+    }
+
+    const previousMessageId = latestServerMessageIdByConversationRef.current[conversationId];
+    latestServerMessageIdByConversationRef.current[conversationId] =
+      typeof previousMessageId === "number"
+        ? Math.max(previousMessageId, parsedMessageId)
+        : parsedMessageId;
+  };
+
+  const syncLatestServerMessageIdFromResponses = (
+    conversationId: number,
+    messageResponses: ApiChatMessageResponse[]
+  ) => {
+    if (messageResponses.length === 0) {
+      delete latestServerMessageIdByConversationRef.current[conversationId];
+      return;
+    }
+
+    messageResponses.forEach((message) => {
+      updateLatestServerMessageId(conversationId, message.id);
+    });
+  };
+
+  const mergeConversationMessages = (
+    prev: ChatMessage[],
+    conversationId: number,
+    nextMessages: ChatMessage[],
+    mode: "replace" | "append"
+  ) => {
+    const currentConversationMessages = prev.filter(
+      (message) => message.conversationId === conversationId
+    );
+    const otherMessages = prev.filter(
+      (message) => message.conversationId !== conversationId
+    );
+
+    if (mode === "replace") {
+      const optimisticMessagesNotInHistory = currentConversationMessages.filter(
+        (currentMessage) =>
+          currentMessage.isSelf &&
+          !nextMessages.some((message) => isSameChatMessage(message, currentMessage))
+      );
+
+      return [...otherMessages, ...nextMessages, ...optimisticMessagesNotInHistory];
+    }
+
+    const mergedMessages = [...currentConversationMessages];
+
+    nextMessages.forEach((nextMessage) => {
+      const existingMessageIndex = mergedMessages.findIndex((message) =>
+        isSameChatMessage(message, nextMessage)
+      );
+
+      if (existingMessageIndex < 0) {
+        mergedMessages.push(nextMessage);
+        return;
+      }
+
+      mergedMessages[existingMessageIndex] = {
+        ...mergedMessages[existingMessageIndex],
+        ...nextMessage,
+      };
+    });
+
+    return [...otherMessages, ...mergedMessages];
+  };
+
+  const catchUpConversationMessages = async (conversationId: number, partnerUserId: string) => {
+    const lastKnownMessageId = latestServerMessageIdByConversationRef.current[conversationId];
+    const shouldFetchMissedOnly =
+      typeof lastKnownMessageId === "number" && Number.isFinite(lastKnownMessageId);
+    const messageResponses = await getConversationMessagesApi(
+      conversationId,
+      shouldFetchMissedOnly ? { afterMessageId: lastKnownMessageId } : undefined
+    );
+
+    if (activeConversationIdRef.current !== conversationId) {
+      return;
+    }
+
+    if (messageResponses.length === 0) {
+      return;
+    }
+
+    syncLatestServerMessageIdFromResponses(conversationId, messageResponses);
+
+    const nextMessages = messageResponses.map((message) =>
+      mapChatMessageResponse(message, {
+        currentUserId,
+        partnerUserId,
+      })
+    );
+
+    setChatMessages((prev) =>
+      mergeConversationMessages(
+        prev,
+        conversationId,
+        nextMessages,
+        shouldFetchMissedOnly ? "append" : "replace"
+      )
+    );
+  };
 
   function applyPresenceStates(states: MessagePresenceState[]) {
     const partnerUserIdByConversationId = new Map(
@@ -1470,50 +1637,43 @@ export default function Messages() {
     void loadConversations(shouldBeSilent);
     const pollInterval = window.setInterval(() => {
       void loadConversations(true);
-    }, isSocketConnected ? CONNECTED_CONVERSATION_POLL_INTERVAL : DISCONNECTED_POLL_INTERVAL);
+    }, isRecoveryPollingActive
+      ? RECOVERY_STATE_POLL_INTERVAL
+      : CONNECTED_CONVERSATION_POLL_INTERVAL);
 
     return () => {
       mounted = false;
       window.clearInterval(pollInterval);
     };
-  }, [requestedConversationId, conversationReloadKey, isSocketConnected]);
+  }, [requestedConversationId, conversationReloadKey, isRecoveryPollingActive]);
 
   useEffect(() => {
     if (!activeConversation) return;
 
     let mounted = true;
     const conversationId = activeConversation.id;
+    const partnerUserId = activeConversation.partnerId;
 
-    async function loadConversationMessages(silent = false) {
+    async function loadConversationMessages() {
       try {
         const messageResponses = await getConversationMessagesApi(conversationId);
 
         if (!mounted || activeConversationIdRef.current !== conversationId) return;
 
+        syncLatestServerMessageIdFromResponses(conversationId, messageResponses);
+
         const nextMessages = messageResponses.map((message) =>
           mapChatMessageResponse(message, {
             currentUserId,
-            partnerUserId: activeConversation.partnerId,
+            partnerUserId,
           })
         );
 
-        setChatMessages((prev) => {
-          const currentConversationMessages = prev.filter(
-            (message) => message.conversationId === conversationId
-          );
-          const otherMessages = prev.filter(
-            (message) => message.conversationId !== conversationId
-          );
-          const optimisticMessagesNotInHistory = currentConversationMessages.filter(
-            (currentMessage) =>
-              currentMessage.isSelf &&
-              !nextMessages.some((message) => isSameChatMessage(message, currentMessage))
-          );
-
-          return [...otherMessages, ...nextMessages, ...optimisticMessagesNotInHistory];
-        });
+        setChatMessages((prev) =>
+          mergeConversationMessages(prev, conversationId, nextMessages, "replace")
+        );
       } catch (error) {
-        if (!mounted || silent) return;
+        if (!mounted) return;
         setConversationError(
           error instanceof Error ? error.message : "메시지 내역을 불러오지 못했습니다."
         );
@@ -1521,15 +1681,46 @@ export default function Messages() {
     }
 
     void loadConversationMessages();
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeConversation?.id, currentUserId]);
+
+  useEffect(() => {
+    if (!activeConversation || !isRecoveryPollingActive) {
+      return;
+    }
+
+    let mounted = true;
+    const conversationId = activeConversation.id;
+    const partnerUserId = activeConversation.partnerId;
+
+    async function recoverConversationMessages(silent = false) {
+      if (messageSocketRef.current?.isOpen()) {
+        return;
+      }
+
+      try {
+        await catchUpConversationMessages(conversationId, partnerUserId);
+      } catch (error) {
+        if (!mounted || silent) return;
+        setConversationError(
+          error instanceof Error ? error.message : "누락된 메시지를 복구하지 못했습니다."
+        );
+      }
+    }
+
+    void recoverConversationMessages();
     const pollInterval = window.setInterval(() => {
-      void loadConversationMessages(true);
-    }, isSocketConnected ? CONNECTED_PRESENCE_POLL_INTERVAL : DISCONNECTED_POLL_INTERVAL);
+      void recoverConversationMessages(true);
+    }, RECOVERY_MESSAGE_POLL_INTERVAL);
 
     return () => {
       mounted = false;
       window.clearInterval(pollInterval);
     };
-  }, [activeConversation?.id, currentUserId, isSocketConnected]);
+  }, [activeConversation?.id, currentUserId, isRecoveryPollingActive]);
 
   useEffect(() => {
     if (!activeConversation) return;
@@ -1559,13 +1750,15 @@ export default function Messages() {
     void loadConversationPresence();
     const pollInterval = window.setInterval(() => {
       void loadConversationPresence(true);
-    }, isSocketConnected ? CONNECTED_MESSAGE_POLL_INTERVAL : DISCONNECTED_POLL_INTERVAL);
+    }, isRecoveryPollingActive
+      ? RECOVERY_STATE_POLL_INTERVAL
+      : CONNECTED_PRESENCE_POLL_INTERVAL);
 
     return () => {
       mounted = false;
       window.clearInterval(pollInterval);
     };
-  }, [activeConversation?.id, isSocketConnected]);
+  }, [activeConversation?.id, isRecoveryPollingActive]);
 
   useEffect(() => {
     if (!activeConversation) {
@@ -1605,13 +1798,15 @@ export default function Messages() {
     void loadProcesses();
     const pollInterval = window.setInterval(() => {
       void loadProcesses(true);
-    }, isSocketConnected ? CONNECTED_PROCESS_POLL_INTERVAL : DISCONNECTED_POLL_INTERVAL);
+    }, isRecoveryPollingActive
+      ? RECOVERY_STATE_POLL_INTERVAL
+      : CONNECTED_PROCESS_POLL_INTERVAL);
 
     return () => {
       mounted = false;
       window.clearInterval(pollInterval);
     };
-  }, [activeConversation?.id, isSocketConnected]);
+  }, [activeConversation?.id, isRecoveryPollingActive]);
 
   useEffect(() => {
     if (!activeConversation) return;
@@ -1638,12 +1833,24 @@ export default function Messages() {
   }, [activeConversationId]);
 
   useEffect(() => {
+    allConversationsRef.current = allConversations;
+  }, [allConversations]);
+
+  useEffect(() => {
     onlineByConversationIdRef.current = onlineByConversationId;
   }, [onlineByConversationId]);
 
   useEffect(() => {
     partnerTypingConversationIdRef.current = typingConversationId;
   }, [typingConversationId]);
+
+  useEffect(() => {
+    expandedProcessRef.current = expandedProcess;
+  }, [expandedProcess]);
+
+  useEffect(() => {
+    isProcessModalOpenRef.current = isProcessModalOpen;
+  }, [isProcessModalOpen]);
 
   useEffect(() => {
     return () => {
@@ -1658,12 +1865,31 @@ export default function Messages() {
       .filter((conversationId) => Number.isFinite(conversationId));
 
     const socket = createMessageSocket({
-      onOpen: () => {
+      onOpen: ({ reconnected }) => {
         setIsSocketConnected(true);
         setConversationReloadKey((key) => key + 1);
         if (conversationIds.length > 0) {
           socket.subscribe(conversationIds);
         }
+
+        if (!reconnected) {
+          return;
+        }
+
+        const activeConversationId = activeConversationIdRef.current;
+        const currentConversation = allConversationsRef.current.find(
+          (conversation) => conversation.id === activeConversationId
+        );
+        if (!currentConversation) {
+          return;
+        }
+
+        void catchUpConversationMessages(
+          currentConversation.id,
+          currentConversation.partnerId
+        ).catch(() => {
+          setConversationReloadKey((key) => key + 1);
+        });
       },
       onEvent: (event: IncomingMessageSocketEvent) => {
         if (event.type === "typing") {
@@ -1678,7 +1904,7 @@ export default function Messages() {
               partnerTypingTimeoutRef.current = null;
             }
 
-            const currentConversation = allConversations.find(
+            const currentConversation = allConversationsRef.current.find(
               (conversation) => conversation.id === event.conversationId
             );
 
@@ -1725,6 +1951,35 @@ export default function Messages() {
           return;
         }
 
+        if (event.type === "reaction.update") {
+          setChatMessages((prev) =>
+            prev.map((message) =>
+              message.conversationId === event.conversationId &&
+              Number(message.serverId ?? message.id) === event.messageId
+                ? {
+                    ...message,
+                    reactions: normalizeMessageReactions(event.reactions),
+                  }
+                : message
+            )
+          );
+          return;
+        }
+
+        if (event.type === "process.update") {
+          if (event.conversationId !== activeConversationIdRef.current) {
+            return;
+          }
+
+          const nextProcesses = event.processes.map(mapProcessResponse);
+          syncProcessState(nextProcesses, expandedProcessRef.current);
+          if (!isProcessModalOpenRef.current) {
+            setDraftProcesses(cloneProcesses(nextProcesses));
+            setProcessDraftSnapshot(cloneProcesses(nextProcesses));
+          }
+          return;
+        }
+
         if (event.type === "presence.snapshot") {
           applyPresenceStates(event.states);
           return;
@@ -1742,7 +1997,11 @@ export default function Messages() {
         }
 
         const incomingMessage = event;
-        const partnerUserId = allConversations.find(
+        updateLatestServerMessageId(
+          incomingMessage.conversationId,
+          incomingMessage.serverId
+        );
+        const partnerUserId = allConversationsRef.current.find(
           (conversation) => conversation.id === incomingMessage.conversationId
         )?.partnerId;
         const isSelfMessage = isCurrentUsersMessage(incomingMessage.senderUserId, {
@@ -2574,6 +2833,7 @@ export default function Messages() {
     partnerUserId: string
   ) => {
     const messageResponses = await getConversationMessagesApi(conversationId);
+    syncLatestServerMessageIdFromResponses(conversationId, messageResponses);
     const matchedMessage = messageResponses.find(
       (message) => message.clientId === clientId || String(message.id) === clientId
     );
@@ -2803,6 +3063,7 @@ export default function Messages() {
 
     sendMessageToServer
       .then(({ serverId, createdAt }) => {
+        updateLatestServerMessageId(activeConversationIdAtSend, serverId);
         setChatMessages((prev) =>
           prev.map((message) =>
             message.clientId === clientId
@@ -2849,6 +3110,10 @@ export default function Messages() {
                     }
                   : message
               )
+            );
+            updateLatestServerMessageId(
+              activeConversationIdAtSend,
+              verifiedMessage.serverId ?? verifiedMessage.id
             );
             setConversationReloadKey((key) => key + 1);
           })
@@ -3430,6 +3695,16 @@ export default function Messages() {
           30% { opacity: 1; transform: translateY(-3px); }
         }
 
+        @keyframes pickxelAssistantCardPulse {
+          0%, 100% { opacity: 0.78; transform: translateY(0); }
+          50% { opacity: 1; transform: translateY(-1px); }
+        }
+
+        @keyframes pickxelAssistantLineShimmer {
+          0% { background-position: 0% 50%; }
+          100% { background-position: 100% 50%; }
+        }
+
         @keyframes pickxelDeliveryPop {
           from { opacity: 0; transform: scale(0.86); }
           to { opacity: 1; transform: scale(1); }
@@ -3999,8 +4274,61 @@ export default function Messages() {
                   </div>
                   <div className="space-y-2">
                     {isAssistantLoading ? (
-                      <div className="rounded-lg border border-[#FFD6DE] bg-white/90 px-3 py-2.5 text-sm font-medium text-[#7C3044]">
-                        최근 대화와 작업 프로세스를 보고 추천 문구를 만들고 있어요.
+                      <div className="rounded-lg border border-[#FFD6DE] bg-white/92 px-3 py-3 text-sm text-[#7C3044]">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-[#9A3652]">
+                          <div className="flex shrink-0 items-center gap-1">
+                            {[0, 1, 2].map((index) => (
+                              <span
+                                key={index}
+                                className="size-1.5 rounded-full bg-[#E8456D]"
+                                style={{
+                                  animation: "pickxelTypingDot 1s ease-in-out infinite",
+                                  animationDelay: `${index * 0.16}s`,
+                                }}
+                              />
+                            ))}
+                          </div>
+                          <span>Gemini가 최근 대화와 작업 단계를 읽고 있어요.</span>
+                        </div>
+                        <p className="mt-1 text-xs font-medium text-[#8C4458]">
+                          상대가 방금 보낸 말에 맞는 추천 문구를 정리하는 중이에요.
+                        </p>
+                        <div className="mt-3 space-y-2">
+                          {assistantLoadingPreviewItems.map((item, index) => (
+                            <div
+                              key={`${item.primaryWidth}-${index}`}
+                              className="rounded-lg border border-[#FFE0E7] bg-[#FFF9FB] px-3 py-2.5"
+                              style={{
+                                animation: "pickxelAssistantCardPulse 1.5s ease-in-out infinite",
+                                animationDelay: `${index * 0.14}s`,
+                              }}
+                            >
+                              <div
+                                className="h-2.5 rounded-full"
+                                style={{
+                                  width: item.primaryWidth,
+                                  background:
+                                    "linear-gradient(90deg, rgba(232,69,109,0.16) 0%, rgba(232,69,109,0.3) 45%, rgba(255,214,222,0.45) 100%)",
+                                  backgroundSize: "200% 100%",
+                                  animation:
+                                    "pickxelAssistantLineShimmer 1.5s linear infinite",
+                                }}
+                              />
+                              <div
+                                className="mt-2 h-2 rounded-full"
+                                style={{
+                                  width: item.secondaryWidth,
+                                  background:
+                                    "linear-gradient(90deg, rgba(140,68,88,0.12) 0%, rgba(232,69,109,0.22) 55%, rgba(255,214,222,0.38) 100%)",
+                                  backgroundSize: "200% 100%",
+                                  animation:
+                                    "pickxelAssistantLineShimmer 1.6s linear infinite",
+                                  animationDelay: `${index * 0.1}s`,
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ) : assistantSuggestions.length > 0 ? (
                       <>

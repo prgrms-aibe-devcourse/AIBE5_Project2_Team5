@@ -102,9 +102,20 @@ export async function createMessageConversationApi(partnerUserId: number) {
   );
 }
 
-export async function getConversationMessagesApi(conversationId: number) {
+export async function getConversationMessagesApi(
+  conversationId: number,
+  options?: {
+    afterMessageId?: number | null;
+  }
+) {
+  const afterMessageId = options?.afterMessageId;
+  const query =
+    typeof afterMessageId === "number" && Number.isFinite(afterMessageId)
+      ? `?afterMessageId=${afterMessageId}`
+      : "";
+
   return apiRequest<ChatMessageResponse[]>(
-    `/api/messages/conversations/${conversationId}/messages`,
+    `/api/messages/conversations/${conversationId}/messages${query}`,
     {
       cache: "no-store",
     },

@@ -17,6 +17,7 @@ import com.example.pixel_project2.message.dto.SaveMessageProcessesRequest;
 import com.example.pixel_project2.message.dto.SendMessageRequest;
 import com.example.pixel_project2.message.dto.ToggleMessageReactionRequest;
 import com.example.pixel_project2.message.service.MessageService;
+import com.example.pixel_project2.message.websocket.MessageSocketHandler;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -36,6 +38,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class MessageController {
     private final MessageService messageService;
+    private final MessageSocketHandler messageSocketHandler;
 
     @GetMapping
     public ApiResponse<MessagePolicyResponse> getMessages() {
@@ -60,9 +63,13 @@ public class MessageController {
     @GetMapping("/conversations/{conversationId}/messages")
     public ApiResponse<List<ChatMessageResponse>> getConversationMessages(
             @AuthenticationPrincipal AuthenticatedUser currentUser,
-            @PathVariable Long conversationId
+            @PathVariable Long conversationId,
+            @RequestParam(required = false) Long afterMessageId
     ) {
-        return ApiResponse.ok("Messages loaded.", messageService.getMessages(currentUser, conversationId));
+        return ApiResponse.ok(
+                "Messages loaded.",
+                messageService.getMessages(currentUser, conversationId, afterMessageId)
+        );
     }
 
     @GetMapping("/conversations/{conversationId}/presence")
@@ -82,9 +89,15 @@ public class MessageController {
             @PathVariable Long conversationId,
             @RequestBody MessageTypingRequest request
     ) {
+        MessageConversationPresenceResponse response = messageService.updateConversationTyping(
+                currentUser,
+                conversationId,
+                request
+        );
+        messageSocketHandler.broadcastTyping(conversationId, currentUser.id(), request.isTyping());
         return ApiResponse.ok(
                 "Conversation typing updated.",
-                messageService.updateConversationTyping(currentUser, conversationId, request)
+                response
         );
     }
 
@@ -94,7 +107,9 @@ public class MessageController {
             @PathVariable Long conversationId,
             @Valid @RequestBody SendMessageRequest request
     ) {
-        return ApiResponse.ok("Message sent.", messageService.sendMessage(currentUser, conversationId, request));
+        ChatMessageResponse savedMessage = messageService.sendMessage(currentUser, conversationId, request);
+        messageSocketHandler.broadcastChatMessage(savedMessage);
+        return ApiResponse.ok("Message sent.", savedMessage);
     }
 
     @PostMapping("/conversations/{conversationId}/assistant/suggestions")
@@ -114,9 +129,11 @@ public class MessageController {
             @AuthenticationPrincipal AuthenticatedUser currentUser,
             @PathVariable Long conversationId
     ) {
+        MessageReadReceiptResponse readReceipt = messageService.markConversationRead(currentUser, conversationId);
+        messageSocketHandler.broadcastConversationRead(readReceipt);
         return ApiResponse.ok(
                 "Conversation marked as read.",
-                messageService.markConversationRead(currentUser, conversationId)
+                readReceipt
         );
     }
 
@@ -127,9 +144,16 @@ public class MessageController {
             @PathVariable Long messageId,
             @Valid @RequestBody ToggleMessageReactionRequest request
     ) {
+        MessageReactionUpdateResponse reactionUpdate = messageService.toggleReaction(
+                currentUser,
+                conversationId,
+                messageId,
+                request
+        );
+        messageSocketHandler.broadcastReactionUpdate(conversationId, reactionUpdate);
         return ApiResponse.ok(
                 "Message reaction updated.",
-                messageService.toggleReaction(currentUser, conversationId, messageId, request)
+                reactionUpdate
         );
     }
 
@@ -150,9 +174,11 @@ public class MessageController {
             @PathVariable Long conversationId,
             @Valid @RequestBody SaveMessageProcessesRequest request
     ) {
+        List<MessageProcessResponse> savedProcesses = messageService.saveProcesses(currentUser, conversationId, request);
+        messageSocketHandler.broadcastProcessUpdate(conversationId, savedProcesses);
         return ApiResponse.ok(
                 "Message processes saved.",
-                messageService.saveProcesses(currentUser, conversationId, request)
+                savedProcesses
         );
     }
 
