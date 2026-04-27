@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -30,7 +31,7 @@ public class AiSearchService {
             .connectTimeout(Duration.ofSeconds(10))
             .build();
 
-    @Value("${app.gemini.api-key:}")
+    @Value("${app.gemini.api-key-explore:${app.gemini.api-key:}}")
     private String geminiApiKey;
 
     @Value("${app.gemini.model:gemini-2.0-flash}") // 최신 모델 권장
@@ -40,6 +41,13 @@ public class AiSearchService {
 
     public AiSearchService(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+    }
+
+    @PostConstruct
+    public void logKeyInfo() {
+        String keyPreview = (geminiApiKey != null && geminiApiKey.length() > 10)
+                ? geminiApiKey.substring(0, 10) + "..." : "(비어있음)";
+        log.info("[AiSearchService] 로드된 Gemini 키 앞 10자리: {}, 모델: {}", keyPreview, geminiModel);
     }
 
     public AiSearchResponseDto search(AiSearchRequestDto request) {

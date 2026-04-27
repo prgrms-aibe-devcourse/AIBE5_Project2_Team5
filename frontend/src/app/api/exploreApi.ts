@@ -6,6 +6,7 @@ export type ExplorePostResponseDto = {
   title: string;
   nickname: string;
   pickCount: number;
+  commentCount: number;
   imageUrl: string | null;
   profileImage: string | null;
   category: string | null;
@@ -14,7 +15,7 @@ export type ExplorePostResponseDto = {
   picked: boolean;
 };
 
-export async function getExploreFeedsApi(category?: string, keyword?: string) {
+export async function getExploreFeedsApi(category?: string, keyword?: string, page: number = 0, size: number = 20) {
   const params = new URLSearchParams();
   if (category && category !== "all" && category !== "전체") {
     params.append("category", category);
@@ -22,9 +23,11 @@ export async function getExploreFeedsApi(category?: string, keyword?: string) {
   if (keyword && keyword.trim() !== "") {
     params.append("keyword", keyword.trim());
   }
+  params.append("page", String(page));
+  params.append("size", String(size));
 
   const queryString = params.toString();
-  const path = queryString ? `/api/explore?${queryString}` : "/api/explore";
+  const path = `/api/explore?${queryString}`;
 
   return apiRequest<ExplorePostResponseDto[]>(
     path,
@@ -44,11 +47,16 @@ export type ExploreDesignerResponseDto = {
   bannerImage: string | null;
 };
 
-export async function getExploreDesignersApi(keyword?: string) {
-  const path =
-    keyword && keyword.trim() !== ""
-      ? `/api/explore/designers?keyword=${encodeURIComponent(keyword)}`
-      : "/api/explore/designers";
+export async function getExploreDesignersApi(keyword?: string, page: number = 0, size: number = 20) {
+  const params = new URLSearchParams();
+  if (keyword && keyword.trim() !== "") {
+    params.append("keyword", keyword.trim());
+  }
+  params.append("page", String(page));
+  params.append("size", String(size));
+
+  const queryString = params.toString();
+  const path = `/api/explore/designers?${queryString}`;
 
   return apiRequest<ExploreDesignerResponseDto[]>(
     path,

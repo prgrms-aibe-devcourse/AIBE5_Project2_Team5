@@ -11,6 +11,7 @@ public record ExplorePostResponseDto(
         String title,     // 게시글 제목
         String nickname,  // 작성자 닉네임
         Integer pickCount, // 좋아요(픽) 수
+        Integer commentCount, // 댓글 수
         String imageUrl,   // 대표 이미지 URL
         String profileImage, // 작성자 프로필 이미지 URL
         String category,   // 카테고리 (분야)

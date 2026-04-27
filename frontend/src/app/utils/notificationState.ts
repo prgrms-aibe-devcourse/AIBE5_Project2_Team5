@@ -144,8 +144,8 @@ const mapBackendNotification = (item: NotificationResponse): NotificationItem =>
     isSnoozed: false,
     actionType,
     action,
-    senderProfileImage: item.senderProfileImage,
-    referenceId: item.referenceId,
+    senderProfileImage: item.senderProfileImage ?? undefined,
+    referenceId: item.referenceId ?? undefined,
     avatar: !!item.senderProfileImage,
     navigatePath: buildNavigatePath(item),
   };

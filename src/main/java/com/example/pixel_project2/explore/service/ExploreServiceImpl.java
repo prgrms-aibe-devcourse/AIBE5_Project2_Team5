@@ -4,6 +4,7 @@ import com.example.pixel_project2.common.entity.Post;
 import com.example.pixel_project2.common.entity.PostImage;
 import com.example.pixel_project2.common.entity.enums.Category;
 import com.example.pixel_project2.common.entity.enums.PostType;
+import com.example.pixel_project2.common.repository.CommentRepository;
 import com.example.pixel_project2.common.repository.PickCountRepository;
 import com.example.pixel_project2.common.repository.PostRepository;
 import com.example.pixel_project2.explore.dto.ExploreDesignerResponseDto;
@@ -28,6 +29,7 @@ public class ExploreServiceImpl implements ExploreService {
     private final PostRepository postRepository;
     private final ExplorerRepository explorerRepository;
     private final PickCountRepository pickCountRepository;
+    private final CommentRepository commentRepository;
 
     @Override
     public List<ExplorePostResponseDto> getExploreFeeds(String categoryName, int page, int size, String keyword, Long userId) {
@@ -85,6 +87,7 @@ public class ExploreServiceImpl implements ExploreService {
                 .title(post.getTitle())
                 .nickname(post.getUser().getNickname())
                 .pickCount(post.getPickCount())
+                .commentCount((int) commentRepository.countByPostId(post.getId()))
                 .imageUrl(firstImageUrl)
                 .profileImage(post.getUser().getProfileImage())
                 .category(post.getCategory() != null ? post.getCategory().getLabel() : null)
