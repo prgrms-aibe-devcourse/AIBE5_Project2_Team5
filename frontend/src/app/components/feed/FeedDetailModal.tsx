@@ -2,7 +2,6 @@ import {
   Bookmark,
   Heart,
   MessageCircle,
-  MoreVertical,
   Send,
   Share2,
   X,
@@ -48,7 +47,6 @@ type FeedDetailModalProps = {
   onOpenCollectionModal: (item: FeedCardItem, e?: React.MouseEvent) => void;
   onShare: (item: BaseFeedItem, e?: React.MouseEvent) => void;
   onProposalClick: (item: FeedCardItem, e?: React.MouseEvent) => void;
-  onToggleCommentLike: (feedId: number, commentId: string) => void;
   onStartEditingComment: (comment: FeedComment) => void;
   onEditingCommentTextChange: (value: string) => void;
   onUpdateComment: () => void;
@@ -91,7 +89,6 @@ export function FeedDetailModal({
   onOpenCollectionModal,
   onShare,
   onProposalClick,
-  onToggleCommentLike,
   onStartEditingComment,
   onEditingCommentTextChange,
   onUpdateComment,
@@ -145,7 +142,7 @@ export function FeedDetailModal({
                       className={`h-2 rounded-full transition-all ${
                         modalImageIndex === index ? "w-6 bg-white" : "w-2 bg-white/50"
                       }`}
-                      aria-label={`${index + 1}번째 이미지 보기`}
+                      aria-label={`${index + 1}번 이미지 보기`}
                     />
                   ))}
                 </div>
@@ -166,10 +163,10 @@ export function FeedDetailModal({
 
           <div className="flex w-[400px] flex-col bg-white">
             <div className="border-b border-gray-200 p-5">
-              <div className="mb-4 flex items-center justify-between">
+              <div className="mb-4 flex items-center gap-3">
                 <Link
                   to={`/profile/${encodeURIComponent(selectedFeed.author.profileKey ?? selectedFeed.author.name)}`}
-                  className="flex items-center gap-3 transition-opacity hover:opacity-80"
+                  className="flex min-w-0 flex-1 items-center gap-3 transition-opacity hover:opacity-80"
                   onClick={(e) => {
                     e.stopPropagation();
                     onClose();
@@ -178,11 +175,11 @@ export function FeedDetailModal({
                   <ImageWithFallback
                     src={selectedFeed.author.avatar}
                     alt={selectedFeed.author.name}
-                    className="size-12 rounded-full ring-2 ring-[#00C9A7]"
+                    className="size-12 shrink-0 rounded-full ring-2 ring-[#00C9A7]"
                   />
-                  <div>
-                    <h4 className="text-sm font-bold">{selectedFeed.author.name}</h4>
-                    <p className="text-xs text-gray-500">{selectedFeed.author.role}</p>
+                  <div className="min-w-0">
+                    <h4 className="truncate text-sm font-bold">{selectedFeed.author.name}</h4>
+                    <p className="truncate text-xs text-gray-500">{selectedFeed.author.role}</p>
                     {formatFeedDateTime(selectedFeed.createdAt) && (
                       <p className="mt-1 text-[11px] text-gray-400">
                         {formatFeedDateTime(selectedFeed.createdAt)}
@@ -190,19 +187,14 @@ export function FeedDetailModal({
                     )}
                   </div>
                 </Link>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={(event) => onProposalClick(selectedFeed, event)}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#FFB6A6] bg-[#FF5C3A] px-3.5 font-bold text-white shadow-[0_8px_18px_rgba(255,92,58,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#E94F2F] hover:shadow-[0_10px_22px_rgba(255,92,58,0.28)] focus:outline-none focus:ring-2 focus:ring-[#FFB6A6] focus:ring-offset-2"
-                  >
-                    <Send className="size-3.5" />
-                    <span className="text-xs">프로젝트 제안</span>
-                  </button>
-                  <button className="rounded-full p-2 transition-colors hover:bg-gray-100" aria-label="더보기">
-                    <MoreVertical className="size-5 text-gray-600" />
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={(event) => onProposalClick(selectedFeed, event)}
+                  className="shrink-0 inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#FFB6A6] bg-[#FF5C3A] px-3.5 font-bold text-white shadow-[0_8px_18px_rgba(255,92,58,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#E94F2F] hover:shadow-[0_10px_22px_rgba(255,92,58,0.28)] focus:outline-none focus:ring-2 focus:ring-[#FFB6A6] focus:ring-offset-2"
+                >
+                  <Send className="size-3.5" />
+                  <span className="text-xs">프로젝트 제안</span>
+                </button>
               </div>
 
               <h2 className="mb-2 text-xl font-bold">{selectedFeed.title}</h2>
@@ -249,7 +241,7 @@ export function FeedDetailModal({
                       ) : (
                         <Sparkles className="size-4" />
                       )}
-                      {integration.label} 연동
+                      {integration.label} 연결
                       <ExternalLink className="size-3.5" />
                     </a>
                   ))}
@@ -308,7 +300,7 @@ export function FeedDetailModal({
             <div className="flex-1 space-y-4 overflow-y-auto p-4">
               {isFeedDetailLoading && (
                 <div className="rounded-lg bg-[#F7F7F5] px-3 py-2 text-sm text-gray-500">
-                  피드 상세를 불러오는 중입니다...
+                  피드 상세를 불러오는 중입니다.
                 </div>
               )}
               {feedDetailError && (
@@ -328,7 +320,7 @@ export function FeedDetailModal({
               )}
               {isCommentsLoading && selectedFeedComments.length === 0 && (
                 <div className="rounded-lg bg-[#F7F7F5] px-3 py-2 text-sm text-gray-500">
-                  댓글 목록을 불러오는 중입니다...
+                  댓글 목록을 불러오는 중입니다.
                 </div>
               )}
               {!isCommentsLoading && !commentLoadError && selectedFeedComments.length === 0 && (
@@ -366,7 +358,6 @@ export function FeedDetailModal({
                         >
                           {comment.author.name}
                         </Link>
-                        <span className="text-[10px] text-gray-500">{comment.time}</span>
                       </div>
                       <p className="mb-2 text-xs text-gray-500">{comment.author.role}</p>
                       {editingCommentId === comment.id ? (
@@ -400,24 +391,6 @@ export function FeedDetailModal({
                       )}
                     </div>
                     <div className="ml-3 mt-1 flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() => onToggleCommentLike(selectedFeed.id, comment.id)}
-                        className={`inline-flex items-center gap-1.5 text-xs transition-colors ${
-                          comment.likedByMe
-                            ? "font-semibold text-[#FF5C3A]"
-                            : "text-gray-500 hover:text-[#00C9A7]"
-                        }`}
-                        aria-pressed={Boolean(comment.likedByMe)}
-                        aria-label={`댓글 좋아요 ${comment.likes}개`}
-                      >
-                        <Heart
-                          className={`size-4 ${
-                            comment.likedByMe ? "fill-[#FF5C3A]" : ""
-                          }`}
-                        />
-                        <span>{comment.likes}</span>
-                      </button>
                       {comment.isMine && editingCommentId !== comment.id && (
                         <>
                           <button

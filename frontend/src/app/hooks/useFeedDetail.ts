@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "../api/apiClient";
 import { getUserAvatar } from "../utils/avatar";
+import { normalizeCategoryLabel, normalizePostTypeLabel } from "../utils/matchingCategories";
 
 type FeedAuthor = {
   userId?: number;
@@ -61,6 +62,12 @@ type Params<TFeed extends BaseFeedItem> = {
   setSelectedFeed: React.Dispatch<React.SetStateAction<TFeed | null>>;
 };
 
+function resolveFeedAuthorRole(role: string, postType?: string) {
+  if (role === "CLIENT") return "프로젝트 클라이언트";
+  if (role === "DESIGNER") return postType ?? "디자이너";
+  return role || postType || "";
+}
+
 export function useFeedDetail<TFeed extends BaseFeedItem>({
   selectedFeed,
   setApiFeedItems,
@@ -69,12 +76,6 @@ export function useFeedDetail<TFeed extends BaseFeedItem>({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadedFeedDetailIds, setLoadedFeedDetailIds] = useState<Record<number, true>>({});
-
-  function resolveFeedAuthorRole(role: string, postType?: string) {
-    if (role === "CLIENT") return "프로젝트 클라이언트";
-    if (role === "DESIGNER") return postType ?? "디자이너";
-    return role || postType || "";
-  }
 
   useEffect(() => {
     let mounted = true;
@@ -92,14 +93,14 @@ export function useFeedDetail<TFeed extends BaseFeedItem>({
 
         if (!mounted) return;
 
-        const fallbackImage =
-          selectedFeed?.image ??
-          "https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&w=1200&q=80";
-
+        const fallbackImages = (selectedFeed?.images ?? []).filter(Boolean);
+        const fallbackImage = selectedFeed?.image ?? fallbackImages[0] ?? "";
         const detailImages =
           detail.imageUrls?.filter(Boolean).length > 0
             ? detail.imageUrls.filter(Boolean)
-            : [fallbackImage];
+            : fallbackImage
+              ? Array.from(new Set([fallbackImage, ...fallbackImages]))
+              : [];
 
         const updatedFeed = {
           id: detail.postId,
@@ -112,12 +113,15 @@ export function useFeedDetail<TFeed extends BaseFeedItem>({
           },
           title: detail.title,
           description: detail.description || "",
-          image: detailImages[0],
+          image: detailImages[0] ?? "",
           images: detailImages,
           likes: detail.pickCount,
           comments: detail.commentCount,
-          tags: [detail.category, detail.postType].filter(Boolean),
-          category: detail.category,
+          tags: [
+            normalizeCategoryLabel(detail.category),
+            normalizePostTypeLabel(detail.postType),
+          ].filter(Boolean),
+          category: normalizeCategoryLabel(detail.category),
           integrations: detail.portfolioUrl
             ? [{ provider: "figma" as const, label: "Portfolio", url: detail.portfolioUrl }]
             : undefined,
@@ -141,11 +145,9 @@ export function useFeedDetail<TFeed extends BaseFeedItem>({
           ...prev,
           [feedId]: true,
         }));
-      } catch (error) {
+      } catch (nextError) {
         if (!mounted) return;
-        setError(
-          error instanceof Error ? error.message : "피드 상세를 불러오지 못했습니다.",
-        );
+        setError(nextError instanceof Error ? nextError.message : "피드 상세를 불러오지 못했습니다.");
       } finally {
         if (mounted) {
           setIsLoading(false);
@@ -153,15 +155,7 @@ export function useFeedDetail<TFeed extends BaseFeedItem>({
       }
     }
 
-    if (!selectedFeed) {
-      setError(null);
-      setIsLoading(false);
-      return () => {
-        mounted = false;
-      };
-    }
-
-    if (!selectedFeed.isApiFeed) {
+    if (!selectedFeed || !selectedFeed.isApiFeed) {
       setError(null);
       setIsLoading(false);
       return () => {
@@ -182,7 +176,12 @@ export function useFeedDetail<TFeed extends BaseFeedItem>({
     return () => {
       mounted = false;
     };
-  }, [selectedFeed?.id, selectedFeed?.isApiFeed, loadedFeedDetailIds, setApiFeedItems, setSelectedFeed]);
+  }, [
+    loadedFeedDetailIds,
+    selectedFeed,
+    setApiFeedItems,
+    setSelectedFeed,
+  ]);
 
   return {
     isLoading,

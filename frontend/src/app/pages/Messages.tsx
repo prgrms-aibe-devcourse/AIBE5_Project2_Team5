@@ -1,5 +1,6 @@
 ﻿import Navigation from "../components/Navigation";
 import { Edit, Search, Info, Send, Image, Smile, AtSign, Sparkles, Calendar, FileText, CheckCircle, Circle, ChevronDown, ChevronUp, ThumbsUp, XCircle, Paperclip, Figma, ExternalLink, Plus, Clock, Check, CheckCheck, Trash2, GripVertical, Eye, ArrowLeft, Bookmark, RefreshCw } from "lucide-react";
+import { DEFAULT_AVATAR } from "../utils/avatar";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
@@ -474,9 +475,7 @@ const mapConversationResponse = (
     unreadCount: conversation.unreadCount,
     online: conversation.partnerAvailable,
     statusText: conversation.partnerAvailable ? "메시지 가능" : "자리비움",
-    avatar:
-      conversation.partnerProfileImage ||
-      `https://i.pravatar.cc/150?u=message-${conversation.partnerUserId}`,
+    avatar: conversation.partnerProfileImage || DEFAULT_AVATAR,
     bio: conversation.partnerIntroduction || "프로젝트 대화를 진행 중입니다.",
     sharedMedia: [],
   };
@@ -1018,7 +1017,7 @@ const initialProcesses: ProjectProcess[] = [];
 
 export default function Messages() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const currentUser = getCurrentUser();
   const currentUserId = currentUser?.userId;
   const requestedConversationId = Number(searchParams.get("conversationId") ?? 0);
@@ -1027,6 +1026,8 @@ export default function Messages() {
   const [isConversationsLoading, setIsConversationsLoading] = useState(true);
   const [conversationError, setConversationError] = useState<string | null>(null);
   const [conversationReloadKey, setConversationReloadKey] = useState(0);
+  const initialLoadDoneRef = useRef(false);
+  const lastHandledReloadKeyRef = useRef(-1);
   const [leftConversationIds, setLeftConversationIds] = useState<number[]>(
     readLeftConversationIds
   );
@@ -1587,6 +1588,7 @@ export default function Messages() {
           };
         });
         setServerConversations(nextConversations);
+        initialLoadDoneRef.current = true;
         const socket = messageSocketRef.current;
         if (socket?.isOpen() && nextConversations.length > 0) {
           try {
@@ -1604,6 +1606,9 @@ export default function Messages() {
         );
 
         setActiveConversationId((currentId) => {
+          if (requestedConversation && currentId !== requestedConversation.id) {
+            return requestedConversation.id;
+          }
           if (nextConversations.some((conversation) => conversation.id === currentId)) {
             return currentId;
           }
@@ -1621,7 +1626,11 @@ export default function Messages() {
       }
     }
 
-    void loadConversations();
+    const isExplicitReload = lastHandledReloadKeyRef.current !== conversationReloadKey;
+    if (isExplicitReload) lastHandledReloadKeyRef.current = conversationReloadKey;
+    // 이미 한 번 로드된 상태에서 소켓 연결 변경으로 인한 재실행은 silent로 처리
+    const shouldBeSilent = initialLoadDoneRef.current && !isExplicitReload;
+    void loadConversations(shouldBeSilent);
     const pollInterval = window.setInterval(() => {
       void loadConversations(true);
     }, isRecoveryPollingActive
@@ -2620,6 +2629,7 @@ export default function Messages() {
       setUnreadConversationIds(markConversationRead(conversationId));
     }
     setActiveConversationId(conversationId);
+    setSearchParams({ conversationId: String(conversationId) }, { replace: true });
     setActiveTab("profile");
     setMobileView("chat");
     setIsAttachMenuOpen(false);
@@ -3659,6 +3669,19 @@ export default function Messages() {
   };
 
   if (!activeConversation) {
+    if (isConversationsLoading) {
+      return (
+        <div className="min-h-screen bg-[#F7F7F5]">
+          <Navigation />
+          <main className="mx-auto flex min-h-[calc(100vh-80px)] w-full max-w-5xl items-center justify-center px-6 py-16">
+            <div className="flex flex-col items-center gap-4 text-gray-500">
+              <div className="size-10 animate-spin rounded-full border-4 border-[#00C9A7] border-t-transparent" />
+              <p className="text-sm font-medium">대화를 불러오는 중입니다...</p>
+            </div>
+          </main>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen bg-[#F7F7F5]">
         <Navigation />
@@ -3667,9 +3690,7 @@ export default function Messages() {
             <div className="mx-auto mb-5 grid size-14 place-items-center rounded-lg bg-[#E8FBF7] text-[#007E68]">
               <Send className="size-7" />
             </div>
-            <h1 className="text-2xl font-bold text-[#0F0F0F]">
-              {isConversationsLoading ? "대화를 불러오는 중입니다" : "아직 대화가 없습니다"}
-            </h1>
+            <h1 className="text-2xl font-bold text-[#0F0F0F]">아직 대화가 없습니다</h1>
             <p className="mt-3 text-sm leading-relaxed text-gray-600">
               {conversationError ??
                 "피드나 프로젝트에서 제안을 시작하면 이곳에 대화가 생성됩니다."}
