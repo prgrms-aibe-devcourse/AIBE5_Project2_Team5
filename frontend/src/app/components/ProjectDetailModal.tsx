@@ -13,6 +13,7 @@ import { applyProjectApi, deleteProjectApi, deleteProjectApplicationApi, updateP
 import { createMessageConversationApi } from "../api/messageApi";
 import { uploadProjectApplicationPortfolioApi } from "../api/uploadApi";
 import { getCurrentUser } from "../utils/auth";
+import { useNightMode } from "../contexts/NightModeContext";
 
 export interface ProjectMilestone {
   label: string;
@@ -102,14 +103,14 @@ function formatApplicantBudgetLabel(budget?: number | null) {
   return `${budget}만원`;
 }
 
-function DdayBadge({ deadline }: { deadline: string }) {
+function DdayBadge({ deadline, dark = false }: { deadline: string; dark?: boolean }) {
   const d = getDday(deadline);
   const label = d <= 0 ? "마감" : `D-${d}`;
   const colorClass =
-    d <= 0 ? "text-gray-400 bg-gray-100 border-gray-200" :
-    d <= 7 ? "text-red-500 bg-red-50 border-red-200" :
-    d <= 14 ? "text-orange-500 bg-orange-50 border-orange-200" :
-    "text-[#00A88C] bg-[#00C9A7]/10 border-[#00C9A7]/30";
+    d <= 0 ? (dark ? "text-white/40 bg-white/10 border-white/10" : "text-gray-400 bg-gray-100 border-gray-200") :
+    d <= 7 ? (dark ? "text-red-400 bg-red-500/15 border-red-500/20" : "text-red-500 bg-red-50 border-red-200") :
+    d <= 14 ? (dark ? "text-orange-400 bg-orange-500/15 border-orange-500/20" : "text-orange-500 bg-orange-50 border-orange-200") :
+    (dark ? "text-[#00C9A7] bg-[#00C9A7]/15 border-[#00C9A7]/30" : "text-[#00A88C] bg-[#00C9A7]/10 border-[#00C9A7]/30");
   return (
     <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-bold ${colorClass}`}>
       {d > 0 && d <= 3 && <AlertTriangle className="size-3.5" />}
@@ -118,33 +119,33 @@ function DdayBadge({ deadline }: { deadline: string }) {
   );
 }
 
-function DdayBarSidebar({ deadline }: { deadline: string }) {
+function DdayBarSidebar({ deadline, dark = false }: { deadline: string; dark?: boolean }) {
   const d = getDday(deadline);
   const pct = d <= 0 ? 0 : Math.min(d, 30) / 30 * 100;
   const barColor = d <= 0 ? "bg-gray-300" : d <= 7 ? "bg-red-400" : d <= 14 ? "bg-orange-400" : "bg-[#00C9A7]";
-  const labelColor = d <= 0 ? "text-gray-400" : d <= 7 ? "text-red-500" : d <= 14 ? "text-orange-500" : "text-[#00A88C]";
+  const labelColor = d <= 0 ? (dark ? "text-white/40" : "text-gray-400") : d <= 7 ? "text-red-500" : d <= 14 ? "text-orange-500" : "text-[#00A88C]";
   const label = d <= 0 ? "마감" : `D-${d}`;
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-400">지원 마감</span>
+        <span className={`text-xs ${dark ? "text-white/40" : "text-gray-400"}`}>지원 마감</span>
         <span className={`text-xs font-bold flex items-center gap-0.5 ${labelColor}`}>
           {d > 0 && d <= 3 && <AlertTriangle className="size-3" />}
           {label}
         </span>
       </div>
-      <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+      <div className={`h-2 w-full rounded-full overflow-hidden ${dark ? "bg-white/10" : "bg-gray-100"}`}>
         <div
           className={`h-full rounded-full ${barColor} ${d <= 3 && d > 0 ? "animate-pulse" : ""}`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <p className="text-[10px] text-gray-400">마감일: {deadline}</p>
+      <p className={`text-[10px] ${dark ? "text-white/40" : "text-gray-400"}`}>마감일: {deadline}</p>
     </div>
   );
 }
 
-function ApplicantDotsSidebar({ count }: { count: number }) {
+function ApplicantDotsSidebar({ count, dark = false }: { count: number; dark?: boolean }) {
   const MAX = 20;
   const DOTS = 10;
   const filled = Math.round(Math.min(count, MAX) / MAX * DOTS);
@@ -154,12 +155,12 @@ function ApplicantDotsSidebar({ count }: { count: number }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-gray-400">지원 현황</span>
+        <span className={`text-xs ${dark ? "text-white/40" : "text-gray-400"}`}>지원 현황</span>
         <span className={`text-xs font-bold ${labelColor}`}>{count}명 지원 중</span>
       </div>
       <div className="flex gap-1">
         {Array.from({ length: DOTS }).map((_, i) => (
-          <span key={i} className={`flex-1 h-2 rounded-full ${i < filled ? dotColor : "bg-gray-100"}`} />
+          <span key={i} className={`flex-1 h-2 rounded-full ${i < filled ? dotColor : (dark ? "bg-white/10" : "bg-gray-100")}`} />
         ))}
       </div>
       <p className={`text-[10px] font-semibold ${labelColor}`}>{label}</p>
@@ -178,6 +179,7 @@ export default function ProjectDetailModal({
   onRequestProjectEdit,
 }: Props) {
   const navigate = useNavigate();
+  const { isNight } = useNightMode();
   const currentUser = getCurrentUser();
   const isOwnProject = Boolean(project?.client.userId && currentUser?.userId && project.client.userId === currentUser.userId);
   const [applied, setApplied] = useState(false);
@@ -381,7 +383,7 @@ export default function ProjectDetailModal({
             animate={{ opacity: 1, y: 0, scale: 1, maxWidth: showApplyForm ? 1216 : 896 }}
             exit={{ opacity: 0, y: 40, scale: 0.97 }}
             transition={{ type: "spring", damping: 30, stiffness: 280 }}
-            className="relative bg-white rounded-3xl w-full max-h-[92vh] overflow-hidden shadow-2xl flex flex-col"
+            className={`relative rounded-3xl w-full max-h-[92vh] overflow-hidden shadow-2xl flex flex-col ${isNight ? "bg-[#141d30]" : "bg-white"}`}
             onClick={(e) => e.stopPropagation()}
           >
             {/* ?? HERO ?? */}
@@ -439,43 +441,44 @@ export default function ProjectDetailModal({
             </div>
 
             {/* ?? STATS BAR ?? */}
-            <div className="flex items-center gap-5 px-6 py-3.5 bg-[#FAFBFC] border-b border-gray-100 shrink-0 overflow-x-auto">
+            <div className={`flex items-center gap-5 px-6 py-3.5 border-b shrink-0 overflow-x-auto ${
+              isNight ? "bg-[#0e1524] border-white/10" : "bg-[#FAFBFC] border-gray-100"
+            }`}>
               <div className="shrink-0">
-                <p className="text-[10px] text-gray-400 mb-0.5">예산</p>
+                <p className={`text-[10px] mb-0.5 ${isNight ? "text-white/40" : "text-gray-400"}`}>예산</p>
                 <p className="text-sm font-bold text-[#00A88C]">{formatBudgetLabel(project.budget)}</p>
               </div>
-              <div className="w-px h-7 bg-gray-200 shrink-0" />
+              <div className={`w-px h-7 shrink-0 ${isNight ? "bg-white/10" : "bg-gray-200"}`} />
               <div className="shrink-0">
-                <p className="text-[10px] text-gray-400 mb-0.5">프로젝트 기간</p>
-                <p className="text-sm font-bold text-gray-700 flex items-center gap-1">
-                  <Clock className="size-3 text-gray-400" />{project.duration}
-                  {/* ?뮕 湲곌컙 媛믪뿉 ?곕Ⅸ ?ㅻ챸 異붽? 濡쒖쭅 */}
-                  <span className="text-[11px] font-medium text-gray-500 ml-1">
+                <p className={`text-[10px] mb-0.5 ${isNight ? "text-white/40" : "text-gray-400"}`}>프로젝트 기간</p>
+                <p className={`text-sm font-bold flex items-center gap-1 ${isNight ? "text-white/80" : "text-gray-700"}`}>
+                  <Clock className={`size-3 ${isNight ? "text-white/40" : "text-gray-400"}`} />{project.duration}
+                  <span className={`text-[11px] font-medium ml-1 ${isNight ? "text-white/50" : "text-gray-500"}`}>
                     {project.duration === "단기" && "(1~3개월)"}
                     {project.duration === "중기" && "(3~6개월)"}
                     {project.duration === "장기" && "(6개월 이상)"}
                   </span>
                 </p>
               </div>
-              <div className="w-px h-7 bg-gray-200 shrink-0" />
+              <div className={`w-px h-7 shrink-0 ${isNight ? "bg-white/10" : "bg-gray-200"}`} />
               <div className="shrink-0">
-                <p className="text-[10px] text-gray-400 mb-0.5">마감일</p>
-                <p className="text-sm font-bold text-gray-700 flex items-center gap-1">
-                  <Clock className="size-3 text-gray-400" />{project.deadline}
+                <p className={`text-[10px] mb-0.5 ${isNight ? "text-white/40" : "text-gray-400"}`}>마감일</p>
+                <p className={`text-sm font-bold flex items-center gap-1 ${isNight ? "text-white/80" : "text-gray-700"}`}>
+                  <Clock className={`size-3 ${isNight ? "text-white/40" : "text-gray-400"}`} />{project.deadline}
                 </p>
               </div>
 
               {project.experienceLevel && (
                 <>
-                  <div className="w-px h-7 bg-gray-200 shrink-0" />
+                  <div className={`w-px h-7 shrink-0 ${isNight ? "bg-white/10" : "bg-gray-200"}`} />
                   <div className="shrink-0">
-                    <p className="text-[10px] text-gray-400 mb-0.5">경험</p>
-                    <p className="text-sm font-bold text-gray-700">{project.experienceLevel}</p>
+                    <p className={`text-[10px] mb-0.5 ${isNight ? "text-white/40" : "text-gray-400"}`}>경험</p>
+                    <p className={`text-sm font-bold ${isNight ? "text-white/80" : "text-gray-700"}`}>{project.experienceLevel}</p>
                   </div>
                 </>
               )}
               <div className="ml-auto shrink-0">
-                <DdayBadge deadline={project.deadline} />
+                <DdayBadge deadline={project.deadline} dark={isNight} />
               </div>
             </div>
 
@@ -487,23 +490,23 @@ export default function ProjectDetailModal({
 
                 {/* ?꾨줈?앺듃 媛쒖슂 */}
                 <section>
-                  <SectionHeading color="mint">프로젝트 개요</SectionHeading>
-                  <p className="text-sm text-gray-600 leading-relaxed">{project.description}</p>
+                  <SectionHeading color="mint" dark={isNight}>프로젝트 개요</SectionHeading>
+                  <p className={`text-sm leading-relaxed ${isNight ? "text-white/60" : "text-gray-600"}`}>{project.description}</p>
                 </section>
                 {project.fullDescription && (
                   <section>
-                    <SectionHeading color="mint">상세내용</SectionHeading>
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-600">{project.fullDescription}</p>
+                    <SectionHeading color="mint" dark={isNight}>상세내용</SectionHeading>
+                    <p className={`whitespace-pre-wrap text-sm leading-relaxed ${isNight ? "text-white/60" : "text-gray-600"}`}>{project.fullDescription}</p>
                   </section>
                 )}
 
                 {/* ?대떦 ?낅Т */}
                 {project.responsibilities && project.responsibilities.length > 0 && (
                   <section>
-                    <SectionHeading color="mint">담당 업무</SectionHeading>
+                    <SectionHeading color="mint" dark={isNight}>담당 업무</SectionHeading>
                     <ul className="space-y-2">
                       {project.responsibilities.map((r, i) => (
-                        <li key={i} className="flex items-start gap-2.5 text-sm text-gray-600">
+                        <li key={i} className={`flex items-start gap-2.5 text-sm ${isNight ? "text-white/60" : "text-gray-600"}`}>
                           <CheckSquare className="size-4 text-[#00C9A7] mt-0.5 shrink-0" />
                           {r}
                         </li>
@@ -515,10 +518,10 @@ export default function ProjectDetailModal({
                 {/* 吏???먭꺽 */}
                 {project.requirements && project.requirements.length > 0 && (
                   <section>
-                    <SectionHeading color="coral">지원 자격</SectionHeading>
+                    <SectionHeading color="coral" dark={isNight}>지원 자격</SectionHeading>
                     <ul className="space-y-2">
                       {project.requirements.map((r, i) => (
-                        <li key={i} className="flex items-start gap-2.5 text-sm text-gray-600">
+                        <li key={i} className={`flex items-start gap-2.5 text-sm ${isNight ? "text-white/60" : "text-gray-600"}`}>
                           <span className="w-1.5 h-1.5 rounded-full bg-[#FF5C3A] mt-1.5 shrink-0" />
                           {r}
                         </li>
@@ -529,19 +532,21 @@ export default function ProjectDetailModal({
 
                 {/* ?붽뎄 ?ㅽ궗 */}
                 <section>
-                  <SectionHeading color="mint">요구 스킬</SectionHeading>
+                  <SectionHeading color="mint" dark={isNight}>요구 스킬</SectionHeading>
                   <div className="flex flex-wrap gap-2">
                     {project.skills && project.skills.length > 0 ? (
                         project.skills.map((skill) => (
                             <span
                                 key={skill}
-                                className="px-3 py-1.5 rounded-xl bg-[#A8F0E4]/20 text-[#00A88C] text-sm font-semibold border border-[#00C9A7]/20"
+                                className={`px-3 py-1.5 rounded-xl text-sm font-semibold border ${
+                                  isNight ? "bg-[#00C9A7]/10 text-[#00C9A7] border-[#00C9A7]/20" : "bg-[#A8F0E4]/20 text-[#00A88C] border-[#00C9A7]/20"
+                                }`}
                             >
                                 {skill}
                             </span>
                         ))
                     ) : (
-                        <p className="text-xs text-gray-400 italic">요구 스킬 정보가 없습니다.</p>
+                        <p className={`text-xs italic ${isNight ? "text-white/40" : "text-gray-400"}`}>요구 스킬 정보가 없습니다.</p>
                     )}
                   </div>
                 </section>
@@ -550,9 +555,9 @@ export default function ProjectDetailModal({
                 {refImages.length > 0 && (
                   <section>
                     <div className="flex items-center justify-between mb-3">
-                      <SectionHeading color="mint">레퍼런스 이미지</SectionHeading>
+                      <SectionHeading color="mint" dark={isNight}>레퍼런스 이미지</SectionHeading>
                       {refImages.length > PREVIEW && (
-                        <span className="text-xs text-gray-400">총 {refImages.length}장</span>
+                        <span className={`text-xs ${isNight ? "text-white/40" : "text-gray-400"}`}>총 {refImages.length}장</span>
                       )}
                     </div>
                     <div className="grid grid-cols-3 gap-2">
@@ -563,7 +568,7 @@ export default function ProjectDetailModal({
                           <button
                             key={i}
                             onClick={() => setLightboxIndex(i)}
-                            className="relative group rounded-xl overflow-hidden aspect-video bg-gray-100 hover:ring-2 hover:ring-[#00C9A7] transition-all"
+                            className={`relative group rounded-xl overflow-hidden aspect-video hover:ring-2 hover:ring-[#00C9A7] transition-all ${isNight ? "bg-[#1a2035]" : "bg-gray-100"}`}
                           >
                             <ImageWithFallback
                               src={src}
@@ -592,7 +597,7 @@ export default function ProjectDetailModal({
                 {/* 留덉씪?ㅽ넠 ??꾨씪??*/}
                 {project.milestones && project.milestones.length > 0 && (
                   <section className="pb-4">
-                    <SectionHeading color="mint">프로젝트 일정</SectionHeading>
+                    <SectionHeading color="mint" dark={isNight}>프로젝트 일정</SectionHeading>
                     <div className="flex items-start">
                       {project.milestones.map((m, i) => (
                         <div key={i} className="flex-1 relative">
@@ -603,8 +608,8 @@ export default function ProjectDetailModal({
                             )}
                           </div>
                           <div className="mt-2 pr-3">
-                            <p className="text-xs font-bold text-[#0F0F0F]">{m.label}</p>
-                            <p className="text-[10px] text-gray-400 mt-0.5">{m.date}</p>
+                            <p className={`text-xs font-bold ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>{m.label}</p>
+                            <p className={`text-[10px] mt-0.5 ${isNight ? "text-white/40" : "text-gray-400"}`}>{m.date}</p>
                           </div>
                         </div>
                       ))}
@@ -614,26 +619,32 @@ export default function ProjectDetailModal({
               </div>
 
               {/* Right: CTA sidebar */}
-              <div className="w-60 shrink-0 border-l border-gray-100 overflow-y-auto">
+              <div className={`w-60 shrink-0 border-l overflow-y-auto ${isNight ? "border-white/10" : "border-gray-100"}`}>
                 <div className="p-4 space-y-3">
 
                   {/* 吏?먰븯湲?*/}
                   {project.ownerView ? (
                     <>
-                      <div className="w-full rounded-2xl border border-[#00C9A7]/20 bg-[#00C9A7]/8 px-4 py-3 text-center">
+                      <div className={`w-full rounded-2xl border px-4 py-3 text-center ${isNight ? "border-[#00C9A7]/20 bg-[#00C9A7]/10" : "border-[#00C9A7]/20 bg-[#00C9A7]/8"}`}>
                         <p className="text-sm font-bold text-[#00A88C]">내가 등록한 공고</p>
-                        <p className="mt-1 text-xs text-gray-500">아래에서 디자이너 지원 내역을 바로 확인할 수 있어요.</p>
+                        <p className={`mt-1 text-xs ${isNight ? "text-white/50" : "text-gray-500"}`}>아래에서 디자이너 지원 내역을 바로 확인할 수 있어요.</p>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           onClick={() => onRequestProjectEdit?.(project.id)}
-                          className="w-full rounded-2xl border border-gray-200 py-3 text-sm font-bold text-gray-700 transition hover:border-[#00C9A7] hover:text-[#00A88C]"
+                          className={`w-full rounded-2xl border py-3 text-sm font-bold transition ${
+                            isNight
+                              ? "border-white/10 text-white/70 hover:border-[#00C9A7]/50 hover:text-[#00C9A7]"
+                              : "border-gray-200 text-gray-700 hover:border-[#00C9A7] hover:text-[#00A88C]"
+                          }`}
                         >
                           공고 수정
                         </button>
                         <button
                           onClick={handleDeleteProject}
-                          className="w-full rounded-2xl border border-red-200 py-3 text-sm font-bold text-red-500 transition hover:bg-red-50"
+                          className={`w-full rounded-2xl border py-3 text-sm font-bold transition ${
+                            isNight ? "border-red-500/20 text-red-400 hover:bg-red-500/10" : "border-red-200 text-red-500 hover:bg-red-50"
+                          }`}
                         >
                           공고 삭제
                         </button>
@@ -649,7 +660,9 @@ export default function ProjectDetailModal({
                       </button>
                       <button
                         onClick={handleDeleteApplication}
-                        className="w-full rounded-2xl border border-red-200 py-3 text-sm font-bold text-red-500 transition hover:bg-red-50"
+                        className={`w-full rounded-2xl border py-3 text-sm font-bold transition ${
+                          isNight ? "border-red-500/20 text-red-400 hover:bg-red-500/10" : "border-red-200 text-red-500 hover:bg-red-50"
+                        }`}
                       >
                         지원 내역 삭제
                       </button>
@@ -660,7 +673,7 @@ export default function ProjectDetailModal({
                       disabled={applied}
                       className={`w-full py-3.5 rounded-2xl text-sm font-bold transition-all ${
                         applied
-                          ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                          ? (isNight ? "bg-white/10 text-white/30 cursor-not-allowed" : "bg-gray-100 text-gray-400 cursor-not-allowed")
                           : "bg-gradient-to-r from-[#00C9A7] to-[#00A88C] text-white hover:shadow-[0_0_24px_rgba(0,201,167,0.4)] hover:scale-[1.02] active:scale-[0.98]"
                       }`}
                     >
@@ -674,7 +687,7 @@ export default function ProjectDetailModal({
                       className={`flex-1 flex items-center justify-center gap-1 py-2.5 rounded-xl border text-xs font-semibold transition-all ${
                         bookmarked
                           ? "border-[#00C9A7] bg-[#00C9A7]/10 text-[#00A88C]"
-                          : "border-gray-200 text-gray-500 hover:border-[#00C9A7] hover:text-[#00A88C]"
+                          : (isNight ? "border-white/10 text-white/50 hover:border-[#00C9A7]/50 hover:text-[#00C9A7]" : "border-gray-200 text-gray-500 hover:border-[#00C9A7] hover:text-[#00A88C]")
                       }`}
                     >
                       <Bookmark className={`size-3.5 ${bookmarked ? "fill-[#00C9A7]" : ""}`} />
@@ -682,7 +695,9 @@ export default function ProjectDetailModal({
                     </button>
                     <button
                       onClick={handleShare}
-                      className="flex-1 flex items-center justify-center gap-1 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-500 hover:border-gray-300 transition-all"
+                      className={`flex-1 flex items-center justify-center gap-1 py-2.5 rounded-xl border text-xs font-semibold transition-all ${
+                        isNight ? "border-white/10 text-white/50 hover:border-white/20" : "border-gray-200 text-gray-500 hover:border-gray-300"
+                      }`}
                     >
                       <Share2 className="size-3.5" />
                       공유
@@ -690,23 +705,23 @@ export default function ProjectDetailModal({
                   </div>
 
                   {/* D-Day + 吏???꾪솴 */}
-                  <div className="bg-[#FAFBFC] rounded-2xl p-3.5 space-y-3">
-                    <DdayBarSidebar deadline={project.deadline} />
-                    <div className="w-full h-px bg-gray-100" />
-                    <ApplicantDotsSidebar count={project.applicants} />
+                  <div className={`rounded-2xl p-3.5 space-y-3 ${isNight ? "bg-white/5" : "bg-[#FAFBFC]"}`}>
+                    <DdayBarSidebar deadline={project.deadline} dark={isNight} />
+                    <div className={`w-full h-px ${isNight ? "bg-white/10" : "bg-gray-100"}`} />
+                    <ApplicantDotsSidebar count={project.applicants} dark={isNight} />
                   </div>
 
                   {/* ?대씪?댁뼵??移대뱶 */}
-                  <div className="bg-[#FAFBFC] rounded-2xl p-3.5">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">클라이언트</p>
+                  <div className={`rounded-2xl p-3.5 ${isNight ? "bg-white/5" : "bg-[#FAFBFC]"}`}>
+                    <p className={`text-[10px] font-bold uppercase tracking-widest mb-3 ${isNight ? "text-white/40" : "text-gray-400"}`}>클라이언트</p>
                     <div className="flex items-center gap-2 mb-3">
                       <ImageWithFallback
                         src={project.client.avatar}
                         alt={project.client.name}
-                        className="size-9 rounded-xl object-cover border border-gray-100"
+                        className={`size-9 rounded-xl object-cover border ${isNight ? "border-white/10" : "border-gray-100"}`}
                       />
                       <div>
-                        <p className="text-sm font-bold text-[#0F0F0F] leading-snug">{project.client.name}</p>
+                        <p className={`text-sm font-bold leading-snug ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>{project.client.name}</p>
                         {project.client.verified && (
                           <p className="text-[10px] text-[#00A88C] flex items-center gap-0.5 mt-0.5">
                             <BadgeCheck className="size-3" /> 인증 클라이언트
@@ -716,29 +731,33 @@ export default function ProjectDetailModal({
                     </div>
                     {project.companyInfo && (
                       <div className="space-y-1.5 mb-3">
-                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                          <Building2 className="size-3 text-gray-400" /> {project.companyInfo.industry}
+                        <div className={`flex items-center gap-1.5 text-xs ${isNight ? "text-white/50" : "text-gray-500"}`}>
+                          <Building2 className={`size-3 ${isNight ? "text-white/40" : "text-gray-400"}`} /> {project.companyInfo.industry}
                         </div>
-                        <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                          <Users className="size-3 text-gray-400" /> {project.companyInfo.size}
+                        <div className={`flex items-center gap-1.5 text-xs ${isNight ? "text-white/50" : "text-gray-500"}`}>
+                          <Users className={`size-3 ${isNight ? "text-white/40" : "text-gray-400"}`} /> {project.companyInfo.size}
                         </div>
                       </div>
                     )}
                     <button
                       onClick={handleMessage}
                       disabled={isOwnProject}
-                      className={`w-full flex items-center justify-center gap-1 text-xs font-semibold py-2 border rounded-xl transition-all ${isOwnProject ? "border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed" : "text-[#00A88C] border-[#00C9A7]/30 hover:bg-[#00C9A7]/5"}`}
+                      className={`w-full flex items-center justify-center gap-1 text-xs font-semibold py-2 border rounded-xl transition-all ${
+                        isOwnProject
+                          ? (isNight ? "border-white/10 text-white/30 bg-white/5 cursor-not-allowed" : "border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed")
+                          : "text-[#00A88C] border-[#00C9A7]/30 hover:bg-[#00C9A7]/5"
+                      }`}
                     >
                       <MessageCircle className="size-3.5" /> {isOwnProject ? "본인 공고" : "문의하기"}
                     </button>
                   </div>
 
                   {project.ownerView && (
-                    <div className="bg-[#FAFBFC] rounded-2xl p-3.5">
+                    <div className={`rounded-2xl p-3.5 ${isNight ? "bg-white/5" : "bg-[#FAFBFC]"}`}>
                       <div className="mb-3 flex items-center justify-between gap-2">
                         <div>
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">지원 내역</p>
-                          <p className="mt-1 text-xs text-gray-500">
+                          <p className={`text-[10px] font-bold uppercase tracking-widest ${isNight ? "text-white/40" : "text-gray-400"}`}>지원 내역</p>
+                          <p className={`mt-1 text-xs ${isNight ? "text-white/50" : "text-gray-500"}`}>
                             {project.applications?.length ? `${project.applications.length}명의 디자이너가 지원했어요.` : "아직 지원한 디자이너가 없어요."}
                           </p>
                         </div>
@@ -748,37 +767,37 @@ export default function ProjectDetailModal({
                         {(project.applications ?? []).map((application) => (
                           <div
                             key={application.applicationId}
-                            className="rounded-2xl border border-white bg-white p-3 shadow-sm"
+                            className={`rounded-2xl border p-3 shadow-sm ${isNight ? "border-white/10 bg-[#1a2035]" : "border-white bg-white"}`}
                           >
                             <div className="flex items-center gap-3">
                               <ImageWithFallback
                                 src={application.designerProfileImage || "/default-avatar.svg"}
                                 alt={application.designerNickname || application.designerName}
-                                className="size-10 rounded-xl object-cover border border-gray-100"
+                                className={`size-10 rounded-xl object-cover border ${isNight ? "border-white/10" : "border-gray-100"}`}
                               />
                               <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-bold text-[#0F0F0F]">
+                                <p className={`truncate text-sm font-bold ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>
                                   {application.designerNickname || application.designerName}
                                 </p>
-                                <p className="mt-0.5 text-[11px] text-gray-500">
+                                <p className={`mt-0.5 text-[11px] ${isNight ? "text-white/50" : "text-gray-500"}`}>
                                   희망 예산 {formatApplicantBudgetLabel(application.expectedBudget)}
                                 </p>
                               </div>
                             </div>
 
                             {application.summary && (
-                              <p className="mt-3 text-xs leading-relaxed text-gray-600">
+                              <p className={`mt-3 text-xs leading-relaxed ${isNight ? "text-white/60" : "text-gray-600"}`}>
                                 {application.summary}
                               </p>
                             )}
 
                             {application.coverLetter && (
-                              <p className="mt-2 text-xs leading-relaxed text-gray-500">
+                              <p className={`mt-2 text-xs leading-relaxed ${isNight ? "text-white/50" : "text-gray-500"}`}>
                                 {application.coverLetter}
                               </p>
                             )}
 
-                            <div className="mt-3 space-y-1.5 text-[11px] text-gray-500">
+                            <div className={`mt-3 space-y-1.5 text-[11px] ${isNight ? "text-white/50" : "text-gray-500"}`}>
                               {application.startDate && (
                                 <p>작업 시작 가능일 {application.startDate}</p>
                               )}
@@ -810,19 +829,18 @@ export default function ProjectDetailModal({
                 }}
                 initial={{ width: 0, opacity: 0 }}
                 transition={{ type: "spring", damping: 30, stiffness: 280 }}
-                className="shrink-0 border-l border-gray-100 flex flex-col overflow-hidden"
+                className={`shrink-0 border-l flex flex-col overflow-hidden ${isNight ? "border-white/10" : "border-gray-100"}`}
               >
-                    {/* ???ㅻ뜑 */}
-                    <div className="px-5 pt-5 pb-4 border-b border-gray-100 shrink-0 flex items-start justify-between">
+                    <div className={`px-5 pt-5 pb-4 border-b shrink-0 flex items-start justify-between ${isNight ? "border-white/10" : "border-gray-100"}`}>
                       <div>
-                        <p className="text-sm font-bold text-[#0F0F0F]">지원서 작성</p>
+                        <p className={`text-sm font-bold ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>지원서 작성</p>
                         <p className="text-xs text-[#00A88C] font-medium mt-0.5 line-clamp-1">{project.title}</p>
                       </div>
                       <button
                         onClick={() => setShowApplyForm(false)}
-                        className="p-1.5 rounded-xl hover:bg-gray-100 transition-colors shrink-0 ml-2"
+                        className={`p-1.5 rounded-xl transition-colors shrink-0 ml-2 ${isNight ? "hover:bg-white/10" : "hover:bg-gray-100"}`}
                       >
-                        <X className="size-4 text-gray-400" />
+                        <X className={`size-4 ${isNight ? "text-white/40" : "text-gray-400"}`} />
                       </button>
                     </div>
 
@@ -831,7 +849,7 @@ export default function ProjectDetailModal({
 
                       {/* 吏??硫붿떆吏 */}
                       <div>
-                        <label className="block text-xs font-bold text-gray-600 mb-2">
+                        <label className={`block text-xs font-bold mb-2 ${isNight ? "text-white/60" : "text-gray-600"}`}>
                            지원 메시지 <span className="text-[#FF5C3A]">*</span>
                         </label>
                         <textarea
@@ -839,14 +857,16 @@ export default function ProjectDetailModal({
                           onChange={(e) => setApplyMsg(e.target.value.slice(0, 200))}
                           rows={4}
                            placeholder="이 프로젝트에 지원하는 이유와 강점을 간단하게 소개해주세요"
-                          className="w-full text-sm rounded-xl border border-gray-200 px-3.5 py-3 focus:outline-none focus:border-[#00C9A7] transition-colors resize-none leading-relaxed placeholder:text-gray-300"
+                          className={`w-full text-sm rounded-xl border px-3.5 py-3 focus:outline-none focus:border-[#00C9A7] transition-colors resize-none leading-relaxed ${
+                            isNight ? "border-white/10 bg-[#0e1524] text-white placeholder:text-white/30" : "border-gray-200 bg-white placeholder:text-gray-300"
+                          }`}
                         />
-                        <p className="text-xs text-gray-300 text-right mt-1">{applyMsg.length}/200</p>
+                        <p className={`text-xs text-right mt-1 ${isNight ? "text-white/30" : "text-gray-300"}`}>{applyMsg.length}/200</p>
                       </div>
 
                       {/* 愿??寃쏀뿕 */}
                       <div>
-                        <label className="block text-xs font-bold text-gray-600 mb-2">
+                        <label className={`block text-xs font-bold mb-2 ${isNight ? "text-white/60" : "text-gray-600"}`}>
                            관련 경험 요약 <span className="text-[#FF5C3A]">*</span>
                         </label>
                         <textarea
@@ -854,33 +874,37 @@ export default function ProjectDetailModal({
                           onChange={(e) => setApplyExp(e.target.value.slice(0, 150))}
                           rows={3}
                            placeholder="관련 프로젝트 경험을 간단하게 정리해주세요"
-                          className="w-full text-sm rounded-xl border border-gray-200 px-3.5 py-3 focus:outline-none focus:border-[#00C9A7] transition-colors resize-none leading-relaxed placeholder:text-gray-300"
+                          className={`w-full text-sm rounded-xl border px-3.5 py-3 focus:outline-none focus:border-[#00C9A7] transition-colors resize-none leading-relaxed ${
+                            isNight ? "border-white/10 bg-[#0e1524] text-white placeholder:text-white/30" : "border-gray-200 bg-white placeholder:text-gray-300"
+                          }`}
                         />
-                        <p className="text-xs text-gray-300 text-right mt-1">{applyExp.length}/150</p>
+                        <p className={`text-xs text-right mt-1 ${isNight ? "text-white/30" : "text-gray-300"}`}>{applyExp.length}/150</p>
                       </div>
 
                       {/* ?ы듃?대━??*/}
                       <div>
-                        <label className="block text-xs font-bold text-gray-600 mb-2">
-                           포트폴리오 <span className="text-xs text-gray-400 font-normal">(선택)</span>
+                        <label className={`block text-xs font-bold mb-2 ${isNight ? "text-white/60" : "text-gray-600"}`}>
+                           포트폴리오 <span className={`text-xs font-normal ${isNight ? "text-white/40" : "text-gray-400"}`}>(선택)</span>
                         </label>
-                        <div className="flex mb-2.5 rounded-xl overflow-hidden border border-gray-200">
+                        <div className={`flex mb-2.5 rounded-xl overflow-hidden border ${isNight ? "border-white/10" : "border-gray-200"}`}>
                           <button
                             onClick={() => setApplyPortfolioTab("url")}
                             className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-colors ${
                               applyPortfolioTab === "url"
                                 ? "bg-[#00C9A7]/10 text-[#00A88C]"
-                                : "bg-white text-gray-400 hover:bg-gray-50"
+                                : (isNight ? "bg-[#0e1524] text-white/40 hover:bg-white/5" : "bg-white text-gray-400 hover:bg-gray-50")
                             }`}
                           >
                             <Link2 className="size-3.5" /> 링크
                           </button>
                           <button
                             onClick={() => setApplyPortfolioTab("file")}
-                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-colors border-l border-gray-200 ${
+                            className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-semibold transition-colors border-l ${
+                              isNight ? "border-white/10" : "border-gray-200"
+                            } ${
                               applyPortfolioTab === "file"
                                 ? "bg-[#00C9A7]/10 text-[#00A88C]"
-                                : "bg-white text-gray-400 hover:bg-gray-50"
+                                : (isNight ? "bg-[#0e1524] text-white/40 hover:bg-white/5" : "bg-white text-gray-400 hover:bg-gray-50")
                             }`}
                           >
                             <Paperclip className="size-3.5" /> 파일
@@ -892,22 +916,26 @@ export default function ProjectDetailModal({
                             value={applyPortfolioUrl}
                             onChange={(e) => setApplyPortfolioUrl(e.target.value)}
                             placeholder="https://behance.net/..."
-                            className="w-full text-sm rounded-xl border border-gray-200 px-3.5 py-3 focus:outline-none focus:border-[#00C9A7] transition-colors placeholder:text-gray-300"
+                            className={`w-full text-sm rounded-xl border px-3.5 py-3 focus:outline-none focus:border-[#00C9A7] transition-colors ${
+                              isNight ? "border-white/10 bg-[#0e1524] text-white placeholder:text-white/30" : "border-gray-200 bg-white placeholder:text-gray-300"
+                            }`}
                           />
                         ) : (
                           <label
-                            className="flex flex-col items-center justify-center gap-2 w-full border-2 border-dashed border-gray-200 rounded-xl p-5 cursor-pointer hover:border-[#00C9A7]/50 hover:bg-[#00C9A7]/5 transition-all"
+                            className={`flex flex-col items-center justify-center gap-2 w-full border-2 border-dashed rounded-xl p-5 cursor-pointer transition-all ${
+                              isNight ? "border-white/15 hover:border-[#00C9A7]/50 hover:bg-[#00C9A7]/5" : "border-gray-200 hover:border-[#00C9A7]/50 hover:bg-[#00C9A7]/5"
+                            }`}
                             onDragOver={(event) => event.preventDefault()}
                             onDrop={(event) => {
                               event.preventDefault();
                               handlePortfolioFileSelect(event.dataTransfer.files?.[0] ?? null);
                             }}
                           >
-                            <Paperclip className="size-6 text-gray-300" />
-                            <span className="text-xs text-gray-400">파일을 드래그하거나</span>
+                            <Paperclip className={`size-6 ${isNight ? "text-white/20" : "text-gray-300"}`} />
+                            <span className={`text-xs ${isNight ? "text-white/40" : "text-gray-400"}`}>파일을 드래그하거나</span>
                             <span className="text-xs text-[#00A88C] font-semibold">직접 선택</span>
                             {applyPortfolioFile && (
-                              <span className="max-w-full truncate text-xs font-medium text-gray-500">
+                              <span className={`max-w-full truncate text-xs font-medium ${isNight ? "text-white/50" : "text-gray-500"}`}>
                                 {applyPortfolioFile.name}
                               </span>
                             )}
@@ -922,48 +950,52 @@ export default function ProjectDetailModal({
 
                       {/* ?щ쭩 ?덉궛 */}
                       <div>
-                        <label className="block text-xs font-bold text-gray-600 mb-2">
-                           희망 예산 <span className="text-xs text-gray-400 font-normal">(선택)</span>
+                        <label className={`block text-xs font-bold mb-2 ${isNight ? "text-white/60" : "text-gray-600"}`}>
+                           희망 예산 <span className={`text-xs font-normal ${isNight ? "text-white/40" : "text-gray-400"}`}>(선택)</span>
                         </label>
                         <input
                           type="text"
                           value={applyBudget}
                           onChange={(e) => setApplyBudget(e.target.value)}
                           placeholder="예) 300만원 / 협의 가능"
-                          className="w-full text-sm rounded-xl border border-gray-200 px-3.5 py-3 focus:outline-none focus:border-[#00C9A7] transition-colors placeholder:text-gray-300"
+                          className={`w-full text-sm rounded-xl border px-3.5 py-3 focus:outline-none focus:border-[#00C9A7] transition-colors ${
+                            isNight ? "border-white/10 bg-[#0e1524] text-white placeholder:text-white/30" : "border-gray-200 bg-white placeholder:text-gray-300"
+                          }`}
                         />
                       </div>
 
                       {/* ?쒖옉 媛?μ씪 */}
                       <div>
-                        <label className="block text-xs font-bold text-gray-600 mb-2">
+                        <label className={`block text-xs font-bold mb-2 ${isNight ? "text-white/60" : "text-gray-600"}`}>
                           <Calendar className="size-3.5 inline mr-1" />
-                           작업 시작 가능일 <span className="text-xs text-gray-400 font-normal">(선택)</span>
+                           작업 시작 가능일 <span className={`text-xs font-normal ${isNight ? "text-white/40" : "text-gray-400"}`}>(선택)</span>
                         </label>
                         <input
                           type="date"
                           value={applyStartDate}
                           onChange={(e) => setApplyStartDate(e.target.value)}
-                          className="w-full text-sm rounded-xl border border-gray-200 px-3.5 py-3 focus:outline-none focus:border-[#00C9A7] transition-colors text-gray-600"
+                          className={`w-full text-sm rounded-xl border px-3.5 py-3 focus:outline-none focus:border-[#00C9A7] transition-colors ${
+                            isNight ? "border-white/10 bg-[#0e1524] text-white" : "border-gray-200 bg-white text-gray-600"
+                          }`}
                         />
                       </div>
 
                     </div>
 
                     {/* ?쒖텧 踰꾪듉 */}
-                    <div className="px-5 py-4 border-t border-gray-100 shrink-0 bg-white">
+                    <div className={`px-5 py-4 border-t shrink-0 ${isNight ? "border-white/10 bg-[#141d30]" : "border-gray-100 bg-white"}`}>
                       <button
                         onClick={handleSubmitApply}
                         disabled={!applyMsg.trim() || !applyExp.trim() || isSubmittingApply}
                         className={`w-full py-3.5 rounded-2xl text-sm font-bold transition-all ${
                           !applyMsg.trim() || !applyExp.trim() || isSubmittingApply
-                            ? "bg-gray-100 text-gray-300 cursor-not-allowed"
+                            ? (isNight ? "bg-white/10 text-white/30 cursor-not-allowed" : "bg-gray-100 text-gray-300 cursor-not-allowed")
                             : "bg-gradient-to-r from-[#00C9A7] to-[#00A88C] text-white hover:shadow-[0_0_24px_rgba(0,201,167,0.4)] hover:scale-[1.02] active:scale-[0.98]"
                         }`}
                       >
                         지원서 제출
                       </button>
-                      <p className="text-xs text-gray-300 text-center mt-2">* 표시된 항목은 필수입니다.</p>
+                      <p className={`text-xs text-center mt-2 ${isNight ? "text-white/30" : "text-gray-300"}`}>* 표시된 항목은 필수입니다.</p>
                     </div>
               </motion.div>
 
@@ -1063,10 +1095,10 @@ export default function ProjectDetailModal({
   );
 }
 
-function SectionHeading({ children, color }: { children: React.ReactNode; color: "mint" | "coral" }) {
+function SectionHeading({ children, color, dark = false }: { children: React.ReactNode; color: "mint" | "coral"; dark?: boolean }) {
   const barColor = color === "mint" ? "bg-[#00C9A7]" : "bg-[#FF5C3A]";
   return (
-    <h3 className="text-base font-bold text-[#0F0F0F] mb-3 flex items-center gap-2">
+    <h3 className={`text-base font-bold mb-3 flex items-center gap-2 ${dark ? "text-white" : "text-[#0F0F0F]"}`}>
       <span className={`w-1 h-4 rounded-full inline-block shrink-0 ${barColor}`} />
       {children}
     </h3>

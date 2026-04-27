@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Bookmark,
   Heart,
@@ -12,6 +13,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { Link } from "react-router";
+import { AnimatePresence, motion } from "motion/react";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import type { BaseFeedItem, FeedCardItem, FeedComment } from "../../types/feed";
 
@@ -101,35 +103,79 @@ export function FeedDetailModal({
   onSubmitComment,
 }: FeedDetailModalProps) {
   const d = isNight;
+  const openEase = [0.22, 1, 0.36, 1] as const;
+  const [imageLightboxOpen, setImageLightboxOpen] = useState(false);
+  const [lightboxScale, setLightboxScale] = useState(1);
+  const lightboxScrollRef = useRef<HTMLDivElement>(null);
+
+  const closeLightbox = useCallback(() => {
+    setImageLightboxOpen(false);
+    setLightboxScale(1);
+  }, []);
+
+  useEffect(() => {
+    if (!imageLightboxOpen) return;
+    setLightboxScale(1);
+  }, [modalImageIndex, imageLightboxOpen]);
+
+  useEffect(() => {
+    if (!imageLightboxOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        closeLightbox();
+      }
+    };
+    document.addEventListener("keydown", onKey, { capture: true });
+    return () => document.removeEventListener("keydown", onKey, { capture: true });
+  }, [imageLightboxOpen, closeLightbox]);
 
   return (
-    <div
+    <>
+    <motion.div
       className={`fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm ${
         d ? "bg-black/80" : "bg-black/70"
       }`}
       onClick={onClose}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.28, ease: openEase }}
     >
-      <div
+      <motion.div
         className={`max-h-[90vh] w-full max-w-6xl overflow-hidden rounded-2xl shadow-2xl transition-colors duration-500 ${
           d ? "bg-[#1a1f2e]" : "bg-white"
         }`}
         onClick={(e) => e.stopPropagation()}
+        initial={{ opacity: 0, scale: 0.94, y: 28 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: "spring", damping: 32, stiffness: 360, mass: 0.82 }}
       >
         <div className="flex h-[90vh]">
           {/* Image panel */}
-          <div className="relative flex flex-1 items-center justify-center bg-[#0F0F0F]">
-            <ImageWithFallback
-              src={activeModalImage}
-              alt={selectedFeed.title}
-              className="max-h-full max-w-full object-contain"
-            />
+          <div className="relative flex min-h-0 flex-1 items-center justify-center bg-[#0F0F0F]">
+            <button
+              type="button"
+              className="absolute inset-0 z-0 flex cursor-zoom-in items-center justify-center border-0 bg-transparent p-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                setImageLightboxOpen(true);
+              }}
+              aria-label="이미지 확대 보기"
+            >
+              <ImageWithFallback
+                src={activeModalImage}
+                alt={selectedFeed.title}
+                className="pointer-events-none max-h-full max-w-full object-contain"
+              />
+            </button>
 
             {selectedFeedImages.length > 1 && (
               <>
                 <button
                   type="button"
                   onClick={(e) => onMoveModalCarousel(-1, e)}
-                  className="absolute left-4 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-lg border border-white/20 bg-black/50 text-white transition-all hover:bg-black/70"
+                  className="absolute left-4 top-1/2 z-10 flex size-11 -translate-y-1/2 items-center justify-center rounded-lg border border-white/20 bg-black/50 text-white transition-all hover:bg-black/70"
                   aria-label="이전 이미지"
                 >
                   <ChevronLeft className="size-6" />
@@ -137,12 +183,12 @@ export function FeedDetailModal({
                 <button
                   type="button"
                   onClick={(e) => onMoveModalCarousel(1, e)}
-                  className="absolute right-4 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-lg border border-white/20 bg-black/50 text-white transition-all hover:bg-black/70"
+                  className="absolute right-4 top-1/2 z-10 flex size-11 -translate-y-1/2 items-center justify-center rounded-lg border border-white/20 bg-black/50 text-white transition-all hover:bg-black/70"
                   aria-label="다음 이미지"
                 >
                   <ChevronRight className="size-6" />
                 </button>
-                <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-white/15 bg-black/45 px-3 py-2 backdrop-blur-md">
+                <div className="absolute bottom-5 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-white/15 bg-black/45 px-3 py-2 backdrop-blur-md">
                   {selectedFeedImages.map((image, index) => (
                     <button
                       key={`modal-${selectedFeed.feedKey}-${image}`}
@@ -155,7 +201,7 @@ export function FeedDetailModal({
                     />
                   ))}
                 </div>
-                <div className="absolute right-4 top-4 rounded-lg border border-white/15 bg-black/50 px-3 py-1.5 text-sm font-semibold text-white backdrop-blur-md">
+                <div className="absolute right-4 top-4 z-10 rounded-lg border border-white/15 bg-black/50 px-3 py-1.5 text-sm font-semibold text-white backdrop-blur-md">
                   {modalImageIndex + 1}/{selectedFeedImages.length}
                 </div>
               </>
@@ -163,7 +209,7 @@ export function FeedDetailModal({
 
             <button
               onClick={onClose}
-              className="absolute left-4 top-4 rounded-full border border-white/20 bg-black/50 p-2 text-white transition-all hover:bg-black/70"
+              className="absolute left-4 top-4 z-20 rounded-full border border-white/20 bg-black/50 p-2 text-white transition-all hover:bg-black/70"
               aria-label="닫기"
             >
               <X className="size-6" />
@@ -599,7 +645,139 @@ export function FeedDetailModal({
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+
+    <AnimatePresence>
+      {imageLightboxOpen && (
+        <motion.div
+          key="feed-image-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="이미지 확대 보기"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          onClick={closeLightbox}
+        >
+          <div className="absolute inset-0 bg-black/92" aria-hidden />
+          <button
+            type="button"
+            onClick={closeLightbox}
+            className="absolute right-5 top-5 z-20 rounded-full border border-white/25 bg-white/15 p-2.5 text-white transition-all hover:bg-white/30"
+            aria-label="확대 닫기"
+          >
+            <X className="size-5" />
+          </button>
+
+          {selectedFeedImages.length > 1 && (
+            <div className="absolute left-1/2 top-5 z-20 -translate-x-1/2 rounded-full border border-white/20 bg-black/50 px-4 py-1.5 text-sm font-semibold text-white backdrop-blur-sm">
+              {modalImageIndex + 1} / {selectedFeedImages.length}
+            </div>
+          )}
+
+          {selectedFeedImages.length > 1 && modalImageIndex > 0 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMoveModalCarousel(-1, e);
+              }}
+              className="absolute left-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-white/25 bg-white/15 p-3 text-white transition-all hover:bg-white/30"
+              aria-label="이전 이미지"
+            >
+              <ChevronLeft className="size-5" />
+            </button>
+          )}
+
+          {selectedFeedImages.length > 1 && modalImageIndex < selectedFeedImages.length - 1 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMoveModalCarousel(1, e);
+              }}
+              className="absolute right-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-white/25 bg-white/15 p-3 text-white transition-all hover:bg-white/30"
+              aria-label="다음 이미지"
+            >
+              <ChevronRight className="size-5" />
+            </button>
+          )}
+
+          <div
+            ref={lightboxScrollRef}
+            className="relative z-10 max-h-[92dvh] w-full max-w-[100vw] flex-1 overflow-auto overscroll-contain p-2"
+            onClick={(e) => e.stopPropagation()}
+            onWheel={(e) => {
+              if (e.ctrlKey || e.metaKey) {
+                e.preventDefault();
+                setLightboxScale((s) =>
+                  Math.min(2, Math.max(1, s + (e.deltaY < 0 ? 0.15 : -0.15)))
+                );
+              }
+            }}
+          >
+            <div className="flex min-h-full min-w-full items-center justify-center">
+              <div
+                className="inline-block max-w-[min(96vw,100%)] origin-center transition-transform duration-200 ease-out"
+                style={{ transform: `scale(${lightboxScale})` }}
+              >
+                <ImageWithFallback
+                  key={activeModalImage}
+                  src={activeModalImage}
+                  alt={selectedFeed.title}
+                  className="max-h-[min(85dvh,85vw)] w-auto max-w-full object-contain"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="absolute bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-white/20 bg-black/55 px-2 py-1.5 backdrop-blur-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {([1, 1.5, 2] as const).map((level) => (
+              <button
+                key={level}
+                type="button"
+                onClick={() => setLightboxScale(level)}
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold text-white transition-colors ${
+                  lightboxScale === level ? "bg-white/25" : "bg-white/10 hover:bg-white/20"
+                }`}
+              >
+                {level}×
+              </button>
+            ))}
+            <span className="ml-0.5 border-l border-white/20 pl-2 text-[10px] text-white/60">Ctrl+휠</span>
+          </div>
+
+          {selectedFeedImages.length > 3 && (
+            <div
+              className="absolute bottom-20 left-1/2 z-20 flex max-w-[min(100vw-2rem,48rem)] -translate-x-1/2 flex-wrap justify-center gap-2"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {selectedFeedImages.map((src, i) => (
+                <button
+                  key={`lb-thumb-${selectedFeed.feedKey}-${src}`}
+                  type="button"
+                  onClick={(e) => onSetModalImageIndex(i, e)}
+                  className={`h-8 w-12 shrink-0 overflow-hidden rounded-lg border-2 transition-all ${
+                    i === modalImageIndex
+                      ? "border-[#00C9A7] scale-110"
+                      : "border-white/20 opacity-50 hover:opacity-80"
+                  }`}
+                  aria-label={`${i + 1}번 이미지`}
+                >
+                  <ImageWithFallback src={src} alt="" className="h-full w-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </>
   );
 }

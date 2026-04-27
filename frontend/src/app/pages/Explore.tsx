@@ -26,8 +26,6 @@ import {
 import { useMemo, useState, useEffect, useRef, useCallback, JSX } from "react";
 import { Link, useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
-import Lenis from "lenis";
-import "lenis/dist/lenis.css";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { FeedDetailModal } from "../components/feed/FeedDetailModal";
 import { useFeedComments } from "../hooks/useFeedComments";
@@ -46,6 +44,7 @@ import { getCurrentUser } from "../utils/auth";
 import { getUserAvatar } from "../utils/avatar";
 import Footer from "../components/Footer";
 import type { FeedCardItem } from "../types/feed";
+import { useNightMode } from "../contexts/NightModeContext";
 
 const creatorProfiles = [
   {
@@ -176,6 +175,7 @@ const AI_MOCK_RESPONSES: Record<string, { summary: string; designers: typeof cre
 
 export default function Explore() {
   const navigate = useNavigate();
+  const { isNight } = useNightMode();
   const currentUser = getCurrentUser();
   const currentUserAvatar = getUserAvatar(
     currentUser?.profileImage,
@@ -401,16 +401,6 @@ export default function Explore() {
     }
   };
 
-  // Lenis smooth scroll 설정
-  useEffect(() => {
-    const lenis = new Lenis({ lerp: 0.08, smoothWheel: true });
-    
-    const raf = (time: number) => { lenis.raf(time); requestAnimationFrame(raf); };
-    requestAnimationFrame(raf);
-    return () => lenis.destroy();
-  }, []);
-
-
   const checkCatScroll = useCallback(() => {
     const el = catScrollRef.current;
     if (!el) return;
@@ -615,38 +605,45 @@ export default function Explore() {
   const handleSearchKeyDown = (_e: React.KeyboardEvent) => {};
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#FAFAF8]">
+    <div className={`min-h-screen flex flex-col transition-colors duration-700 ${isNight ? "bg-[#0C1222] text-white" : "bg-[#FAFAF8]"}`}>
       <Navigation />
 
+      <div className="pickxel-animate-page-in flex min-h-0 flex-1 flex-col">
       {/* 탐색 검색바 */}
       <section className="relative z-30">
         <div className="max-w-[1800px] mx-auto px-5 pt-7 pb-3">
-          <div className="flex items-center h-12 rounded-full bg-white border border-gray-200/70 shadow-sm hover:border-gray-300 focus-within:border-[#00C9A7]/40 focus-within:shadow-[0_0_0_3px_rgba(0,201,167,0.1)] transition-all duration-300">
+          <div className={`flex items-center h-12 rounded-full border shadow-sm transition-all duration-300 ${
+            isNight
+              ? "bg-[#141d30] border-white/10 hover:border-white/15 focus-within:border-[#00C9A7]/40 focus-within:shadow-[0_0_0_3px_rgba(0,201,167,0.15)]"
+              : "bg-white border-gray-200/70 hover:border-gray-300 focus-within:border-[#00C9A7]/40 focus-within:shadow-[0_0_0_3px_rgba(0,201,167,0.1)]"
+          }`}>
             {/* 검색 인풋 */}
             <div className="relative flex-1 min-w-0 flex items-center pl-5 pr-2">
-              <Search className="size-4 text-gray-400 shrink-0" />
+              <Search className={`size-4 shrink-0 ${isNight ? "text-white/40" : "text-gray-400"}`} />
               <input
                 ref={searchRef}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Pickxel에서 검색..."
-                className="w-full h-12 pl-3 pr-2 bg-transparent text-[14px] text-[#0F0F0F] placeholder:text-gray-400 focus:outline-none"
+                className={`w-full h-12 pl-3 pr-2 bg-transparent text-[14px] focus:outline-none ${
+                  isNight ? "text-white placeholder:text-white/40" : "text-[#0F0F0F] placeholder:text-gray-400"
+                }`}
               />
               {searchQuery && (
-                <button onClick={() => setSearchQuery("")} className="p-0.5 hover:bg-gray-100 rounded-full transition-colors shrink-0" aria-label="검색어 지우기">
-                  <X className="size-3.5 text-gray-400" />
+                <button onClick={() => setSearchQuery("")} className={`p-0.5 rounded-full transition-colors shrink-0 ${isNight ? "hover:bg-white/10" : "hover:bg-gray-100"}`} aria-label="검색어 지우기">
+                  <X className={`size-3.5 ${isNight ? "text-white/40" : "text-gray-400"}`} />
                 </button>
               )}
             </div>
 
-            <div className="w-px h-6 bg-gray-200 shrink-0" />
+            <div className={`w-px h-6 shrink-0 ${isNight ? "bg-white/10" : "bg-gray-200"}`} />
 
             {/* segmented control (피드 / 프로필) */}
             <div className="relative flex items-center px-1.5 shrink-0">
               <button
                 onClick={() => setActiveTab("feed")}
                 className={`relative flex items-center gap-1.5 h-9 px-3 rounded-full text-[13px] font-bold transition-colors z-[1] ${
-                  activeTab === "feed" ? "text-white" : "text-gray-500 hover:text-gray-800"
+                  activeTab === "feed" ? "text-white" : isNight ? "text-white/45 hover:text-white/85" : "text-gray-500 hover:text-gray-800"
                 }`}
               >
                 {activeTab === "feed" && (
@@ -656,13 +653,13 @@ export default function Explore() {
                     transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                   />
                 )}
-                <LayoutGrid className={`relative z-[2] size-3.5 transition-colors ${activeTab === "feed" ? "text-white" : "text-gray-400"}`} />
+                <LayoutGrid className={`relative z-[2] size-3.5 transition-colors ${activeTab === "feed" ? "text-white" : isNight ? "text-white/40" : "text-gray-400"}`} />
                 <span className="relative z-[2]">피드</span>
               </button>
               <button
                 onClick={() => setActiveTab("profile")}
                 className={`relative flex items-center gap-1.5 h-9 px-3 rounded-full text-[13px] font-bold transition-colors z-[1] ${
-                  activeTab === "profile" ? "text-white" : "text-gray-500 hover:text-gray-800"
+                  activeTab === "profile" ? "text-white" : isNight ? "text-white/45 hover:text-white/85" : "text-gray-500 hover:text-gray-800"
                 }`}
               >
                 {activeTab === "profile" && (
@@ -677,13 +674,15 @@ export default function Explore() {
             </div>
 
             {/* 정렬 셀렉터 */}
-            <div className="w-px h-6 bg-gray-200 shrink-0" />
+            <div className={`w-px h-6 shrink-0 ${isNight ? "bg-white/10" : "bg-gray-200"}`} />
             <div className="relative shrink-0 pr-2">
                   <button
                     onClick={() => setIsSortOpen((v) => !v)}
-                    className="flex items-center gap-1.5 h-9 px-3 rounded-full text-[13px] font-medium text-gray-700 hover:bg-gray-50 transition-all"
+                    className={`flex items-center gap-1.5 h-9 px-3 rounded-full text-[13px] font-medium transition-all ${
+                      isNight ? "text-white/70 hover:bg-white/10" : "text-gray-700 hover:bg-gray-50"
+                    }`}
                   >
-                    <ArrowUpDown className="size-3.5 text-gray-400" />
+                    <ArrowUpDown className={`size-3.5 ${isNight ? "text-white/40" : "text-gray-400"}`} />
                     <span>{sortLabel[sortBy]}</span>
                   </button>
                   <AnimatePresence>
@@ -695,7 +694,9 @@ export default function Explore() {
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: -6, scale: 0.98 }}
                           transition={{ duration: 0.15 }}
-                          className="absolute right-0 top-full mt-2 z-40 w-44 rounded-xl bg-white border border-gray-200 shadow-xl py-1.5 overflow-hidden"
+                          className={`absolute right-0 top-full mt-2 z-40 w-44 rounded-xl border shadow-xl py-1.5 overflow-hidden ${
+                            isNight ? "bg-[#141d30] border-white/10" : "bg-white border-gray-200"
+                          }`}
                         >
                           {([
                             { key: "recommended", icon: Star, label: "추천", desc: "Pickxel 큐레이션" },
@@ -705,14 +706,16 @@ export default function Explore() {
                             <button
                               key={key}
                               onClick={() => { setSortBy(key); setIsSortOpen(false); }}
-                              className={`w-full flex items-start gap-2.5 px-3 py-2 text-left hover:bg-gray-50 transition-colors ${
-                                sortBy === key ? "bg-[#00C9A7]/5" : ""
+                              className={`w-full flex items-start gap-2.5 px-3 py-2 text-left transition-colors ${
+                                sortBy === key
+                                  ? (isNight ? "bg-[#00C9A7]/15" : "bg-[#00C9A7]/5")
+                                  : (isNight ? "hover:bg-white/5" : "hover:bg-gray-50")
                               }`}
                             >
-                              <Icon className={`size-3.5 mt-1 shrink-0 ${sortBy === key ? "text-[#00A88C]" : "text-gray-400"}`} />
+                              <Icon className={`size-3.5 mt-1 shrink-0 ${sortBy === key ? "text-[#00A88C]" : isNight ? "text-white/40" : "text-gray-400"}`} />
                               <div className="min-w-0">
-                                <p className={`text-[13px] font-semibold ${sortBy === key ? "text-[#00A88C]" : "text-gray-800"}`}>{label}</p>
-                                <p className="text-[11px] text-gray-400 truncate">{desc}</p>
+                                <p className={`text-[13px] font-semibold ${sortBy === key ? "text-[#00A88C]" : isNight ? "text-white/90" : "text-gray-800"}`}>{label}</p>
+                                <p className={`text-[11px] truncate ${isNight ? "text-white/40" : "text-gray-400"}`}>{desc}</p>
                               </div>
                               {sortBy === key && <Check className="ml-auto size-3.5 text-[#00A88C] mt-1" />}
                             </button>
@@ -857,7 +860,9 @@ export default function Explore() {
                         onClick={() => openFeedDetail(project)}
                       >
                         {/* 이미지 카드 (4:3 고정) */}
-                        <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] group-hover:shadow-[0_18px_40px_rgba(0,0,0,0.14)] transition-shadow duration-500">
+                        <div className={`relative aspect-[4/3] rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)] group-hover:shadow-[0_18px_40px_rgba(0,0,0,0.14)] transition-shadow duration-500 ${
+                          isNight ? "bg-[#1a2035]" : "bg-gray-100"
+                        }`}>
                           <ImageWithFallback
                             src={project.image || ""}
                             alt={project.title}
@@ -867,7 +872,9 @@ export default function Explore() {
                           {/* 카테고리 배지 */}
                           {project.category && (
                             <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 -translate-y-1 group-hover:translate-y-0 transition-all duration-300 z-10">
-                              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-md text-[11px] font-semibold text-[#0F0F0F] shadow-sm">
+                              <span className={`inline-flex items-center px-2.5 py-1 rounded-full backdrop-blur-md text-[11px] font-semibold shadow-sm ${
+                                isNight ? "bg-[#141d30]/95 text-white" : "bg-white/90 text-[#0F0F0F]"
+                              }`}>
                                 {project.category}
                               </span>
                             </div>
@@ -898,7 +905,9 @@ export default function Explore() {
 
                         {/* 카드 메타 캡션 */}
                         <div className="pt-2.5 px-0.5 pb-2">
-                          <h3 className="font-semibold text-[13.5px] text-[#0F0F0F] truncate group-hover:text-[#00A88C] transition-colors duration-300 leading-snug">
+                          <h3 className={`font-semibold text-[13.5px] truncate group-hover:text-[#00A88C] transition-colors duration-300 leading-snug ${
+                            isNight ? "text-white" : "text-[#0F0F0F]"
+                          }`}>
                             {project.title}
                           </h3>
                           <div className="mt-1 flex items-center justify-between gap-2">
@@ -906,11 +915,11 @@ export default function Explore() {
                               <ImageWithFallback
                                 src={project.author.avatar}
                                 alt={project.author.name}
-                                className="size-4 rounded-full ring-1 ring-gray-100 shrink-0 object-cover"
+                                className={`size-4 rounded-full ring-1 shrink-0 object-cover ${isNight ? "ring-white/10" : "ring-gray-100"}`}
                               />
-                              <p className="text-[11.5px] text-gray-500 font-medium truncate">{project.author.name}</p>
+                              <p className={`text-[11.5px] font-medium truncate ${isNight ? "text-white/50" : "text-gray-500"}`}>{project.author.name}</p>
                             </div>
-                            <div className="flex items-center gap-2 shrink-0 text-[11px] text-gray-400 font-medium">
+                            <div className={`flex items-center gap-2 shrink-0 text-[11px] font-medium ${isNight ? "text-white/40" : "text-gray-400"}`}>
                               <span className="flex items-center gap-0.5">
                                 <Heart className={`size-3 ${isLiked ? "fill-[#FF5C3A] text-[#FF5C3A]" : ""}`} />
                                 {project.likes}
@@ -932,25 +941,27 @@ export default function Explore() {
                   {isFetchingMoreFeeds && (
                     <div className="flex flex-col items-center gap-2">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#00C9A7]"></div>
-                      <p className="text-xs text-gray-400 font-medium">새로운 피드를 불러오는 중...</p>
+                      <p className={`text-xs font-medium ${isNight ? "text-white/40" : "text-gray-400"}`}>새로운 피드를 불러오는 중...</p>
                     </div>
                   )}
                   {!hasMoreFeeds && filteredProjects.length > 0 && (
-                    <p className="text-sm text-gray-400">모든 피드를 확인했습니다 ✨</p>
+                    <p className={`text-sm ${isNight ? "text-white/45" : "text-gray-400"}`}>모든 피드를 확인했습니다 ✨</p>
                   )}
                 </div>
               </>
             ) : (
               <div className="flex flex-col items-center justify-center py-32">
-                <div className="w-24 h-24 rounded-full bg-gray-100 flex items-center justify-center mb-5 animate-pulse">
-                  <ImageOff className="size-12 text-gray-300" />
+                <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-5 animate-pulse ${isNight ? "bg-white/5" : "bg-gray-100"}`}>
+                  <ImageOff className={`size-12 ${isNight ? "text-white/20" : "text-gray-300"}`} />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-700 mb-1">
+                <h3 className={`text-lg font-semibold mb-1 ${isNight ? "text-white/80" : "text-gray-700"}`}>
                   {selectedCategory ? `"${selectedCategory}" 카테고리의 작품이 없습니다` : searchQuery ? `"${searchQuery}" 검색 결과가 없습니다` : "표시할 작품이 없습니다"}
                 </h3>
-                <p className="text-sm text-gray-400 mb-5">다른 카테고리를 선택하거나 검색어를 변경해보세요.</p>
+                <p className={`text-sm mb-5 ${isNight ? "text-white/45" : "text-gray-400"}`}>다른 카테고리를 선택하거나 검색어를 변경해보세요.</p>
                 {(selectedCategory || searchQuery) && (
-                  <motion.button whileTap={{ scale: 0.95 }} onClick={() => { setSelectedCategory(null); setSearchQuery(""); }} className="px-6 py-2.5 rounded-lg bg-[#0F0F0F] text-white text-sm font-medium hover:bg-gray-800 transition-colors">
+                  <motion.button whileTap={{ scale: 0.95 }} onClick={() => { setSelectedCategory(null); setSearchQuery(""); }} className={`px-6 py-2.5 rounded-lg text-white text-sm font-medium transition-colors ${
+                    isNight ? "bg-[#00C9A7] hover:bg-[#00A88C]" : "bg-[#0F0F0F] hover:bg-gray-800"
+                  }`}>
                     필터 초기화
                   </motion.button>
                 )}
@@ -964,8 +975,8 @@ export default function Explore() {
           <section className="max-w-[1800px] mx-auto px-5 py-6">
             <div className="mb-5 flex items-center gap-2">
               <Users className="size-4 text-[#00C9A7]" />
-              <span className="text-sm font-semibold text-[#374151]">디자이너 {filteredDesigners.length}명</span>
-              {searchQuery && <span className="text-sm text-gray-400">검색어 "{searchQuery}"</span>}
+              <span className={`text-sm font-semibold ${isNight ? "text-white/80" : "text-[#374151]"}`}>디자이너 {filteredDesigners.length}명</span>
+              {searchQuery && <span className={`text-sm ${isNight ? "text-white/45" : "text-gray-400"}`}>검색어 "{searchQuery}"</span>}
             </div>
             {isDesignersLoading ? (
               <div className="flex justify-center py-20">
@@ -985,10 +996,12 @@ export default function Explore() {
                     >
                       <Link
                         to={`/profile/${profile.nickname}`}
-                        className="block bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] group-hover:border-[#00C9A7]/40 group-hover:shadow-[0_18px_40px_rgba(0,0,0,0.1)] group-hover:-translate-y-1 transition-all duration-500"
+                        className={`block rounded-2xl overflow-hidden border shadow-[0_1px_3px_rgba(0,0,0,0.04)] group-hover:border-[#00C9A7]/40 group-hover:shadow-[0_18px_40px_rgba(0,0,0,0.1)] group-hover:-translate-y-1 transition-all duration-500 ${
+                          isNight ? "bg-[#141d30] border-white/10" : "bg-white border-gray-100"
+                        }`}
                       >
                         {/* 상단 배너 (16:9) */}
-                        <div className="relative aspect-[16/9] overflow-hidden bg-[#F9FAFB]">
+                        <div className={`relative aspect-[16/9] overflow-hidden ${isNight ? "bg-[#1a2035]" : "bg-[#F9FAFB]"}`}>
                           {profile.bannerImage ? (
                             <>
                               <ImageWithFallback
@@ -999,9 +1012,11 @@ export default function Explore() {
                               <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
                             </>
                           ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-gray-50 to-gray-100/50 border-b border-gray-100">
-                              <ImageOff className="size-6 text-gray-300 group-hover:scale-110 transition-transform duration-500" />
-                              <span className="text-[9px] font-bold text-gray-300 uppercase tracking-[0.2em] px-2 text-center leading-tight">
+                            <div className={`w-full h-full flex flex-col items-center justify-center gap-2 border-b ${
+                              isNight ? "bg-gradient-to-br from-[#1a2035] to-[#141d30] border-white/10" : "bg-gradient-to-br from-gray-50 to-gray-100/50 border-gray-100"
+                            }`}>
+                              <ImageOff className={`size-6 group-hover:scale-110 transition-transform duration-500 ${isNight ? "text-white/25" : "text-gray-300"}`} />
+                              <span className={`text-[9px] font-bold uppercase tracking-[0.2em] px-2 text-center leading-tight ${isNight ? "text-white/30" : "text-gray-300"}`}>
                                 대표 이미지가 없습니다
                               </span>
                             </div>
@@ -1014,32 +1029,32 @@ export default function Explore() {
                           <ImageWithFallback
                             src={getUserAvatar(profile.profileImage, profile.userId, profile.nickname)}
                             alt={profile.nickname}
-                            className="size-16 rounded-full ring-4 ring-white shadow-md object-cover mb-3"
+                            className={`size-16 rounded-full ring-4 shadow-md object-cover mb-3 ${isNight ? "ring-[#141d30]" : "ring-white"}`}
                           />
-                          <h3 className="font-bold text-[15px] text-[#0F0F0F] group-hover:text-[#00A88C] transition-colors truncate leading-tight">
+                          <h3 className={`font-bold text-[15px] group-hover:text-[#00A88C] transition-colors truncate leading-tight ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>
                             {profile.nickname}
                           </h3>
-                          <p className="text-[12px] text-gray-500 mt-0.5 truncate">
+                          <p className={`text-[12px] mt-0.5 truncate ${isNight ? "text-white/50" : "text-gray-500"}`}>
                             {profile.job || "디자이너"}
                           </p>
-                          <p className="text-[12px] text-gray-400 mt-2 line-clamp-2 leading-relaxed min-h-[34px]">
+                          <p className={`text-[12px] mt-2 line-clamp-2 leading-relaxed min-h-[34px] ${isNight ? "text-white/40" : "text-gray-400"}`}>
                             {profile.introduction || "멋진 작업을 만들어가는 디자이너입니다."}
                           </p>
 
                           {/* 메타 정보 */}
-                          <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-[12px]">
+                          <div className={`mt-3 pt-3 border-t flex items-center justify-between text-[12px] ${isNight ? "border-white/10" : "border-gray-100"}`}>
                             <div className="flex items-center gap-3">
-                              <span className="text-gray-500">
-                                <strong className="text-[#0F0F0F] text-[13px] font-bold">{profile.followCount}</strong>{" "}
+                              <span className={isNight ? "text-white/50" : "text-gray-500"}>
+                                <strong className={`text-[13px] font-bold ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>{profile.followCount}</strong>{" "}
                                 <span className="text-[11px]">팔로워</span>
                               </span>
-                              <span className="w-px h-3 bg-gray-200" />
-                              <span className="text-gray-500">
-                                <strong className="text-[#0F0F0F] text-[13px] font-bold">{profile.postCount}</strong>{" "}
+                              <span className={`w-px h-3 ${isNight ? "bg-white/15" : "bg-gray-200"}`} />
+                              <span className={isNight ? "text-white/50" : "text-gray-500"}>
+                                <strong className={`text-[13px] font-bold ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>{profile.postCount}</strong>{" "}
                                 <span className="text-[11px]">작품</span>
                               </span>
                             </div>
-                            <ArrowRight className="size-3.5 text-gray-300 group-hover:text-[#00A88C] group-hover:translate-x-0.5 transition-all" />
+                            <ArrowRight className={`size-3.5 group-hover:text-[#00A88C] group-hover:translate-x-0.5 transition-all ${isNight ? "text-white/25" : "text-gray-300"}`} />
                           </div>
                         </div>
                       </Link>
@@ -1052,25 +1067,27 @@ export default function Explore() {
                   {isFetchingMoreDesigners && (
                     <div className="flex flex-col items-center gap-2">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#00C9A7]"></div>
-                      <p className="text-xs text-gray-400 font-medium">디자이너를 불러오는 중...</p>
+                      <p className={`text-xs font-medium ${isNight ? "text-white/40" : "text-gray-400"}`}>디자이너를 불러오는 중...</p>
                     </div>
                   )}
                   {!hasMoreDesigners && filteredDesigners.length > 0 && (
-                    <p className="text-sm text-gray-400">모든 디자이너를 확인했습니다 ✨</p>
+                    <p className={`text-sm ${isNight ? "text-white/45" : "text-gray-400"}`}>모든 디자이너를 확인했습니다 ✨</p>
                   )}
                 </div>
               </>
             ) : (
               <div className="flex flex-col items-center justify-center py-32">
-                <div className="w-24 h-24 rounded-full bg-gray-100 flex items-center justify-center mb-5 animate-pulse">
-                  <UserSearch className="size-12 text-gray-300" />
+                <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-5 animate-pulse ${isNight ? "bg-white/5" : "bg-gray-100"}`}>
+                  <UserSearch className={`size-12 ${isNight ? "text-white/20" : "text-gray-300"}`} />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-700 mb-1">
+                <h3 className={`text-lg font-semibold mb-1 ${isNight ? "text-white/80" : "text-gray-700"}`}>
                   {searchQuery ? `"${searchQuery}"에 해당하는 디자이너가 없습니다` : "디자이너를 찾을 수 없습니다"}
                 </h3>
-                <p className="text-sm text-gray-400 mb-5">다른 이름이나 분야로 검색해보세요.</p>
+                <p className={`text-sm mb-5 ${isNight ? "text-white/45" : "text-gray-400"}`}>다른 이름이나 분야로 검색해보세요.</p>
                 {searchQuery && (
-                  <motion.button whileTap={{ scale: 0.95 }} onClick={() => setSearchQuery("")} className="px-6 py-2.5 rounded-lg bg-[#0F0F0F] text-white text-sm font-medium hover:bg-gray-800 transition-colors">
+                  <motion.button whileTap={{ scale: 0.95 }} onClick={() => setSearchQuery("")} className={`px-6 py-2.5 rounded-lg text-white text-sm font-medium transition-colors ${
+                    isNight ? "bg-[#00C9A7] hover:bg-[#00A88C]" : "bg-[#0F0F0F] hover:bg-gray-800"
+                  }`}>
                     검색 초기화
                   </motion.button>
                 )}
@@ -1083,6 +1100,7 @@ export default function Explore() {
 
       {selectedExploreFeed && (
         <FeedDetailModal
+          isNight={isNight}
           selectedFeed={selectedExploreFeed}
           activeModalImage={
             (selectedExploreFeed.images ?? [selectedExploreFeed.image])[modalImageIndex] ??
@@ -1155,23 +1173,25 @@ export default function Explore() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
             className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
             onClick={() => closeCollectionModal()}
           >
             <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden"
+              initial={{ opacity: 0, scale: 0.92, y: 28 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 16 }}
+              transition={{ type: "spring", damping: 34, stiffness: 380, mass: 0.78 }}
+              className={`rounded-2xl w-full max-w-md shadow-2xl overflow-hidden ${isNight ? "bg-[#141d30] border border-white/10" : "bg-white"}`}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="p-5 border-b border-gray-100 flex items-center justify-between">
+              <div className={`p-5 border-b flex items-center justify-between ${isNight ? "border-white/10" : "border-gray-100"}`}>
                 <div>
-                  <h3 className="font-bold text-lg text-[#0F0F0F]">컬렉션에 저장</h3>
-                  <p className="text-xs text-gray-500 mt-0.5 truncate max-w-[280px]">{collectionModalProject.title}</p>
+                  <h3 className={`font-bold text-lg ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>컬렉션에 저장</h3>
+                  <p className={`text-xs mt-0.5 truncate max-w-[280px] ${isNight ? "text-white/45" : "text-gray-500"}`}>{collectionModalProject.title}</p>
                 </div>
-                <button onClick={() => closeCollectionModal()} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                  <X className="size-5 text-gray-400" />
+                <button onClick={() => closeCollectionModal()} className={`p-2 rounded-full transition-colors ${isNight ? "hover:bg-white/10" : "hover:bg-gray-100"}`}>
+                  <X className={`size-5 ${isNight ? "text-white/40" : "text-gray-400"}`} />
                 </button>
               </div>
 
@@ -1184,16 +1204,18 @@ export default function Explore() {
                       key={col.folderId}
                       onClick={() => saveToCollection(col.folderId)}
                       className={`w-full p-3 rounded-lg border flex items-center justify-between gap-3 text-left transition-all ${
-                        isSaved ? "bg-[#F5FFFB] border-[#00C9A7] text-[#007E68]" : "bg-white border-gray-200 hover:border-[#00C9A7] hover:bg-[#F5FFFB]"
+                        isSaved
+                          ? (isNight ? "bg-[#00C9A7]/15 border-[#00C9A7]/50 text-[#00C9A7]" : "bg-[#F5FFFB] border-[#00C9A7] text-[#007E68]")
+                          : (isNight ? "bg-[#1a2035] border-white/10 hover:border-[#00C9A7]/40 hover:bg-[#00C9A7]/10" : "bg-white border-gray-200 hover:border-[#00C9A7] hover:bg-[#F5FFFB]")
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className={`size-11 rounded-lg flex items-center justify-center shrink-0 ${isSaved ? "bg-[#00C9A7] text-white" : "bg-[#F7F7F5] text-[#00A88C]"}`}>
+                        <div className={`size-11 rounded-lg flex items-center justify-center shrink-0 ${isSaved ? "bg-[#00C9A7] text-white" : isNight ? "bg-white/10 text-[#00C9A7]" : "bg-[#F7F7F5] text-[#00A88C]"}`}>
                           {isSaved ? <Check className="size-5" /> : <Bookmark className="size-5" />}
                         </div>
                         <div className="min-w-0">
-                          <p className="font-semibold text-sm truncate">{col.folderName}</p>
-                          <p className="text-xs text-gray-500">{col.itemCount}개 저장됨</p>
+                          <p className={`font-semibold text-sm truncate ${isNight && !isSaved ? "text-white" : ""}`}>{col.folderName}</p>
+                          <p className={`text-xs ${isNight ? "text-white/45" : "text-gray-500"}`}>{col.itemCount}개 저장됨</p>
                         </div>
                       </div>
                       {isSaved && <span className="text-xs font-bold text-[#00A88C] shrink-0">저장됨</span>}
@@ -1202,8 +1224,8 @@ export default function Explore() {
                 })}
               </div>
 
-              <div className="p-5 border-t border-gray-100">
-                <label className="text-sm font-bold text-[#0F0F0F] mb-2 block">새 컬렉션 만들기</label>
+              <div className={`p-5 border-t ${isNight ? "border-white/10" : "border-gray-100"}`}>
+                <label className={`text-sm font-bold mb-2 block ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>새 컬렉션 만들기</label>
                 <form 
                   onSubmit={(e) => { e.preventDefault(); createCollectionAndSave(); }}
                   className="flex gap-2"
@@ -1213,19 +1235,25 @@ export default function Explore() {
                     value={newCollectionName}
                     onChange={(e) => setNewCollectionName(e.target.value)}
                     placeholder="예) 메인 페이지 레퍼런스"
-                    className="flex-1 px-3 py-2.5 rounded-lg bg-[#F7F7F5] border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7]"
+                    className={`flex-1 px-3 py-2.5 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7] ${
+                      isNight ? "bg-[#0e1524] border-white/10 text-white placeholder:text-white/35" : "bg-[#F7F7F5] border-gray-200"
+                    }`}
                   />
                   <button
                     type="submit"
                     disabled={!newCollectionName.trim()}
-                    className="px-4 py-2.5 bg-[#0F0F0F] text-white rounded-lg text-sm font-bold hover:bg-[#00A88C] disabled:opacity-30 transition-all flex items-center gap-2"
+                    className={`px-4 py-2.5 text-white rounded-lg text-sm font-bold disabled:opacity-30 transition-all flex items-center gap-2 ${
+                      isNight ? "bg-[#00C9A7] hover:bg-[#00A88C]" : "bg-[#0F0F0F] hover:bg-[#00A88C]"
+                    }`}
                   >
                     <FolderPlus className="size-4" />
                     만들기
                   </button>
                 </form>
                 {collectionNotice && (
-                  <motion.p initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="text-center text-sm font-semibold text-[#00C9A7] mt-4 bg-[#E7FAF6] py-2 rounded-lg">
+                  <motion.p initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className={`text-center text-sm font-semibold text-[#00C9A7] mt-4 py-2 rounded-lg ${
+                    isNight ? "bg-[#00C9A7]/15" : "bg-[#E7FAF6]"
+                  }`}>
                     {collectionNotice}
                   </motion.p>
                 )}
@@ -1234,6 +1262,7 @@ export default function Explore() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
       <Footer />
     </div>
   );

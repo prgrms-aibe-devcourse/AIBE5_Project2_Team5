@@ -1,7 +1,12 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --font-size: 16px;
+  /* 기본 rem 기준: 본문 가독성 소폭 상향 (대부분 페이지에 전달) */
+  --font-size: 17px;
+  --font-family-sans: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --font-family-display: "SUIT Variable", "SUIT", "Pretendard", sans-serif;
+  --font-family-serif: "Source Serif 4", "Pretendard", serif;
   
   /* Pickxel Brand Colors */
   --brand-mint: #00C9A7;
@@ -61,6 +66,11 @@
   --sidebar-accent-foreground: #0F0F0F;
   --sidebar-border: rgba(0, 0, 0, 0.1);
   --sidebar-ring: #00C9A7;
+
+  /* 3D 폴더 (Collections 등) */
+  --folder-back: #1a3d33;
+  --folder-tab: #00a88c;
+  --folder-front: #245a4a;
 }
 
 .dark {
@@ -98,9 +108,16 @@
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: rgba(255, 255, 255, 0.1);
   --sidebar-ring: #00C9A7;
+
+  --folder-back: #0c1814;
+  --folder-tab: #007a6a;
+  --folder-front: #12382d;
 }
 
 @theme inline {
+  --font-sans: var(--font-family-sans);
+  --font-display: var(--font-family-display);
+  --font-serif: var(--font-family-serif);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -141,13 +158,73 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/*
+ * Scrollbar: 동일 width/height를 라이트·다크 모두에 둡니다.
+ * (다크에서만 8px로 지정하던 경우 라이트는 OS 기본 ~15px → 토글 시 스크롤바 폭이 바뀌어 페이지가 옆으로 밀리는 현상)
+ */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 4px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.32);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox: 얇은 스크롤바로 폭을 웬만큼 일정하게 */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.28) rgba(0, 0, 0, 0.04);
+}
+
+[data-night="true"] {
+  color-scheme: dark;
+}
+
+html[data-night="true"] {
+  /* Firefox: 트랙·썸 모두 #fff 대신 셸/패널 톤 */
+  scrollbar-color: #3d4a62 #0e1524;
+}
+
+[data-night="true"] *::-webkit-scrollbar-track {
+  background: #0e1524;
+}
+
+[data-night="true"] *::-webkit-scrollbar-thumb {
+  background: #2f3a4d;
+  border-radius: 4px;
+}
+
+[data-night="true"] *::-webkit-scrollbar-thumb:hover {
+  background: #3d4c63;
+}
+
+[data-night="true"] *::-webkit-scrollbar-thumb:active {
+  background: #2a3548;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: var(--font-family-sans);
+    line-height: 1.55;
   }
 
   /**

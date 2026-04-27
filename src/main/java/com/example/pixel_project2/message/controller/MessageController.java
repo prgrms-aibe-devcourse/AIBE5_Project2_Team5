@@ -20,6 +20,7 @@ import com.example.pixel_project2.message.service.MessageService;
 import com.example.pixel_project2.message.websocket.MessageSocketHandler;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,6 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/messages")
 @RequiredArgsConstructor
@@ -175,7 +177,11 @@ public class MessageController {
             @Valid @RequestBody SaveMessageProcessesRequest request
     ) {
         List<MessageProcessResponse> savedProcesses = messageService.saveProcesses(currentUser, conversationId, request);
-        messageSocketHandler.broadcastProcessUpdate(conversationId, savedProcesses);
+        try {
+            messageSocketHandler.broadcastProcessUpdate(conversationId, savedProcesses);
+        } catch (Exception e) {
+            log.warn("process.update broadcast failed for conversationId={}", conversationId, e);
+        }
         return ApiResponse.ok(
                 "Message processes saved.",
                 savedProcesses

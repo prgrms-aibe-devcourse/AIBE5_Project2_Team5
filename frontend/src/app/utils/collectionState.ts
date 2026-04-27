@@ -194,6 +194,21 @@ const defaultFeedCatalog: CollectionFeedItem[] = [
   },
 ];
 
+export type AuthHeroShowcaseItem = {
+  id: number;
+  title: string;
+  image: string;
+  category: string;
+};
+
+/** 로그인·회원가입 히어로 캐러셀용 (로컬스토리지 없이 기본 카탈로그만 사용). */
+export const AUTH_HERO_SHOWCASE_ITEMS: AuthHeroShowcaseItem[] = defaultFeedCatalog.slice(0, 6).map((item) => ({
+  id: item.id,
+  title: item.title,
+  image: item.image,
+  category: item.category ?? "작품",
+}));
+
 const getProfileNameFromStorageKey = (key: string) => {
   const rawName = key.slice(profileFeedStoragePrefix.length);
 

@@ -1,7 +1,8 @@
 import Navigation from "../components/Navigation";
 import { toast } from "sonner";
-import { Edit, Search, Info, Send, Image, Smile, AtSign, Sparkles, Calendar, FileText, CheckCircle, Circle, ChevronDown, ChevronUp, ThumbsUp, XCircle, Paperclip, Figma, ExternalLink, Plus, Clock, Check, CheckCheck, Trash2, GripVertical, Eye, ArrowLeft, Bookmark } from "lucide-react";
+import { Edit, Search, Info, Send, Image, Smile, AtSign, Sparkles, Calendar, FileText, CheckCircle, Circle, ChevronDown, ChevronUp, ThumbsUp, XCircle, Paperclip, Figma, ExternalLink, Plus, Clock, Check, CheckCheck, Trash2, GripVertical, Eye, ArrowLeft, Bookmark, RefreshCw, AlertTriangle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { motion } from "motion/react";
 import { useNavigate, useSearchParams } from "react-router";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import {
@@ -35,6 +36,7 @@ import {
 } from "../api/messageSocket";
 import { getCurrentUser } from "../utils/auth";
 import { DEFAULT_AVATAR } from "../utils/avatar";
+import { useNightMode } from "../contexts/NightModeContext";
 
 type AttachmentUploadStatus = "uploading" | "ready" | "failed";
 type IntegrationProvider = "figma" | "adobe" | "photoshop" | "pinterest";
@@ -208,34 +210,34 @@ const getFileExtension = (fileName: string) => {
   return extension && extension !== fileName.toUpperCase() ? extension : "FILE";
 };
 
-const getFileAttachmentMeta = (attachment: FileAttachment) => {
+const getFileAttachmentMeta = (attachment: FileAttachment, dark = false) => {
   const extension = getFileExtension(attachment.name);
 
   if (attachment.mimeType.includes("pdf") || extension === "PDF") {
-    return { label: "PDF", className: "bg-[#FFF1ED] text-[#D84325]" };
+    return { label: "PDF", className: dark ? "bg-[#3a1a14] text-[#FF8A6E]" : "bg-[#FFF1ED] text-[#D84325]" };
   }
 
   if (["DOC", "DOCX", "HWP"].includes(extension)) {
-    return { label: "DOC", className: "bg-[#EAF2FF] text-[#2453A6]" };
+    return { label: "DOC", className: dark ? "bg-[#162040] text-[#6B9AFF]" : "bg-[#EAF2FF] text-[#2453A6]" };
   }
 
   if (["XLS", "XLSX", "CSV"].includes(extension)) {
-    return { label: "XLS", className: "bg-[#E8F8EF] text-[#127A4B]" };
+    return { label: "XLS", className: dark ? "bg-[#0e2e1c] text-[#4CD89D]" : "bg-[#E8F8EF] text-[#127A4B]" };
   }
 
   if (["PPT", "PPTX", "KEY"].includes(extension)) {
-    return { label: "PPT", className: "bg-[#FFF4E8] text-[#B65318]" };
+    return { label: "PPT", className: dark ? "bg-[#2e1e0e] text-[#FFB36B]" : "bg-[#FFF4E8] text-[#B65318]" };
   }
 
   if (["ZIP", "RAR", "7Z"].includes(extension)) {
-    return { label: "ZIP", className: "bg-[#F1EEFF] text-[#5B42B5]" };
+    return { label: "ZIP", className: dark ? "bg-[#1e1638] text-[#A08EF0]" : "bg-[#F1EEFF] text-[#5B42B5]" };
   }
 
   if (["PNG", "JPG", "JPEG", "GIF", "WEBP", "SVG"].includes(extension)) {
-    return { label: "IMG", className: "bg-[#E8FBF7] text-[#007E68]" };
+    return { label: "IMG", className: dark ? "bg-[#0e2e28] text-[#00C9A7]" : "bg-[#E8FBF7] text-[#007E68]" };
   }
 
-  return { label: extension.slice(0, 4), className: "bg-gray-100 text-gray-600" };
+  return { label: extension.slice(0, 4), className: dark ? "bg-white/10 text-white/60" : "bg-gray-100 text-gray-600" };
 };
 
 const normalizeExternalUrl = (url: string) =>
@@ -258,21 +260,23 @@ const formatMessageTime = (createdAt?: string) => {
   }).format(Number.isNaN(date.getTime()) ? new Date() : date);
 };
 
-const integrationProviderMeta: Record<
-  IntegrationProvider,
-  {
-    label: string;
-    shortLabel: string;
-    title: string;
-    description: string;
-    placeholder: string;
-    previewTitle: string;
-    previewDescription: string;
-    borderClassName: string;
-    iconClassName: string;
-    chipClassName: string;
-  }
-> = {
+type IntegrationProviderMetaItem = {
+  label: string;
+  shortLabel: string;
+  title: string;
+  description: string;
+  placeholder: string;
+  previewTitle: string;
+  previewDescription: string;
+  borderClassName: string;
+  iconClassName: string;
+  chipClassName: string;
+  darkBorderClassName: string;
+  darkIconClassName: string;
+  darkChipClassName: string;
+};
+
+const integrationProviderMeta: Record<IntegrationProvider, IntegrationProviderMetaItem> = {
   figma: {
     label: "Figma",
     shortLabel: "Figma",
@@ -284,6 +288,9 @@ const integrationProviderMeta: Record<
     borderClassName: "border-[#BDEFD8]",
     iconClassName: "bg-[#E8FBF7] text-[#00A88C]",
     chipClassName: "bg-[#E8FBF7] text-[#007E68]",
+    darkBorderClassName: "border-[#00C9A7]/30",
+    darkIconClassName: "bg-[#00C9A7]/15 text-[#00C9A7]",
+    darkChipClassName: "bg-[#00C9A7]/15 text-[#00C9A7]",
   },
   adobe: {
     label: "Adobe",
@@ -296,6 +303,9 @@ const integrationProviderMeta: Record<
     borderClassName: "border-[#FFD1C8]",
     iconClassName: "bg-[#FFF1ED] text-[#FF5C3A]",
     chipClassName: "bg-[#FFF1ED] text-[#D84325]",
+    darkBorderClassName: "border-[#FF5C3A]/30",
+    darkIconClassName: "bg-[#FF5C3A]/15 text-[#FF8A6E]",
+    darkChipClassName: "bg-[#FF5C3A]/15 text-[#FF8A6E]",
   },
   photoshop: {
     label: "Photoshop",
@@ -308,6 +318,9 @@ const integrationProviderMeta: Record<
     borderClassName: "border-[#BFD7FF]",
     iconClassName: "bg-[#EAF2FF] text-[#2453A6]",
     chipClassName: "bg-[#EAF2FF] text-[#2453A6]",
+    darkBorderClassName: "border-[#6B9AFF]/30",
+    darkIconClassName: "bg-[#2453A6]/20 text-[#6B9AFF]",
+    darkChipClassName: "bg-[#2453A6]/20 text-[#6B9AFF]",
   },
   pinterest: {
     label: "Pinterest",
@@ -320,7 +333,20 @@ const integrationProviderMeta: Record<
     borderClassName: "border-[#F5B7C8]",
     iconClassName: "bg-[#FFF0F3] text-[#D3224B]",
     chipClassName: "bg-[#FFF0F3] text-[#B7133A]",
+    darkBorderClassName: "border-[#D3224B]/30",
+    darkIconClassName: "bg-[#D3224B]/15 text-[#FF6B8A]",
+    darkChipClassName: "bg-[#D3224B]/15 text-[#FF6B8A]",
   },
+};
+
+const getIntegrationMeta = (provider: IntegrationProvider, dark: boolean) => {
+  const meta = integrationProviderMeta[provider];
+  return {
+    ...meta,
+    borderClassName: dark ? meta.darkBorderClassName : meta.borderClassName,
+    iconClassName: dark ? meta.darkIconClassName : meta.iconClassName,
+    chipClassName: dark ? meta.darkChipClassName : meta.chipClassName,
+  };
 };
 
 const integrationProviderOrder: IntegrationProvider[] = [
@@ -1019,6 +1045,7 @@ const initialProcesses: ProjectProcess[] = [];
 export default function Messages() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { isNight } = useNightMode();
   const currentUser = getCurrentUser();
   const currentUserId = currentUser?.userId;
   const requestedConversationId = Number(searchParams.get("conversationId") ?? 0);
@@ -1060,6 +1087,9 @@ export default function Messages() {
   const [expandedProcess, setExpandedProcess] = useState<number | null>(2);
   const [processCreated, setProcessCreated] = useState(false);
   const [isProcessModalOpen, setIsProcessModalOpen] = useState(false);
+  const [isEndProcessModalOpen, setIsEndProcessModalOpen] = useState(false);
+  const [endProcessModalStep, setEndProcessModalStep] = useState<"info" | "confirm">("info");
+  const [isEndingProcess, setIsEndingProcess] = useState(false);
   const [draftProcesses, setDraftProcesses] = useState<ProjectProcess[]>(createDefaultProcessDraft);
   const [processDraftSnapshot, setProcessDraftSnapshot] =
     useState<ProjectProcess[]>(createDefaultProcessDraft);
@@ -1793,17 +1823,24 @@ export default function Messages() {
     }
 
     void loadProcesses();
-    const pollInterval = window.setInterval(() => {
-      void loadProcesses(true);
-    }, isRecoveryPollingActive
-      ? RECOVERY_STATE_POLL_INTERVAL
-      : CONNECTED_PROCESS_POLL_INTERVAL);
+    // 소켓이 연결된 정상 모드에서는 주기적 GET이 저장/완료 확인 직후 낙관적 상태를 덮어
+    // "즉시 풀리는" 현상을 낳을 수 있다. process.update 웹소켓 + 저장 응답으로 동기화한다.
+    const pollProcesses = !isSocketConnected || isRecoveryPollingActive;
+    const pollInterval = pollProcesses
+      ? window.setInterval(() => {
+          void loadProcesses(true);
+        }, isRecoveryPollingActive
+          ? RECOVERY_STATE_POLL_INTERVAL
+          : CONNECTED_PROCESS_POLL_INTERVAL)
+      : null;
 
     return () => {
       mounted = false;
-      window.clearInterval(pollInterval);
+      if (pollInterval !== null) {
+        window.clearInterval(pollInterval);
+      }
     };
-  }, [activeConversation?.id, isRecoveryPollingActive]);
+  }, [activeConversation?.id, isRecoveryPollingActive, isSocketConnected]);
 
   useEffect(() => {
     if (!activeConversation) return;
@@ -2268,15 +2305,9 @@ export default function Messages() {
     const roleLabel = getProcessParticipantButtonTitle(role);
     void persistProcesses(nextProcesses, {
       optimistic: true,
-      preferredExpandedId: null,
+      preferredExpandedId: processId,
       successMessage: isConfirming ? `${roleLabel} 확인이 기록되었습니다.` : undefined,
     });
-    return;
-
-    if (isConfirming) {
-      const roleLabel = role === "designer" ? "디자이너" : "클라이언트";
-      showProcessToast(`${roleLabel} 확인이 기록되었습니다.`);
-    }
   };
 
   const handleCreateProcess = () => {
@@ -2554,27 +2585,27 @@ export default function Messages() {
     if (progress === 100 && hasBothConfirmations(process.confirmations)) {
       return {
         label: "승인 완료",
-        className: "bg-[#DDF8EC] text-[#007E68] border-[#00C9A7]/40",
+        className: isNight ? "bg-[#00C9A7]/15 text-[#00C9A7] border-[#00C9A7]/30" : "bg-[#DDF8EC] text-[#007E68] border-[#00C9A7]/40",
       };
     }
 
     if (progress === 100) {
       return {
         label: "완료 대기중",
-        className: "bg-[#FFF4E8] text-[#B65318] border-[#FFB36B]/50",
+        className: isNight ? "bg-[#FFB36B]/15 text-[#FFB36B] border-[#FFB36B]/30" : "bg-[#FFF4E8] text-[#B65318] border-[#FFB36B]/50",
       };
     }
 
     if (progress > 0) {
       return {
         label: "작업 진행 중",
-        className: "bg-[#FFF1ED] text-[#D64928] border-[#FF5C3A]/30",
+        className: isNight ? "bg-[#FF5C3A]/15 text-[#FF8A6E] border-[#FF5C3A]/30" : "bg-[#FFF1ED] text-[#D64928] border-[#FF5C3A]/30",
       };
     }
 
     return {
       label: "시작 전",
-      className: "bg-gray-100 text-gray-600 border-gray-200",
+      className: isNight ? "bg-white/10 text-white/50 border-white/10" : "bg-gray-100 text-gray-600 border-gray-200",
     };
   };
 
@@ -3390,10 +3421,10 @@ export default function Messages() {
       <span
         className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
           isFailed
-            ? "bg-[#FFF1ED] text-[#D84325]"
+            ? isNight ? "bg-[#3a1a14] text-[#FF8A6E]" : "bg-[#FFF1ED] text-[#D84325]"
             : isUploading
-              ? "bg-[#FFF4E8] text-[#B65318]"
-              : "bg-[#E8FBF7] text-[#007E68]"
+              ? isNight ? "bg-[#2e1e0e] text-[#FFB36B]" : "bg-[#FFF4E8] text-[#B65318]"
+              : isNight ? "bg-[#0e2e28] text-[#00C9A7]" : "bg-[#E8FBF7] text-[#007E68]"
         }`}
       >
         {isUploading ? (
@@ -3437,7 +3468,7 @@ export default function Messages() {
     return (
       <div className="space-y-1.5">
         {images.length > 1 && (
-          <div className="flex items-center gap-2 text-[10px] font-bold text-[#2D5A4D]/70">
+          <div className={`flex items-center gap-2 text-[10px] font-bold ${isNight ? "text-white/40" : "text-[#2D5A4D]/70"}`}>
             <Image className="size-3.5" />
             이미지 {images.length}장
           </div>
@@ -3450,7 +3481,7 @@ export default function Messages() {
                 onClick={() =>
                   setSelectedImage({ src: attachment.src, name: attachment.name })
                 }
-                className={`relative overflow-hidden rounded-lg border border-white/60 bg-white shadow-sm ${imageClass}`}
+                className={`relative overflow-hidden rounded-lg border shadow-sm ${isNight ? "border-white/10 bg-[#1a2035]" : "border-white/60 bg-white"} ${imageClass}`}
                 aria-label={`${attachment.name} 크게 보기`}
               >
                 <ImageWithFallback
@@ -3491,7 +3522,7 @@ export default function Messages() {
     attachment: FileAttachment,
     removable = false
   ) => {
-    const meta = getFileAttachmentMeta(attachment);
+    const meta = getFileAttachmentMeta(attachment, isNight);
     const cardContent = (
       <>
         <span
@@ -3500,9 +3531,9 @@ export default function Messages() {
           {meta.label}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-semibold">{attachment.name}</p>
+          <p className={`truncate text-xs font-semibold ${isNight ? "text-white" : ""}`}>{attachment.name}</p>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            <span className="text-[10px] text-gray-500">
+            <span className={`text-[10px] ${isNight ? "text-white/50" : "text-gray-500"}`}>
               {formatFileSize(attachment.size)}
             </span>
             {renderAttachmentStatus(attachment)}
@@ -3518,7 +3549,7 @@ export default function Messages() {
           href={attachment.url}
           target="_blank"
           rel="noreferrer"
-          className="relative flex max-w-72 items-center gap-2 rounded-lg border border-white/70 bg-white/80 px-3 py-2 pr-8 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white"
+          className={`relative flex max-w-72 items-center gap-2 rounded-lg border px-3 py-2 pr-8 text-left shadow-sm transition-all hover:-translate-y-0.5 ${isNight ? "border-white/10 bg-[#1a2035] hover:bg-[#1e2540]" : "border-white/70 bg-white/80 hover:bg-white"}`}
         >
           {cardContent}
         </a>
@@ -3528,7 +3559,7 @@ export default function Messages() {
     return (
       <div
         key={attachment.id}
-        className="relative flex max-w-72 items-center gap-2 rounded-lg border border-white/70 bg-white/80 px-3 py-2 pr-8 text-left shadow-sm"
+        className={`relative flex max-w-72 items-center gap-2 rounded-lg border px-3 py-2 pr-8 text-left shadow-sm ${isNight ? "border-white/10 bg-[#1a2035]" : "border-white/70 bg-white/80"}`}
       >
         {cardContent}
         {removable && (
@@ -3549,10 +3580,10 @@ export default function Messages() {
     attachment: IntegrationAttachment,
     removable = false
   ) => {
-    const meta = integrationProviderMeta[attachment.provider];
-    const cardClass = `relative flex max-w-80 gap-3 rounded-lg border bg-white/85 p-3 pr-9 text-left shadow-sm transition-all ${
-      removable ? "" : "hover:-translate-y-0.5 hover:bg-white"
-    } ${meta.borderClassName}`;
+    const meta = getIntegrationMeta(attachment.provider, isNight);
+    const cardClass = `relative flex max-w-80 gap-3 rounded-lg border p-3 pr-9 text-left shadow-sm transition-all ${
+      removable ? "" : isNight ? "hover:-translate-y-0.5 hover:bg-[#1e2540]" : "hover:-translate-y-0.5 hover:bg-white"
+    } ${meta.borderClassName} ${isNight ? "bg-[#1a2035]" : "bg-white/85"}`;
     const cardContent = (
       <>
         <span
@@ -3562,16 +3593,16 @@ export default function Messages() {
         </span>
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex items-center gap-1.5">
-            <p className="truncate text-xs font-bold text-[#12382D]">
+            <p className={`truncate text-xs font-bold ${isNight ? "text-white" : "text-[#12382D]"}`}>
               {attachment.previewTitle ?? attachment.name}
             </p>
-            <ExternalLink className="size-3.5 shrink-0 text-gray-400" />
+            <ExternalLink className={`size-3.5 shrink-0 ${isNight ? "text-white/30" : "text-gray-400"}`} />
           </div>
-          <p className="line-clamp-2 text-[11px] leading-snug text-gray-600">
+          <p className={`line-clamp-2 text-[11px] leading-snug ${isNight ? "text-white/50" : "text-gray-600"}`}>
             {attachment.previewDescription}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            <span className="truncate rounded-full bg-[#F7F7F5] px-2 py-0.5 text-[10px] font-semibold text-gray-500">
+            <span className={`truncate rounded-full px-2 py-0.5 text-[10px] font-semibold ${isNight ? "bg-white/10 text-white/50" : "bg-[#F7F7F5] text-gray-500"}`}>
               {attachment.host ?? getUrlHost(attachment.url)}
             </span>
             {renderAttachmentStatus(attachment)}
@@ -3609,10 +3640,33 @@ export default function Messages() {
     );
   };
 
+  const closeEndProcessModal = () => {
+    setIsEndProcessModalOpen(false);
+    setEndProcessModalStep("info");
+  };
+
   const handleEndWork = () => {
-    if (confirm("작업을 종료하시겠습니까? 진행 중인 작업이 있는 경우 저장되지 않을 수 있습니다.")) {
-      // 작업 종료 처리
-      toast.success("작업이 종료되었습니다.");
+    setEndProcessModalStep("info");
+    setIsEndProcessModalOpen(true);
+  };
+
+  const handleConfirmEndProcess = async () => {
+    if (!activeConversation || isEndingProcess) return;
+    setIsEndingProcess(true);
+    try {
+      const saved = await persistProcesses([], {
+        optimistic: true,
+        preferredExpandedId: null,
+        successMessage: "작업 프로세스를 종료했습니다.",
+      });
+      if (saved !== null) {
+        closeEndProcessModal();
+        setIsProcessModalOpen(false);
+        setDraftProcesses(createDefaultProcessDraft());
+        setProcessDraftSnapshot(createDefaultProcessDraft());
+      }
+    } finally {
+      setIsEndingProcess(false);
     }
   };
 
@@ -3644,11 +3698,11 @@ export default function Messages() {
 
   const getDeliveryStatusClass = (status: MessageDeliveryStatus) => {
     switch (status) {
-      case "sending": return "text-gray-500";
+      case "sending": return isNight ? "text-white/40" : "text-gray-500";
       case "sent": return "text-[#00A88C]";
-      case "read": return "text-[#007E68]";
+      case "read": return isNight ? "text-[#00C9A7]" : "text-[#007E68]";
       case "failed": return "text-[#FF5C3A]";
-      default: return "text-gray-500";
+      default: return isNight ? "text-white/40" : "text-gray-500";
     }
   };
 
@@ -3670,10 +3724,10 @@ export default function Messages() {
   if (!activeConversation) {
     if (isConversationsLoading) {
       return (
-        <div className="min-h-screen bg-[#F7F7F5]">
+        <div className={`min-h-screen transition-colors duration-700 ${isNight ? "bg-[#0C1222]" : "bg-[#F7F7F5]"}`}>
           <Navigation />
-          <main className="mx-auto flex min-h-[calc(100vh-80px)] w-full max-w-5xl items-center justify-center px-6 py-16">
-            <div className="flex flex-col items-center gap-4 text-gray-500">
+          <main className="pickxel-animate-page-in mx-auto flex min-h-[calc(100vh-80px)] w-full max-w-5xl items-center justify-center px-6 py-16">
+            <div className={`flex flex-col items-center gap-4 ${isNight ? "text-white/50" : "text-gray-500"}`}>
               <div className="size-10 animate-spin rounded-full border-4 border-[#00C9A7] border-t-transparent" />
               <p className="text-sm font-medium">대화를 불러오는 중입니다...</p>
             </div>
@@ -3683,15 +3737,15 @@ export default function Messages() {
     }
 
     return (
-      <div className="min-h-screen bg-[#F7F7F5]">
+      <div className={`min-h-screen transition-colors duration-700 ${isNight ? "bg-[#0C1222]" : "bg-[#F7F7F5]"}`}>
         <Navigation />
-        <main className="mx-auto flex min-h-[calc(100vh-80px)] w-full max-w-5xl items-center justify-center px-6 py-16">
-          <section className="w-full rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center shadow-sm">
-            <div className="mx-auto mb-5 grid size-14 place-items-center rounded-lg bg-[#E8FBF7] text-[#007E68]">
+        <main className="pickxel-animate-page-in mx-auto flex min-h-[calc(100vh-80px)] w-full max-w-5xl items-center justify-center px-6 py-16">
+          <section className={`w-full rounded-lg border border-dashed p-10 text-center shadow-sm ${isNight ? "border-white/10 bg-[#141d30]" : "border-gray-300 bg-white"}`}>
+            <div className={`mx-auto mb-5 grid size-14 place-items-center rounded-lg ${isNight ? "bg-[#00C9A7]/15 text-[#00C9A7]" : "bg-[#E8FBF7] text-[#007E68]"}`}>
               <Send className="size-7" />
             </div>
-            <h1 className="text-2xl font-bold text-[#0F0F0F]">아직 대화가 없습니다</h1>
-            <p className="mt-3 text-sm leading-relaxed text-gray-600">
+            <h1 className={`text-2xl font-bold ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>아직 대화가 없습니다</h1>
+            <p className={`mt-3 text-sm leading-relaxed ${isNight ? "text-white/50" : "text-gray-600"}`}>
               {conversationError ??
                 "피드나 프로젝트에서 제안을 시작하면 이곳에 대화가 생성됩니다."}
             </p>
@@ -3709,7 +3763,7 @@ export default function Messages() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F7F7F5]">
+    <div className={`min-h-screen transition-colors duration-700 ${isNight ? "bg-[#0C1222]" : "bg-[#F7F7F5]"}`}>
       <style>{`
         @keyframes pickxelSelfMessageIn {
           from { opacity: 0; transform: translateY(6px); }
@@ -3842,10 +3896,10 @@ export default function Messages() {
           top: 50%;
           width: 8px;
           height: 8px;
-          border-bottom: 1px solid #ffb5a4;
-          border-left: 1px solid #ffb5a4;
+          border-bottom: 1px solid ${isNight ? "#FF5C3A55" : "#ffb5a4"};
+          border-left: 1px solid ${isNight ? "#FF5C3A55" : "#ffb5a4"};
           border-radius: 2px;
-          background: #fff3ef;
+          background: ${isNight ? "#3a1a14" : "#fff3ef"};
           transform: translateY(-50%) rotate(45deg);
         }
 
@@ -3891,55 +3945,69 @@ export default function Messages() {
       <Navigation />
 
       {processToast && (
-        <div className="process-toast-in fixed bottom-6 right-6 z-[80] flex items-center gap-2 rounded-lg border border-[#00C9A7]/35 bg-white px-4 py-3 text-sm font-semibold text-[#007E68] shadow-xl">
+        <div className={`process-toast-in fixed bottom-6 right-6 z-[80] flex items-center gap-2 rounded-lg border border-[#00C9A7]/35 px-4 py-3 text-sm font-semibold shadow-xl ${isNight ? "bg-[#141d30] text-[#00C9A7]" : "bg-white text-[#007E68]"}`}>
           <CheckCircle className="size-4 text-[#00C9A7]" />
           {processToast.message}
         </div>
       )}
 
-      <div className="mx-auto flex h-[calc(100vh-73px)] max-w-[1400px] overflow-hidden">
+      <motion.div
+        className="flex h-[calc(100vh-72px)] min-h-0 w-full min-w-0 overflow-hidden sm:h-[calc(100vh-76px)]"
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+      >
         {/* Conversations Sidebar */}
-        <div
-          className={`w-full flex-col border-gray-200 bg-white lg:flex lg:w-80 lg:shrink-0 lg:border-r ${
+        <motion.div
+          className={`h-full min-h-0 w-full flex-col lg:flex lg:w-80 lg:shrink-0 lg:border-r ${
             mobileView === "list" ? "flex" : "hidden"
-          }`}
+          } ${isNight ? "border-white/10 bg-[#141d30]" : "border-gray-200 bg-white"}`}
+          initial={false}
         >
-          <div className="p-4 border-b border-gray-200">
+          <div className={`p-4 border-b ${isNight ? "border-white/10" : "border-gray-200"}`}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">메시지</h2>
+              <h2 className={`text-xl font-bold ${isNight ? "text-white" : ""}`}>메시지</h2>
               {totalUnreadMessageCount > 0 && (
-                <span className="rounded-md border border-[#FFD0C5] bg-[#FFF3EF] px-2.5 py-1 text-xs font-bold text-[#D84325] shadow-sm shadow-[#FF5C3A]/10">
+                <span className={`rounded-md border px-2.5 py-1 text-xs font-bold shadow-sm ${isNight ? "border-[#FF5C3A]/30 bg-[#3a1a14] text-[#FF8A6E] shadow-[#FF5C3A]/10" : "border-[#FFD0C5] bg-[#FFF3EF] text-[#D84325] shadow-[#FF5C3A]/10"}`}>
                   읽지 않음 {totalUnreadMessageCount}
                 </span>
               )}
             </div>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
+              <Search className={`absolute left-3 top-1/2 -translate-y-1/2 size-4 ${isNight ? "text-white/30" : "text-gray-400"}`} />
               <input
                 type="text"
                 value={conversationSearch}
                 onChange={(event) => setConversationSearch(event.target.value)}
                 placeholder="이름 또는 키워드 검색"
-                className="w-full pl-10 pr-4 py-2 bg-[#F7F7F5] rounded-lg text-sm focus:outline-none focus:bg-white focus:border-2 focus:border-[#00C9A7] transition-all"
+                className={`w-full pl-10 pr-4 py-2 rounded-lg text-sm focus:outline-none focus:border-2 focus:border-[#00C9A7] transition-all ${isNight ? "bg-white/5 text-white placeholder:text-white/30 focus:bg-[#0e1524]" : "bg-[#F7F7F5] focus:bg-white"}`}
               />
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            {filteredConversations.map((conv) => {
+            {filteredConversations.map((conv, index) => {
               const isSelected = conv.id === activeConversation?.id;
               const unreadCount = getConversationUnreadCount(conv);
               const lastMessagePreview = getConversationLastMessagePreview(conv.id);
 
               return (
-                <button
+                <motion.button
                   key={conv.id}
                   type="button"
                   onClick={() => handleSelectConversation(conv.id)}
-                  className={`w-full border-b border-l-4 border-gray-100 p-4 text-left transition-colors hover:bg-[#A8F0E4]/10 ${
-                    isSelected
-                      ? "border-l-[#00A88C] bg-[#F0FBF7]"
-                      : "border-l-transparent bg-white"
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{
+                    duration: 0.28,
+                    ease: [0.22, 1, 0.36, 1],
+                    delay: Math.min(index * 0.035, 0.28),
+                  }}
+                  whileTap={{ scale: 0.985 }}
+                  className={`w-full border-b border-l-4 p-4 text-left transition-colors duration-200 ${
+                    isNight
+                      ? `border-b-white/5 hover:bg-white/5 ${isSelected ? "border-l-[#00C9A7] bg-white/5" : "border-l-transparent"}`
+                      : `border-b-gray-100 hover:bg-[#A8F0E4]/10 ${isSelected ? "border-l-[#00A88C] bg-[#F0FBF7]" : "border-l-transparent bg-white"}`
                   }`}
                 >
                   <div className="flex gap-3">
@@ -3947,7 +4015,7 @@ export default function Messages() {
                       <ImageWithFallback
                         src={conv.avatar}
                         alt={conv.name}
-                        className="size-12 rounded-full object-cover ring-2 ring-white shadow-sm"
+                        className={`size-12 rounded-full object-cover ring-2 shadow-sm ${isNight ? "ring-white/10" : "ring-white"}`}
                       />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -3955,23 +4023,23 @@ export default function Messages() {
                         <h3
                           className={`truncate text-sm ${
                             isSelected || unreadCount > 0
-                              ? "font-bold text-[#12382D]"
-                              : "font-semibold text-gray-800"
+                              ? isNight ? "font-bold text-white" : "font-bold text-[#12382D]"
+                              : isNight ? "font-semibold text-white/80" : "font-semibold text-gray-800"
                           }`}
                         >
                           {conv.name}
                         </h3>
-                        <span className="shrink-0 text-xs text-gray-500">
+                        <span className={`shrink-0 text-xs ${isNight ? "text-white/40" : "text-gray-500"}`}>
                           {conv.time}
                         </span>
                       </div>
                       <div className="mb-1 flex items-center gap-1.5">
                         <span
                           className={`size-1.5 shrink-0 rounded-full ${
-                            conv.online ? "bg-[#72CDBD]" : "bg-gray-300"
+                            conv.online ? "bg-[#72CDBD]" : isNight ? "bg-white/20" : "bg-gray-300"
                           }`}
                         />
-                        <p className="min-w-0 flex-1 truncate text-xs text-gray-500">
+                        <p className={`min-w-0 flex-1 truncate text-xs ${isNight ? "text-white/40" : "text-gray-500"}`}>
                           {conv.statusText}
                         </p>
                       </div>
@@ -3979,15 +4047,17 @@ export default function Messages() {
                         <p
                           className={`min-w-0 flex-1 truncate text-sm ${
                             isSelected || unreadCount > 0
-                              ? "font-semibold text-[#12382D]"
-                              : "font-normal text-gray-600"
+                              ? isNight ? "font-semibold text-white" : "font-semibold text-[#12382D]"
+                              : isNight ? "font-normal text-white/50" : "font-normal text-gray-600"
                           }`}
                         >
                           {lastMessagePreview}
                         </p>
                         {unreadCount > 0 && (
                           <span
-                            className={`unread-message-badge relative inline-flex h-6 min-w-[52px] shrink-0 items-center justify-center rounded-md border border-[#FFB5A4] bg-[#FFF3EF] px-2 text-[10px] font-bold leading-none text-[#D84325] shadow-[0_4px_10px_rgba(255,92,58,0.14)] ${
+                            className={`unread-message-badge relative inline-flex h-6 min-w-[52px] shrink-0 items-center justify-center rounded-md border px-2 text-[10px] font-bold leading-none shadow-[0_4px_10px_rgba(255,92,58,0.14)] ${
+                              isNight ? "border-[#FF5C3A]/30 bg-[#3a1a14] text-[#FF8A6E]" : "border-[#FFB5A4] bg-[#FFF3EF] text-[#D84325]"
+                            } ${
                               clearingUnreadConversationId === conv.id
                                 ? "unread-badge-out"
                                 : ""
@@ -4003,93 +4073,112 @@ export default function Messages() {
                       </div>
                     </div>
                   </div>
-                </button>
+                </motion.button>
               );
             })}
             {filteredConversations.length === 0 && (
               <div className="px-4 py-10 text-center">
-                <p className="text-sm font-semibold text-gray-600">
+                <p className={`text-sm font-semibold ${isNight ? "text-white/60" : "text-gray-600"}`}>
                   검색 결과가 없습니다.
                 </p>
-                <p className="mt-1 text-xs text-gray-400">
+                <p className={`mt-1 text-xs ${isNight ? "text-white/30" : "text-gray-400"}`}>
                   이름, 프로젝트, 마지막 메시지를 다시 확인해보세요.
                 </p>
               </div>
             )}
           </div>
-        </div>
+        </motion.div>
 
         {/* Chat Area */}
         <div
-          className={`min-w-0 flex-1 flex-col bg-white lg:flex ${
+          className={`flex min-h-0 min-w-0 flex-1 flex-col lg:flex ${
             mobileView === "chat" ? "flex" : "hidden"
-          }`}
+          } ${isNight ? "bg-[#0b0f16]" : "bg-[#f3f5f4]"}`}
         >
           {/* Chat Header */}
-          <div className="flex items-center justify-between border-b border-gray-200 bg-gradient-to-r from-white to-[#F7F7F5] p-3 sm:p-4">
-            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <div
+            className={`flex shrink-0 items-center justify-between border-b px-4 py-2.5 sm:px-6 lg:px-8 ${
+              isNight
+                ? "border-white/[0.07] bg-[#141d30]/90 backdrop-blur-md"
+                : "border-gray-200/80 bg-white/90 backdrop-blur-md"
+            }`}
+          >
+            <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
               <button
                 type="button"
                 onClick={() => setMobileView("list")}
-                className="rounded-lg p-2 text-gray-600 transition-colors hover:bg-[#A8F0E4]/20 lg:hidden"
+                className={`rounded-lg p-1.5 transition-colors lg:hidden ${isNight ? "text-white/60 hover:bg-white/10" : "text-gray-600 hover:bg-black/[0.04]"}`}
                 aria-label="대화 목록으로 돌아가기"
               >
-                <ArrowLeft className="size-5" />
+                <ArrowLeft className="size-[1.125rem]" />
               </button>
               <ImageWithFallback
                 src={activeConversation?.avatar}
                 alt={activeConversation?.name || "대화 상대"}
-                className="size-10 shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm"
+                className={`size-9 shrink-0 rounded-full object-cover ring-1 shadow-sm ${isNight ? "ring-white/10" : "ring-black/[0.06]"}`}
               />
               <div className="min-w-0">
-                <h3 className="truncate font-semibold">{activeConversation?.name}</h3>
-                <p className="flex items-center gap-1.5 text-xs text-gray-500">
+                <h3 className={`truncate text-[0.9375rem] font-semibold tracking-tight ${isNight ? "text-white" : "text-[#0f172a]"}`}>
+                  {activeConversation?.name}
+                </h3>
+                <p className={`flex items-center gap-1.5 text-[11px] ${isNight ? "text-white/45" : "text-gray-500"}`}>
                   <span
                     className={`size-1.5 rounded-full ${
-                      activeConversation?.online ? "bg-[#72CDBD]" : "bg-gray-300"
+                      activeConversation?.online ? "bg-[#72CDBD]" : isNight ? "bg-white/20" : "bg-gray-300"
                     }`}
                   />
                   {activeConversation?.online ? "메시지 가능" : "자리비움"}
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => {
                   setActiveTab("profile");
                   setMobileView("detail");
                 }}
-                className="rounded-lg p-2 transition-colors hover:bg-[#A8F0E4]/20"
+                className={`rounded-lg p-1.5 transition-colors ${isNight ? "hover:bg-white/10" : "hover:bg-black/[0.04]"}`}
                 aria-label="대화 정보 보기"
               >
-                <Info className="size-5 text-gray-600 hover:text-[#00A88C]" />
+                <Info className={`size-[1.125rem] ${isNight ? "text-white/45 hover:text-[#00C9A7]" : "text-gray-500 hover:text-[#00A88C]"}`} />
               </button>
             </div>
           </div>
 
-          {/* Messages */}
-          <div className="flex-1 space-y-4 overflow-y-auto bg-[radial-gradient(circle_at_12%_0%,rgba(255,92,58,0.16),transparent_30%),radial-gradient(circle_at_92%_18%,rgba(0,201,167,0.12),transparent_28%),linear-gradient(180deg,#E7EBE6_0%,#DCE3DE_58%,#E9DBD8_100%)] p-4 sm:p-6">
-            <div className="text-center text-xs text-gray-500 mb-4">
+          {/* Messages (스크롤 전용 — 대화 비중 확보) */}
+          <div
+            className={`min-h-0 flex-1 overflow-y-auto scroll-smooth ${
+              isNight
+                ? "bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(0,201,167,0.07),transparent_50%),radial-gradient(ellipse_80%_50%_at_100%_50%,rgba(255,92,58,0.05),transparent_45%),#0b0f16]"
+                : "bg-[radial-gradient(ellipse_100%_60%_at_50%_0%,rgba(0,201,167,0.09),transparent_55%),#eef0ee]"
+            }`}
+          >
+            <div className="w-full space-y-3 px-4 py-3 sm:space-y-3.5 sm:px-6 sm:py-4 lg:px-8">
+            <div className={`mb-1 text-center text-[11px] font-medium tracking-wide ${isNight ? "text-white/35" : "text-gray-500"}`}>
               2024년 5월 24일 금요일
             </div>
 
             <div className="flex justify-start">
-              <div className="max-w-[88%] rounded-2xl rounded-tl-sm border border-[#BDEFD8] bg-white p-4 shadow-sm sm:max-w-[70%]">
-                <div className="mb-3 flex items-center gap-2">
-                  <Sparkles className="size-5 text-[#00A88C]" />
-                  <span className="text-sm font-semibold text-[#12382D]">
+              <div
+                className={`max-w-[min(100%,20rem)] rounded-2xl rounded-tl-md border px-3.5 py-3 shadow-sm sm:max-w-[min(100%,22rem)] ${
+                  isNight ? "border-[#00C9A7]/18 bg-[#141d30]/95" : "border-[#c5ebe0] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+                }`}
+              >
+                <div className="mb-2 flex items-center gap-2">
+                  <Sparkles className="size-4 text-[#00A88C]" />
+                  <span className={`text-[13px] font-semibold ${isNight ? "text-white" : "text-[#12382D]"}`}>
                     작업 프로세스 만들기
                   </span>
                 </div>
-                <p className="mb-3 text-sm leading-relaxed text-gray-700">
+                <p className={`mb-2.5 text-[13px] leading-relaxed ${isNight ? "text-white/55" : "text-gray-600"}`}>
                   {activeConversation?.role}를 단계별로 정리해두면 일정, 피드백,
                   최종 납품까지 한눈에 관리할 수 있어요.
                 </p>
                 <button
                   type="button"
                   onClick={handleCreateProcess}
-                  className="rounded-lg bg-[#FF5C3A] px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-[#E94F2F] hover:shadow-md"
+                  className="rounded-lg bg-[#FF5C3A] px-3.5 py-1.5 text-[13px] font-semibold text-white transition-all hover:bg-[#E94F2F] hover:shadow-md"
                 >
                   작업 프로세스 만들기
                 </button>
@@ -4107,23 +4196,27 @@ export default function Messages() {
                 }}
               >
                 <div
-                  className={`max-w-[88%] shadow-sm sm:max-w-[70%] ${
+                  className={`w-fit min-w-0 max-w-[min(100%,40rem)] shadow-sm ${
                     msg.isSelf
-                      ? "bg-[#DDF8EC] text-[#12382D] rounded-2xl rounded-tr-sm border border-[#BDEFD8]"
-                      : "bg-white text-gray-800 rounded-2xl rounded-tl-sm border border-gray-200"
-                  } ${msg.highlighted ? "bg-[#DDF8EC] text-[#12382D] border-[#BDEFD8]" : ""} p-4`}
+                      ? isNight
+                        ? "rounded-2xl rounded-tr-md border border-[#00C9A7]/22 bg-[#00C9A7]/12 text-white"
+                        : "rounded-2xl rounded-tr-md border border-[#a8e6d4] bg-[#e8f8f2] text-[#12382D] shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
+                      : isNight
+                        ? "rounded-2xl rounded-tl-md border border-white/[0.08] bg-[#151b2e] text-white/85"
+                        : "rounded-2xl rounded-tl-md border border-gray-200/90 bg-white text-gray-800 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+                  } ${msg.highlighted ? isNight ? "border-[#00C9A7]/35 bg-[#00C9A7]/15 text-white" : "border-[#6edcc0] bg-[#dff7ee] text-[#12382D]" : ""} px-3 py-2 sm:px-3.5 sm:py-2.5`}
                 >
                   {!msg.isSelf && (
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="mb-1.5 flex items-center gap-2">
                       <ImageWithFallback
                         src={activeConversation?.avatar}
                         alt={activeConversation?.name}
-                        className="size-6 rounded-full object-cover"
+                        className="size-5 rounded-full object-cover"
                       />
                     </div>
                   )}
                   {msg.message && (
-                    <p className="text-sm leading-relaxed">{msg.message}</p>
+                    <p className="break-words text-[13px] leading-[1.55] sm:text-sm">{msg.message}</p>
                   )}
                   {msg.attachments && msg.attachments.length > 0 && (
                     <div className={`${msg.message ? "mt-3" : ""} flex max-w-full flex-wrap gap-2`}>
@@ -4144,7 +4237,7 @@ export default function Messages() {
                           return (
                             <span
                               key={attachment.id}
-                              className="inline-flex size-12 items-center justify-center rounded-lg bg-white/70 text-2xl shadow-sm"
+                              className={`inline-flex size-12 items-center justify-center rounded-lg text-2xl shadow-sm ${isNight ? "bg-white/10" : "bg-white/70"}`}
                               aria-label={attachment.name}
                             >
                               {attachment.value}
@@ -4155,7 +4248,9 @@ export default function Messages() {
                   )}
                   <p
                     className={`text-xs mt-2 ${
-                      msg.isSelf || msg.highlighted ? "text-[#2D5A4D]/70" : "text-gray-500"
+                      msg.isSelf || msg.highlighted
+                        ? isNight ? "text-[#00C9A7]/60" : "text-[#2D5A4D]/70"
+                        : isNight ? "text-white/30" : "text-gray-500"
                     }`}
                   >
                     <span>{msg.time}</span>
@@ -4184,8 +4279,12 @@ export default function Messages() {
                           onClick={() => handleToggleReaction(msg.clientId, reaction.emoji)}
                           className={`inline-flex h-7 items-center gap-1 rounded-full border px-2 text-xs shadow-sm transition-all hover:-translate-y-0.5 ${
                             reaction.reactedByMe
-                              ? "border-[#FF5C3A] bg-[#FFF1ED] text-[#B13A21] ring-1 ring-[#FF5C3A]/20"
-                              : "border-gray-200 bg-white/85 text-gray-700 hover:border-[#BDEFD8] hover:bg-white"
+                              ? isNight
+                                ? "border-[#FF5C3A]/40 bg-[#FF5C3A]/15 text-[#FF8A6E] ring-1 ring-[#FF5C3A]/20"
+                                : "border-[#FF5C3A] bg-[#FFF1ED] text-[#B13A21] ring-1 ring-[#FF5C3A]/20"
+                              : isNight
+                                ? "border-white/10 bg-white/5 text-white/70 hover:border-[#00C9A7]/30 hover:bg-white/10"
+                                : "border-gray-200 bg-white/85 text-gray-700 hover:border-[#BDEFD8] hover:bg-white"
                           } ${isReactionAnimating ? "reaction-chip-pop" : ""}`}
                           aria-label={`${reaction.emoji} 반응 ${reaction.count}개`}
                         >
@@ -4217,7 +4316,7 @@ export default function Messages() {
                             currentId === msg.clientId ? null : msg.clientId
                           )
                         }
-                        className="inline-flex h-7 items-center gap-1 rounded-full border border-gray-200 bg-white/70 px-2 text-xs text-gray-600 transition-all hover:border-[#BDEFD8] hover:bg-white"
+                        className={`inline-flex h-7 items-center gap-1 rounded-full border px-2 text-xs transition-all ${isNight ? "border-white/10 bg-white/5 text-white/50 hover:border-[#00C9A7]/30 hover:bg-white/10" : "border-gray-200 bg-white/70 text-gray-600 hover:border-[#BDEFD8] hover:bg-white"}`}
                         aria-label="메시지에 이모티콘 반응 추가"
                       >
                         <Smile className="size-3.5" />
@@ -4225,16 +4324,16 @@ export default function Messages() {
                       </button>
                       {reactionPickerMessageId === msg.clientId && (
                         <div
-                          className={`reaction-picker-in absolute bottom-full z-50 mb-2 grid w-max grid-cols-5 gap-1 rounded-lg border border-[#BDEFD8] bg-white p-2 shadow-xl ${
-                            msg.isSelf ? "right-0" : "left-0"
-                          }`}
+                          className={`reaction-picker-in absolute bottom-full z-50 mb-2 grid w-max grid-cols-5 gap-1 rounded-lg border p-2 shadow-xl ${
+                            isNight ? "border-white/10 bg-[#1a2035]" : "border-[#BDEFD8] bg-white"
+                          } ${msg.isSelf ? "right-0" : "left-0"}`}
                         >
                           {reactionIcons.map((emoji, index) => (
                             <button
                               key={emoji}
                               type="button"
                               onClick={() => handleToggleReaction(msg.clientId, emoji)}
-                              className="flex size-9 items-center justify-center rounded-lg text-xl transition-all hover:scale-110 hover:bg-[#A8F0E4]/20 active:scale-95"
+                              className={`flex size-9 items-center justify-center rounded-lg text-xl transition-all hover:scale-110 active:scale-95 ${isNight ? "hover:bg-white/10" : "hover:bg-[#A8F0E4]/20"}`}
                               style={{
                                 animation: "pickxelReactionPickerIn 150ms ease-out both",
                                 animationDelay: `${index * 12}ms`,
@@ -4252,19 +4351,33 @@ export default function Messages() {
               </div>
             ))}
             <div ref={messagesEndRef} />
+            </div>
+          </div>
 
-            {/* Quick Actions */}
-            <div className="rounded-xl border border-[#FFB8C5]/70 bg-gradient-to-br from-[#FFF1F3] via-[#FFE4EA] to-white p-3 shadow-sm">
+          {/* AI 도우미 — 입력 위 고정 영역 (대화 스크롤과 분리) */}
+          <div
+            className={`max-h-[min(36vh,280px)] shrink-0 overflow-y-auto border-t ${
+              isNight ? "border-white/[0.07] bg-[#121826]/95" : "border-gray-200/70 bg-white/85"
+            } backdrop-blur-sm`}
+          >
+            <div className="w-full px-4 py-2 sm:px-6 sm:py-2.5 lg:px-8">
+            <div
+              className={`rounded-xl border px-2.5 py-2 shadow-sm sm:px-3 sm:py-2.5 ${
+                isNight
+                  ? "border-[#E8456D]/18 bg-gradient-to-br from-[#221018]/90 via-[#181420]/90 to-[#141d30]/90"
+                  : "border-[#f5c2cf]/60 bg-gradient-to-br from-[#fff8f9] via-[#fff0f3] to-white"
+              }`}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <Sparkles className="size-4 text-[#E8456D]" />
-                    <span className="text-sm font-medium text-[#A30F3D]">AI 메시지 도우미</span>
-                    <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-[#8C4458]">
+                    <span className={`text-sm font-medium ${isNight ? "text-[#FF6B8A]" : "text-[#A30F3D]"}`}>AI 메시지 도우미</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${isNight ? "bg-white/10 text-[#FF6B8A]" : "bg-white/80 text-[#8C4458]"}`}>
                       {assistantActionItems.find((action) => action.goal === assistantGoal)?.label}
                     </span>
                   </div>
-                  <p className="mt-1 text-xs text-[#6E3A49]">
+                  <p className={`mt-1 text-xs ${isNight ? "text-white/40" : "text-[#6E3A49]"}`}>
                     {isAssistantExpanded
                       ? "모드를 고른 뒤 생성 버튼을 누르면 대화 흐름에 맞는 문구를 준비해드려요."
                       : "처음 연결할 때 한 번 답장 추천을 띄우고, 이후엔 원하는 모드로 다시 생성할 수 있어요."}
@@ -4273,7 +4386,7 @@ export default function Messages() {
                 <button
                   type="button"
                   onClick={() => setIsAssistantExpanded((prev) => !prev)}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#FFD6DE] bg-white/80 px-2.5 py-1 text-xs font-semibold text-[#A30F3D] transition-all hover:bg-white"
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-all ${isNight ? "border-[#E8456D]/30 bg-white/5 text-[#FF6B8A] hover:bg-white/10" : "border-[#FFD6DE] bg-white/80 text-[#A30F3D] hover:bg-white"}`}
                   aria-label={isAssistantExpanded ? "AI 도우미 접기" : "AI 도우미 펼치기"}
                 >
                   {isAssistantExpanded ? "접기" : "펼치기"}
@@ -4301,7 +4414,9 @@ export default function Messages() {
                             className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
                               isSelected
                                 ? "bg-[#E8456D] text-white hover:bg-[#D7375F] hover:shadow-md"
-                                : "bg-white border border-[#FFB8C5] text-[#A30F3D] hover:bg-[#FFF7F9]"
+                                : isNight
+                                  ? "bg-white/5 border border-[#E8456D]/30 text-[#FF6B8A] hover:bg-white/10"
+                                  : "bg-white border border-[#FFB8C5] text-[#A30F3D] hover:bg-[#FFF7F9]"
                             }`}
                           >
                             {action.label}
@@ -4325,7 +4440,7 @@ export default function Messages() {
                           type="button"
                           onClick={handleRefreshAssistantSuggestions}
                           disabled={isAssistantLoading}
-                          className="inline-flex items-center gap-1 rounded-lg border border-[#FFD6DE] bg-white/85 px-2.5 py-1.5 text-xs font-semibold text-[#A30F3D] transition-all hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                          className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${isNight ? "border-[#E8456D]/30 bg-white/5 text-[#FF6B8A] hover:bg-white/10" : "border-[#FFD6DE] bg-white/85 text-[#A30F3D] hover:bg-white"}`}
                           aria-label="AI 추천 다시 불러오기"
                         >
                           <RefreshCw className={`size-3.5 ${isAssistantLoading ? "animate-spin" : ""}`} />
@@ -4336,8 +4451,8 @@ export default function Messages() {
                   </div>
                   <div className="space-y-2">
                     {isAssistantLoading ? (
-                      <div className="rounded-lg border border-[#FFD6DE] bg-white/92 px-3 py-3 text-sm text-[#7C3044]">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-[#9A3652]">
+                      <div className={`rounded-lg border px-3 py-3 text-sm ${isNight ? "border-[#E8456D]/20 bg-white/5 text-[#FF6B8A]/70" : "border-[#FFD6DE] bg-white/92 text-[#7C3044]"}`}>
+                        <div className={`flex items-center gap-2 text-sm font-semibold ${isNight ? "text-[#FF6B8A]" : "text-[#9A3652]"}`}>
                           <div className="flex shrink-0 items-center gap-1">
                             {[0, 1, 2].map((index) => (
                               <span
@@ -4352,14 +4467,14 @@ export default function Messages() {
                           </div>
                           <span>Gemini가 최근 대화와 작업 단계를 읽고 있어요.</span>
                         </div>
-                        <p className="mt-1 text-xs font-medium text-[#8C4458]">
+                        <p className={`mt-1 text-xs font-medium ${isNight ? "text-[#FF6B8A]/50" : "text-[#8C4458]"}`}>
                           상대가 방금 보낸 말에 맞는 추천 문구를 정리하는 중이에요.
                         </p>
                         <div className="mt-3 space-y-2">
                           {assistantLoadingPreviewItems.map((item, index) => (
                             <div
                               key={`${item.primaryWidth}-${index}`}
-                              className="rounded-lg border border-[#FFE0E7] bg-[#FFF9FB] px-3 py-2.5"
+                              className={`rounded-lg border px-3 py-2.5 ${isNight ? "border-[#E8456D]/15 bg-white/5" : "border-[#FFE0E7] bg-[#FFF9FB]"}`}
                               style={{
                                 animation: "pickxelAssistantCardPulse 1.5s ease-in-out infinite",
                                 animationDelay: `${index * 0.14}s`,
@@ -4394,7 +4509,7 @@ export default function Messages() {
                       </div>
                     ) : assistantSuggestions.length > 0 ? (
                       <>
-                        <p className="text-xs font-semibold text-[#8C4458]">
+                        <p className={`text-xs font-semibold ${isNight ? "text-[#FF6B8A]/60" : "text-[#8C4458]"}`}>
                           {assistantUsedAi
                             ? "최근 대화와 작업 프로세스를 바탕으로 추천했어요."
                             : "대화 흐름과 작업 단계에 맞춰 빠르게 쓸 수 있는 문구예요."}
@@ -4404,21 +4519,21 @@ export default function Messages() {
                             key={`${assistantGoal}-${index}`}
                             type="button"
                             onClick={() => handleApplyAssistantSuggestion(suggestion)}
-                            className="w-full rounded-lg border border-[#FFD6DE] bg-white/95 px-3 py-2.5 text-left text-sm font-medium text-[#5F2938] transition-all hover:border-[#E8456D] hover:bg-[#FFF7F9]"
+                            className={`w-full rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-all ${isNight ? "border-[#E8456D]/20 bg-white/5 text-white/70 hover:border-[#E8456D]/40 hover:bg-white/10" : "border-[#FFD6DE] bg-white/95 text-[#5F2938] hover:border-[#E8456D] hover:bg-[#FFF7F9]"}`}
                           >
                             {suggestion}
                           </button>
                         ))}
                       </>
                     ) : (
-                      <div className="rounded-lg border border-dashed border-[#FFD6DE] bg-white/70 px-3 py-2.5 text-sm text-[#7C3044]">
+                      <div className={`rounded-lg border border-dashed px-3 py-2.5 text-sm ${isNight ? "border-[#E8456D]/20 bg-white/5 text-white/40" : "border-[#FFD6DE] bg-white/70 text-[#7C3044]"}`}>
                         버튼을 누르면 최근 대화와 작업 프로세스를 바탕으로 추천 문구를 3개 준비해드려요.
                       </div>
                     )}
                     {assistantError && (
                       <div className="space-y-1">
-                        <p className="text-xs font-semibold text-[#C43E60]">{assistantError}</p>
-                        <p className="text-[11px] text-[#8C4458]">
+                        <p className={`text-xs font-semibold ${isNight ? "text-[#FF6B8A]" : "text-[#C43E60]"}`}>{assistantError}</p>
+                        <p className={`text-[11px] ${isNight ? "text-[#FF6B8A]/50" : "text-[#8C4458]"}`}>
                           오류 상태에서는 자동 재요청을 멈추고, 위 버튼으로만 다시 시도해요.
                         </p>
                       </div>
@@ -4427,15 +4542,19 @@ export default function Messages() {
                 </div>
               )}
             </div>
+            </div>
           </div>
 
           {/* Message Input */}
-          <div className="border-t border-gray-200 bg-white p-3 sm:p-4">
-            <div className="mb-2 min-h-[34px] px-1">
+          <div
+            className={`shrink-0 border-t ${isNight ? "border-white/[0.07] bg-[#141d30]/95" : "border-gray-200/80 bg-white"} backdrop-blur-sm`}
+          >
+            <div className="w-full px-4 py-2 sm:px-6 sm:py-2.5 lg:px-8">
+            <div className="mb-1.5 min-h-0 px-0.5">
               {isPartnerTyping && (
                 <div
                   aria-live="polite"
-                  className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#BDEFD8] bg-[#F3FFFB] px-3 py-1.5 text-sm font-medium text-[#0F6C5C] shadow-sm"
+                  className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium shadow-sm ${isNight ? "border-[#00C9A7]/20 bg-[#00C9A7]/10 text-[#00C9A7]" : "border-[#BDEFD8] bg-[#F3FFFB] text-[#0F6C5C]"}`}
                   style={{ animation: "pickxelTypingBubbleIn 180ms ease-out both" }}
                 >
                   <div className="flex shrink-0 items-center gap-1">
@@ -4457,7 +4576,7 @@ export default function Messages() {
               )}
             </div>
             {pendingAttachments.length > 0 && (
-              <div className="mb-3 flex flex-wrap items-start gap-2 rounded-xl bg-[#F7F7F5] p-3">
+              <div className={`mb-3 flex flex-wrap items-start gap-2 rounded-xl p-3 ${isNight ? "bg-white/5" : "bg-[#F7F7F5]"}`}>
                 {renderImageAttachmentGallery(
                   pendingAttachments.filter(isImageAttachment),
                   true,
@@ -4477,7 +4596,7 @@ export default function Messages() {
                     return (
                       <div
                         key={attachment.id}
-                        className="relative flex size-16 items-center justify-center rounded-lg border border-gray-200 bg-white text-3xl"
+                        className={`relative flex size-16 items-center justify-center rounded-lg border text-3xl ${isNight ? "border-white/10 bg-[#1a2035]" : "border-gray-200 bg-white"}`}
                       >
                         {attachment.value}
                         <button
@@ -4492,7 +4611,7 @@ export default function Messages() {
                     );
                   })}
                 {hasUploadingAttachments && (
-                  <div className="flex basis-full items-center gap-2 rounded-lg bg-white/80 px-3 py-2 text-xs font-semibold text-[#B65318]">
+                  <div className={`flex basis-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold ${isNight ? "bg-white/10 text-[#FFB36B]" : "bg-white/80 text-[#B65318]"}`}>
                     <Clock className="size-3.5 animate-spin" />
                     첨부 파일을 준비하는 중입니다. 완료되면 전송할 수 있어요.
                   </div>
@@ -4504,18 +4623,18 @@ export default function Messages() {
                 <button
                   type="button"
                   onClick={() => setIsAttachMenuOpen((prev) => !prev)}
-                  className="p-2 hover:bg-[#A8F0E4]/20 rounded-lg transition-colors"
+                  className={`p-2 rounded-lg transition-colors ${isNight ? "hover:bg-white/10" : "hover:bg-[#A8F0E4]/20"}`}
                   aria-label="파일 및 외부 도구 첨부"
                 >
                   <AtSign className="size-5 text-[#00A88C]" />
                 </button>
                 {isAttachMenuOpen && (
                   <>
-                    <div className="absolute bottom-full left-0 z-20 mb-3 hidden w-56 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg lg:block">
+                    <div className={`absolute bottom-full left-0 z-20 mb-3 hidden w-56 overflow-hidden rounded-xl border shadow-lg lg:block ${isNight ? "border-white/10 bg-[#1a2035]" : "border-gray-200 bg-white"}`}>
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-[#A8F0E4]/15"
+                        className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors ${isNight ? "text-white/80 hover:bg-white/5" : "hover:bg-[#A8F0E4]/15"}`}
                       >
                         <Paperclip className="size-4 text-[#00A88C]" />
                         파일 첨부
@@ -4523,7 +4642,7 @@ export default function Messages() {
                       <button
                         type="button"
                         onClick={() => handleAttachIntegration("figma")}
-                        className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-[#A8F0E4]/15"
+                        className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors ${isNight ? "text-white/80 hover:bg-white/5" : "hover:bg-[#A8F0E4]/15"}`}
                       >
                         <Figma className="size-4 text-[#00A88C]" />
                         Figma 링크 연동
@@ -4531,7 +4650,7 @@ export default function Messages() {
                       <button
                         type="button"
                         onClick={() => handleAttachIntegration("adobe")}
-                        className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-[#A8F0E4]/15"
+                        className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors ${isNight ? "text-white/80 hover:bg-white/5" : "hover:bg-[#A8F0E4]/15"}`}
                       >
                         <Sparkles className="size-4 text-[#FF5C3A]" />
                         Adobe 링크 연동
@@ -4539,7 +4658,7 @@ export default function Messages() {
                       <button
                         type="button"
                         onClick={() => handleAttachIntegration("pinterest")}
-                        className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-[#FFF0F3]"
+                        className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors ${isNight ? "text-white/80 hover:bg-white/5" : "hover:bg-[#FFF0F3]"}`}
                       >
                         <Bookmark className="size-4 text-[#D3224B]" />
                         Pinterest 링크 연동
@@ -4547,7 +4666,7 @@ export default function Messages() {
                       <button
                         type="button"
                         onClick={() => handleAttachIntegration("photoshop")}
-                        className="flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-[#EAF2FF]"
+                        className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors ${isNight ? "text-white/80 hover:bg-white/5" : "hover:bg-[#EAF2FF]"}`}
                       >
                         <Image className="size-4 text-[#2453A6]" />
                         Photoshop 링크 연동
@@ -4559,16 +4678,16 @@ export default function Messages() {
                       className="modal-backdrop-in fixed inset-0 z-40 bg-black/35 lg:hidden"
                       aria-label="첨부 메뉴 닫기"
                     />
-                    <div className="bottom-sheet-in fixed inset-x-0 bottom-0 z-50 rounded-t-2xl bg-white p-4 shadow-2xl lg:hidden">
-                      <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-gray-200" />
-                      <p className="mb-3 text-sm font-bold text-[#12382D]">
+                    <div className={`bottom-sheet-in fixed inset-x-0 bottom-0 z-50 rounded-t-2xl p-4 shadow-2xl lg:hidden ${isNight ? "bg-[#1a2035]" : "bg-white"}`}>
+                      <div className={`mx-auto mb-3 h-1 w-10 rounded-full ${isNight ? "bg-white/20" : "bg-gray-200"}`} />
+                      <p className={`mb-3 text-sm font-bold ${isNight ? "text-white" : "text-[#12382D]"}`}>
                         첨부 추가
                       </p>
                       <div className="grid gap-2">
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="flex w-full items-center gap-3 rounded-lg bg-[#F7F7F5] px-3 py-3 text-left text-sm font-semibold transition-colors hover:bg-[#EFFBF6]"
+                          className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-semibold transition-colors ${isNight ? "bg-white/5 text-white/80 hover:bg-white/10" : "bg-[#F7F7F5] hover:bg-[#EFFBF6]"}`}
                         >
                           <Paperclip className="size-4 text-[#00A88C]" />
                           파일 첨부
@@ -4576,7 +4695,7 @@ export default function Messages() {
                         <button
                           type="button"
                           onClick={() => handleAttachIntegration("figma")}
-                          className="flex w-full items-center gap-3 rounded-lg bg-[#F7F7F5] px-3 py-3 text-left text-sm font-semibold transition-colors hover:bg-[#EFFBF6]"
+                          className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-semibold transition-colors ${isNight ? "bg-white/5 text-white/80 hover:bg-white/10" : "bg-[#F7F7F5] hover:bg-[#EFFBF6]"}`}
                         >
                           <Figma className="size-4 text-[#00A88C]" />
                           Figma 링크 연동
@@ -4584,7 +4703,7 @@ export default function Messages() {
                         <button
                           type="button"
                           onClick={() => handleAttachIntegration("adobe")}
-                          className="flex w-full items-center gap-3 rounded-lg bg-[#F7F7F5] px-3 py-3 text-left text-sm font-semibold transition-colors hover:bg-[#FFF1ED]"
+                          className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-semibold transition-colors ${isNight ? "bg-white/5 text-white/80 hover:bg-white/10" : "bg-[#F7F7F5] hover:bg-[#FFF1ED]"}`}
                         >
                           <Sparkles className="size-4 text-[#FF5C3A]" />
                           Adobe 링크 연동
@@ -4592,7 +4711,7 @@ export default function Messages() {
                         <button
                           type="button"
                           onClick={() => handleAttachIntegration("pinterest")}
-                          className="flex w-full items-center gap-3 rounded-lg bg-[#F7F7F5] px-3 py-3 text-left text-sm font-semibold transition-colors hover:bg-[#FFF0F3]"
+                          className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-semibold transition-colors ${isNight ? "bg-white/5 text-white/80 hover:bg-white/10" : "bg-[#F7F7F5] hover:bg-[#FFF0F3]"}`}
                         >
                           <Bookmark className="size-4 text-[#D3224B]" />
                           Pinterest 링크 연동
@@ -4600,7 +4719,7 @@ export default function Messages() {
                         <button
                           type="button"
                           onClick={() => handleAttachIntegration("photoshop")}
-                          className="flex w-full items-center gap-3 rounded-lg bg-[#F7F7F5] px-3 py-3 text-left text-sm font-semibold transition-colors hover:bg-[#EAF2FF]"
+                          className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-semibold transition-colors ${isNight ? "bg-white/5 text-white/80 hover:bg-white/10" : "bg-[#F7F7F5] hover:bg-[#EAF2FF]"}`}
                         >
                           <Image className="size-4 text-[#2453A6]" />
                           Photoshop 링크 연동
@@ -4617,7 +4736,7 @@ export default function Messages() {
                   className="hidden"
                 />
               </div>
-              <div className="relative flex min-w-0 flex-1 items-center gap-2 rounded-2xl border-2 border-transparent bg-[#F7F7F5] px-3 py-3 transition-all focus-within:border-[#00C9A7] sm:px-4">
+              <div className={`relative flex min-w-0 flex-1 items-center gap-2 rounded-2xl border-2 border-transparent px-3 py-3 transition-all focus-within:border-[#00C9A7] sm:px-4 ${isNight ? "bg-white/5" : "bg-[#F7F7F5]"}`}>
                 <input
                   ref={messageInputRef}
                   type="text"
@@ -4628,23 +4747,23 @@ export default function Messages() {
                   onCompositionUpdate={handleMessageCompositionUpdate}
                   onCompositionEnd={handleMessageCompositionEnd}
                   placeholder={`${activeConversation?.name}님에게 메시지 보내기...`}
-                  className="min-w-0 flex-1 bg-transparent text-sm focus:outline-none"
+                  className={`min-w-0 flex-1 bg-transparent text-sm focus:outline-none ${isNight ? "text-white placeholder:text-white/30" : ""}`}
                 />
                 <button
                   type="button"
                   onClick={() => setIsIconPickerOpen((prev) => !prev)}
-                  className="p-1 hover:bg-[#A8F0E4]/30 rounded-lg transition-colors"
+                  className={`p-1 rounded-lg transition-colors ${isNight ? "hover:bg-white/10" : "hover:bg-[#A8F0E4]/30"}`}
                   aria-label="아이콘 첨부"
                 >
-                  <Smile className="size-5 text-gray-600" />
+                  <Smile className={`size-5 ${isNight ? "text-white/50" : "text-gray-600"}`} />
                 </button>
                 <button
                   type="button"
                   onClick={() => imageInputRef.current?.click()}
-                  className="p-1 hover:bg-[#A8F0E4]/30 rounded-lg transition-colors"
+                  className={`p-1 rounded-lg transition-colors ${isNight ? "hover:bg-white/10" : "hover:bg-[#A8F0E4]/30"}`}
                   aria-label="이미지 첨부"
                 >
-                  <Image className="size-5 text-gray-600" />
+                  <Image className={`size-5 ${isNight ? "text-white/50" : "text-gray-600"}`} />
                 </button>
                 <input
                   ref={imageInputRef}
@@ -4655,13 +4774,13 @@ export default function Messages() {
                   className="hidden"
                 />
                 {isIconPickerOpen && (
-                  <div className="absolute bottom-full right-2 mb-3 grid grid-cols-6 gap-1 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+                  <div className={`absolute bottom-full right-2 mb-3 grid grid-cols-6 gap-1 rounded-xl border p-2 shadow-lg ${isNight ? "border-white/10 bg-[#1a2035]" : "border-gray-200 bg-white"}`}>
                     {attachableIcons.map((icon) => (
                       <button
                         key={icon}
                         type="button"
                         onClick={() => handleAttachIcon(icon)}
-                        className="flex size-9 items-center justify-center rounded-lg text-xl transition-colors hover:bg-[#A8F0E4]/20"
+                        className={`flex size-9 items-center justify-center rounded-lg text-xl transition-colors ${isNight ? "hover:bg-white/10" : "hover:bg-[#A8F0E4]/20"}`}
                         aria-label={`${icon} 아이콘 첨부`}
                       >
                         {icon}
@@ -4686,6 +4805,7 @@ export default function Messages() {
             </div>
           </div>
         </div>
+        </div>
 
         {/* Right Sidebar */}
         {mobileView === "detail" && (
@@ -4697,36 +4817,38 @@ export default function Messages() {
           />
         )}
         <div
-          className={`w-full flex-col border-gray-200 bg-white lg:static lg:z-auto lg:flex lg:max-h-none lg:w-80 lg:shrink-0 lg:rounded-none lg:border-l lg:shadow-none ${
+          className={`w-full flex-col lg:static lg:z-auto lg:flex lg:max-h-none lg:w-80 lg:shrink-0 lg:rounded-none lg:border-l lg:shadow-none ${
+            isNight ? "border-white/10 bg-[#141d30]" : "border-gray-200 bg-white"
+          } ${
             mobileView === "detail"
-              ? "bottom-sheet-in fixed inset-x-0 bottom-0 z-50 flex max-h-[86vh] rounded-t-2xl shadow-2xl"
+              ? `bottom-sheet-in fixed inset-x-0 bottom-0 z-50 flex max-h-[86vh] rounded-t-2xl shadow-2xl ${isNight ? "bg-[#141d30]" : ""}`
               : "hidden"
           }`}
         >
-          <div className="flex items-center gap-2 border-b border-gray-200 p-3 lg:hidden">
+          <div className={`flex items-center gap-2 border-b p-3 lg:hidden ${isNight ? "border-white/10" : "border-gray-200"}`}>
             <button
               type="button"
               onClick={() => setMobileView("chat")}
-              className="rounded-lg p-2 text-gray-600 transition-colors hover:bg-[#A8F0E4]/20"
+              className={`rounded-lg p-2 transition-colors ${isNight ? "text-white/60 hover:bg-white/10" : "text-gray-600 hover:bg-[#A8F0E4]/20"}`}
               aria-label="채팅으로 돌아가기"
             >
               <ArrowLeft className="size-5" />
             </button>
             <div className="min-w-0">
-              <p className="text-sm font-bold text-[#12382D]">대화 정보</p>
-              <p className="truncate text-xs text-gray-500">
+              <p className={`text-sm font-bold ${isNight ? "text-white" : "text-[#12382D]"}`}>대화 정보</p>
+              <p className={`truncate text-xs ${isNight ? "text-white/40" : "text-gray-500"}`}>
                 {activeConversation?.name}
               </p>
             </div>
           </div>
           {/* Tab Navigation */}
-          <div className="flex border-b border-gray-200">
+          <div className={`flex border-b ${isNight ? "border-white/10" : "border-gray-200"}`}>
             <button
               onClick={() => setActiveTab("profile")}
               className={`flex-1 py-3 text-sm font-medium transition-all ${
                 activeTab === "profile"
                   ? "text-[#00C9A7] border-b-2 border-[#00C9A7]"
-                  : "text-gray-600 hover:text-[#00A88C]"
+                  : isNight ? "text-white/50 hover:text-[#00C9A7]" : "text-gray-600 hover:text-[#00A88C]"
               }`}
             >
               프로필
@@ -4736,7 +4858,7 @@ export default function Messages() {
               className={`flex-1 py-3 text-sm font-medium transition-all ${
                 activeTab === "process"
                   ? "text-[#00C9A7] border-b-2 border-[#00C9A7]"
-                  : "text-gray-600 hover:text-[#00A88C]"
+                  : isNight ? "text-white/50 hover:text-[#00C9A7]" : "text-gray-600 hover:text-[#00A88C]"
               }`}
             >
               작업 프로세스
@@ -4755,15 +4877,15 @@ export default function Messages() {
                   <div className="mb-1 flex items-center justify-center gap-2">
                     <span
                       className={`inline-flex size-2.5 rounded-full ${
-                        activeConversation?.online ? "bg-[#00C853] shadow-[0_0_0_4px_rgba(0,200,83,0.14)]" : "bg-gray-300"
+                        activeConversation?.online ? "bg-[#00C853] shadow-[0_0_0_4px_rgba(0,200,83,0.14)]" : isNight ? "bg-white/20" : "bg-gray-300"
                       }`}
                       aria-hidden="true"
                     />
-                    <h3 className="font-bold text-lg">{activeConversation?.profileName}</h3>
+                    <h3 className={`font-bold text-lg ${isNight ? "text-white" : ""}`}>{activeConversation?.profileName}</h3>
                   </div>
-                  <p className="text-sm text-gray-600">
+                  <p className={`text-sm ${isNight ? "text-white/50" : "text-gray-600"}`}>
                     {activeConversation?.title}
-                    <span className="mx-1.5 text-gray-300">·</span>
+                    <span className={`mx-1.5 ${isNight ? "text-white/20" : "text-gray-300"}`}>·</span>
                     {activeConversation?.online ? "메시지 가능" : "자리비움"}
                   </p>
                 </div>
@@ -4779,21 +4901,21 @@ export default function Messages() {
 
                 <div className="space-y-4">
                   <div>
-                    <h4 className="font-medium mb-2">소개</h4>
-                    <p className="text-sm text-gray-600">
+                    <h4 className={`font-medium mb-2 ${isNight ? "text-white" : ""}`}>소개</h4>
+                    <p className={`text-sm ${isNight ? "text-white/50" : "text-gray-600"}`}>
                       {activeConversation?.bio}
                     </p>
                   </div>
 
                   <div>
-                    <h4 className="font-medium mb-2">공유된 미디어</h4>
+                    <h4 className={`font-medium mb-2 ${isNight ? "text-white" : ""}`}>공유된 미디어</h4>
                     <div className="grid grid-cols-3 gap-2">
                       {activeConversation?.sharedMedia.map((media) => (
                         <button
                           key={media.id}
                           type="button"
                           onClick={() => setSelectedImage({ src: media.src, name: media.title })}
-                          className="group relative aspect-square overflow-hidden rounded-lg border border-gray-100 bg-gray-100 shadow-sm"
+                          className={`group relative aspect-square overflow-hidden rounded-lg border shadow-sm ${isNight ? "border-white/10 bg-white/5" : "border-gray-100 bg-gray-100"}`}
                           aria-label={media.title}
                         >
                           <ImageWithFallback
@@ -4810,10 +4932,10 @@ export default function Messages() {
                   </div>
 
                   <div>
-                    <h4 className="font-medium mb-2">설정</h4>
+                    <h4 className={`font-medium mb-2 ${isNight ? "text-white" : ""}`}>설정</h4>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm">메시지 알림 받기</span>
+                        <span className={`text-sm ${isNight ? "text-white/70" : ""}`}>메시지 알림 받기</span>
                         <input type="checkbox" className="toggle" defaultChecked />
                       </div>
                       <button
@@ -4833,7 +4955,7 @@ export default function Messages() {
                 {/* Process Tab */}
                 <div className="mb-4">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-bold text-lg">프로젝트 진행 상황</h3>
+                    <h3 className={`font-bold text-lg ${isNight ? "text-white" : ""}`}>프로젝트 진행 상황</h3>
                     {processCreated ? (
                       <div className="flex items-center gap-2">
                         <button
@@ -4856,7 +4978,7 @@ export default function Messages() {
                       </button>
                     )}
                   </div>
-                  <p className="text-sm text-gray-600 mb-4">
+                  <p className={`text-sm mb-4 ${isNight ? "text-white/50" : "text-gray-600"}`}>
                     프로젝트 단계별 진행 상황을 확인하고 관리하세요.
                   </p>
                 </div>
@@ -4866,14 +4988,14 @@ export default function Messages() {
                 ) : (
                   <>
                     {/* Progress Overview */}
-                    <div className="bg-gradient-to-br from-[#A8F0E4]/20 to-white border border-[#00C9A7]/30 rounded-xl p-4 mb-6">
+                    <div className={`border border-[#00C9A7]/30 rounded-xl p-4 mb-6 ${isNight ? "bg-gradient-to-br from-[#00C9A7]/10 to-[#141d30]" : "bg-gradient-to-br from-[#A8F0E4]/20 to-white"}`}>
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">전체 진행률</span>
+                        <span className={`text-sm font-medium ${isNight ? "text-white/70" : ""}`}>전체 진행률</span>
                         <span className="text-sm font-bold text-[#00A88C]">
                           {getTotalProgress()}%
                         </span>
                       </div>
-                      <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div className={`h-2 rounded-full overflow-hidden ${isNight ? "bg-white/10" : "bg-gray-200"}`}>
                         <div
                           className="h-full bg-gradient-to-r from-[#00C9A7] to-[#00A88C] transition-all duration-500"
                           style={{
@@ -4902,13 +5024,15 @@ export default function Messages() {
                             key={process.id}
                             className={`border rounded-xl overflow-hidden transition-all hover:border-[#00C9A7]/50 ${
                               isProcessApproved
-                                ? "border-[#00C9A7]/60 bg-[#F7FFFC] shadow-[0_12px_30px_rgba(0,201,167,0.12)]"
-                                : "border-gray-200"
+                                ? isNight
+                                  ? "border-[#00C9A7]/40 bg-[#00C9A7]/5 shadow-[0_12px_30px_rgba(0,201,167,0.08)]"
+                                  : "border-[#00C9A7]/60 bg-[#F7FFFC] shadow-[0_12px_30px_rgba(0,201,167,0.12)]"
+                                : isNight ? "border-white/10" : "border-gray-200"
                             }`}
                           >
                             <button
                               onClick={() => setExpandedProcess(isExpanded ? null : process.id)}
-                              className="w-full p-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                              className={`w-full p-4 flex items-center justify-between transition-colors ${isNight ? "hover:bg-white/5" : "hover:bg-gray-50"}`}
                         >
                           <div className="flex items-start gap-3 flex-1 min-w-0">
                             {isProcessApproved ? (
@@ -4921,19 +5045,19 @@ export default function Messages() {
                             )}
                             <div className="text-left flex-1 min-w-0">
                               <div className="flex flex-wrap items-center gap-2 mb-1">
-                                <h4 className="font-semibold text-sm text-[#12382D]">{process.title}</h4>
+                                <h4 className={`font-semibold text-sm ${isNight ? "text-white" : "text-[#12382D]"}`}>{process.title}</h4>
                                 <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${approvalBadge.className}`}>
                                   {approvalBadge.label}
                                 </span>
                               </div>
-                              <p className="text-xs font-medium text-gray-600">
+                              <p className={`text-xs font-medium ${isNight ? "text-white/40" : "text-gray-600"}`}>
                                 {approvalSummary}
                               </p>
                               <div className="mt-2 flex items-center gap-2">
-                                <span className="text-[11px] font-semibold text-gray-500">
+                                <span className={`text-[11px] font-semibold ${isNight ? "text-white/30" : "text-gray-500"}`}>
                                   세부 작업
                                 </span>
-                                <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                <div className={`flex-1 h-1.5 rounded-full overflow-hidden ${isNight ? "bg-white/10" : "bg-gray-200"}`}>
                                   <div
                                     className={`h-full ${
                                       progress === 100 ? "bg-[#00C9A7]" : getStatusColor(process.status)
@@ -4941,7 +5065,7 @@ export default function Messages() {
                                     style={{ width: `${progress}%` }}
                                   ></div>
                                 </div>
-                                <span className="text-xs text-gray-500 font-medium min-w-[40px] text-right">
+                                <span className={`text-xs font-medium min-w-[40px] text-right ${isNight ? "text-white/40" : "text-gray-500"}`}>
                                   {progress}%
                                 </span>
                               </div>
@@ -4955,7 +5079,7 @@ export default function Messages() {
                         </button>
 
                         {isExpanded && (
-                          <div className="process-details-in px-4 pb-4 bg-gray-50/50">
+                          <div className={`process-details-in px-4 pb-4 ${isNight ? "bg-white/[0.02]" : "bg-gray-50/50"}`}>
                             <div className="space-y-2">
                               {process.tasks.map((task) => (
                                 <div
@@ -4969,14 +5093,14 @@ export default function Messages() {
                                     {task.completed ? (
                                       <CheckCircle className="size-4 text-[#00C9A7]" />
                                     ) : (
-                                      <Circle className="size-4 text-gray-300 group-hover:text-gray-400" />
+                                      <Circle className={`size-4 ${isNight ? "text-white/20 group-hover:text-white/30" : "text-gray-300 group-hover:text-gray-400"}`} />
                                     )}
                                   </button>
                                   <span
                                     className={`text-sm ${
                                       task.completed
-                                        ? "text-gray-500 line-through"
-                                        : "text-gray-700"
+                                        ? isNight ? "text-white/30 line-through" : "text-gray-500 line-through"
+                                        : isNight ? "text-white/70" : "text-gray-700"
                                     }`}
                                   >
                                     {task.text}
@@ -4984,13 +5108,13 @@ export default function Messages() {
                                 </div>
                               ))}
                             </div>
-                            <div className="mt-4 rounded-lg border border-[#BDEFD8] bg-white p-3">
+                            <div className={`mt-4 rounded-lg border p-3 ${isNight ? "border-[#00C9A7]/20 bg-[#141d30]" : "border-[#BDEFD8] bg-white"}`}>
                               <div className="mb-3 flex items-center justify-between gap-3">
                                 <div>
-                                  <p className="text-sm font-semibold text-[#12382D]">
+                                  <p className={`text-sm font-semibold ${isNight ? "text-white" : "text-[#12382D]"}`}>
                                     완료 확인
                                   </p>
-                                  <p className="text-xs text-gray-500">
+                                  <p className={`text-xs ${isNight ? "text-white/40" : "text-gray-500"}`}>
                                     {processCompletionGuideText}
                                   </p>
                                   <p className="mt-1 text-xs font-semibold text-[#00A88C]">
@@ -5003,7 +5127,7 @@ export default function Messages() {
                               </div>
                               <div className="grid grid-cols-2 gap-2">
                                 {confirmationRoles.map((role) => {
-                                  const isCurrentParticipant = role === "designer";
+                                  const isCurrentParticipant = role === currentProcessConfirmationRole;
                                   const canEditConfirmation =
                                     isProcessConfirmationEditable(role);
                                   const isConfirmed = process.confirmations[role];
@@ -5021,10 +5145,16 @@ export default function Messages() {
                                       aria-disabled={!canEditConfirmation}
                                       className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-all ${
                                         isConfirmed
-                                          ? "border-[#9EE7D0] bg-white text-[#12382D] shadow-[0_8px_20px_rgba(0,201,167,0.12)] ring-1 ring-[#DDF8EC]"
+                                          ? isNight
+                                            ? "border-[#00C9A7]/40 bg-[#00C9A7]/10 text-white shadow-[0_8px_20px_rgba(0,201,167,0.08)] ring-1 ring-[#00C9A7]/20"
+                                            : "border-[#9EE7D0] bg-white text-[#12382D] shadow-[0_8px_20px_rgba(0,201,167,0.12)] ring-1 ring-[#DDF8EC]"
                                           : canEditConfirmation
-                                            ? "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
-                                            : "border-gray-200 bg-[#F3F4F6] text-gray-400"
+                                            ? isNight
+                                              ? "border-white/10 bg-white/5 text-white/60 hover:-translate-y-0.5 hover:border-[#00C9A7]/30 hover:bg-white/10"
+                                              : "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
+                                            : isNight
+                                              ? "border-white/5 bg-white/[0.02] text-white/20"
+                                              : "border-gray-200 bg-[#F3F4F6] text-gray-400"
                                       }`}
                                     >
                                       <span
@@ -5043,7 +5173,7 @@ export default function Messages() {
                                               className={`block truncate text-[11px] font-bold ${
                                                 isConfirmed
                                                   ? "text-[#007E68]"
-                                                  : "text-gray-400"
+                                                  : isNight ? "text-white/20" : "text-gray-400"
                                               }`}
                                             >
                                               {`${getProcessParticipantButtonSubtitle(role)} · ${
@@ -5056,7 +5186,7 @@ export default function Messages() {
                                           className={`flex size-6 shrink-0 items-center justify-center rounded-full border transition-all ${
                                             isConfirmed
                                               ? "border-[#00C9A7] bg-[#00C9A7] text-white"
-                                              : "border-gray-300 bg-white text-transparent"
+                                              : isNight ? "border-white/20 bg-transparent text-transparent" : "border-gray-300 bg-white text-transparent"
                                           }`}
                                         >
                                           <CheckCircle className="size-4" />
@@ -5070,7 +5200,7 @@ export default function Messages() {
                                               className={`block truncate text-[11px] font-bold ${
                                                 isConfirmed
                                                   ? "text-[#007E68]"
-                                                  : "text-gray-400"
+                                                  : isNight ? "text-white/20" : "text-gray-400"
                                               }`}
                                             >
                                               {`${getProcessParticipantButtonSubtitle(role)} · ${
@@ -5103,7 +5233,7 @@ export default function Messages() {
                 )}
 
                 {/* Complete/End Work Button */}
-                <div className="mt-6 pt-6 border-t border-gray-200">
+                <div className={`mt-6 pt-6 border-t ${isNight ? "border-white/10" : "border-gray-200"}`}>
                   {areAllProcessesCompleted() ? (
                     <button
                       onClick={handleCompleteWork}
@@ -5115,13 +5245,13 @@ export default function Messages() {
                   ) : (
                     <button
                       onClick={handleEndWork}
-                      className="w-full border-2 border-gray-300 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-50 hover:border-[#FF5C3A] hover:text-[#FF5C3A] transition-all flex items-center justify-center gap-2"
+                      className={`w-full border-2 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${isNight ? "border-white/10 text-white/60 hover:bg-white/5 hover:border-[#FF5C3A] hover:text-[#FF5C3A]" : "border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-[#FF5C3A] hover:text-[#FF5C3A]"}`}
                     >
                       <XCircle className="size-5" />
                       작업 종료
                     </button>
                   )}
-                  <p className="text-xs text-gray-500 text-center mt-3">
+                  <p className={`text-xs text-center mt-3 ${isNight ? "text-white/30" : "text-gray-500"}`}>
                     {areAllProcessesCompleted()
                       ? "모든 작업과 양쪽 확인이 완료되었습니다. 후기를 작성해주세요."
                       : "모든 세부 작업을 완료하고 디자이너와 클라이언트가 모두 확인해야 완료됩니다."}
@@ -5133,33 +5263,179 @@ export default function Messages() {
             )}
           </div>
         </div>
-      </div>
+      </motion.div>
+      {isEndProcessModalOpen && (
+        <div
+          className="modal-backdrop-in fixed inset-0 z-[65] flex items-center justify-center bg-black/45 p-4"
+          onClick={closeEndProcessModal}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={
+            endProcessModalStep === "info" ? "end-process-info-title" : "end-process-confirm-title"
+          }
+        >
+          <div
+            className={`modal-panel-in w-full min-w-0 max-w-md overflow-hidden rounded-2xl shadow-2xl ${
+              isNight ? "border border-white/10 bg-[#141d30]" : "bg-white"
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {endProcessModalStep === "info" ? (
+              <>
+                <div className={`border-b px-5 py-4 ${isNight ? "border-white/10" : "border-gray-200"}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${
+                          isNight ? "bg-[#FF5C3A]/15 text-[#FFB199]" : "bg-[#FFF1ED] text-[#B13A21]"
+                        }`}
+                      >
+                        <AlertTriangle className="size-6" aria-hidden />
+                      </div>
+                      <div>
+                        <h2
+                          id="end-process-info-title"
+                          className={`text-lg font-bold leading-tight ${isNight ? "text-white" : "text-[#12382D]"}`}
+                        >
+                          작업 프로세스 종료
+                        </h2>
+                        <p className={`mt-1.5 text-sm leading-relaxed ${isNight ? "text-white/65" : "text-gray-600"}`}>
+                          <strong className={isNight ? "text-white/90" : "text-gray-800"}>
+                            이 대화에 설정된 작업 프로세스 전체를 없앱니다
+                          </strong>
+                          . 체크·확인 내역이 모두 사라지고, 필요하면 나중에 다시
+                          <strong> 만들기</strong>로 잡을 수 있어요.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeEndProcessModal}
+                      className={`shrink-0 rounded-lg p-2 transition-colors ${
+                        isNight ? "text-white/40 hover:bg-white/10 hover:text-white/70" : "text-gray-500 hover:bg-gray-100"
+                      }`}
+                      aria-label="닫기"
+                    >
+                      <XCircle className="size-5" />
+                    </button>
+                  </div>
+                </div>
+                <div className={`space-y-3 px-5 py-4 text-sm ${isNight ? "text-white/80" : "text-gray-700"}`}>
+                  <p className={`font-semibold ${isNight ? "text-white/90" : "text-[#0F0F0F]"}`}>
+                    프로젝트 후기를 남기려면
+                  </p>
+                  <p className="leading-relaxed">
+                    이후에 다시 프로세스를 만들고, 각 단계·양쪽 확인을 모두 끝내면{" "}
+                    <strong className="text-[#00A88C]">「작업 완료 및 후기 작성」</strong>에서 후기로 이어질
+                    수 있어요. 지금 종료하면 <strong>후기 작성 전</strong>에 프로세스를 다시 잡아야 합니다.
+                  </p>
+                </div>
+                <div
+                  className={`flex flex-col gap-2 px-5 pb-5 sm:flex-row sm:justify-end ${isNight ? "bg-[#0e1524]/50" : "bg-gray-50/80"}`}
+                >
+                  <button
+                    type="button"
+                    onClick={closeEndProcessModal}
+                    className={`order-2 w-full rounded-xl border-2 py-3 text-sm font-bold transition-colors sm:order-1 sm:w-auto sm:min-w-[100px] ${
+                      isNight
+                        ? "border-white/15 text-white/80 hover:bg-white/5"
+                        : "border-gray-200 text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEndProcessModalStep("confirm")}
+                    className="order-1 w-full rounded-xl border border-[#FF5C3A]/40 bg-[#FF5C3A]/10 py-3 text-sm font-bold text-[#B13A21] transition-colors hover:bg-[#FF5C3A]/20 dark:text-[#FFB199] sm:order-2 sm:w-auto sm:min-w-[120px]"
+                  >
+                    정말 종료할지 확인
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={`border-b px-5 py-4 ${isNight ? "border-white/10" : "border-gray-200"}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2
+                        id="end-process-confirm-title"
+                        className={`text-lg font-bold leading-tight ${isNight ? "text-white" : "text-[#12382D]"}`}
+                      >
+                        작업 프로세스를 전부 삭제할까요?
+                      </h2>
+                      <p className={`mt-2 text-sm leading-relaxed ${isNight ? "text-white/65" : "text-gray-600"}`}>
+                        이 작업은 되돌릴 수 없습니다. 서버에 저장된 이 대화의 프로세스·세부 작업·확인
+                        기록이 함께 제거돼요.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeEndProcessModal}
+                      className={`shrink-0 rounded-lg p-2 transition-colors ${
+                        isNight ? "text-white/40 hover:bg-white/10 hover:text-white/70" : "text-gray-500 hover:bg-gray-100"
+                      }`}
+                      aria-label="닫기"
+                    >
+                      <XCircle className="size-5" />
+                    </button>
+                  </div>
+                </div>
+                <div
+                  className={`flex w-full min-w-0 flex-col gap-2 px-5 py-4 sm:flex-row sm:items-stretch sm:gap-3 ${isNight ? "bg-[#0e1524]/50" : "bg-gray-50/80"}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setEndProcessModalStep("info")}
+                    disabled={isEndingProcess}
+                    className={`w-full shrink-0 whitespace-nowrap rounded-xl border-2 py-3 text-sm font-bold transition-colors sm:w-auto sm:min-w-[6rem] sm:px-4 ${
+                      isNight
+                        ? "border-white/15 text-white/80 hover:bg-white/5"
+                        : "border-gray-200 text-gray-700 hover:bg-gray-50"
+                    } ${isEndingProcess ? "pointer-events-none opacity-50" : ""}`}
+                  >
+                    이전
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleConfirmEndProcess()}
+                    disabled={isEndingProcess}
+                    className="w-full min-w-0 flex-1 rounded-xl bg-gradient-to-r from-[#E94A2A] to-[#c73718] py-3 text-center text-sm font-bold text-white shadow-sm transition-transform hover:scale-[1.01] active:scale-[0.99] disabled:opacity-60 sm:min-w-[9rem] sm:px-5"
+                  >
+                    {isEndingProcess ? "처리 중…" : "프로세스 종료"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       {integrationModalProvider && integrationModalMeta && (
         <div
           className="modal-backdrop-in fixed inset-0 z-[70] flex items-center justify-center bg-black/45 p-4"
           onClick={closeIntegrationModal}
         >
           <div
-            className="modal-panel-in w-full max-w-lg overflow-hidden rounded-lg bg-white shadow-2xl"
+            className={`modal-panel-in w-full max-w-lg overflow-hidden rounded-lg shadow-2xl ${isNight ? "bg-[#141d30]" : "bg-white"}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="border-b border-gray-200 bg-[#FAFBF8] p-5">
+            <div className={`border-b p-5 ${isNight ? "border-white/10 bg-[#0e1524]" : "border-gray-200 bg-[#FAFBF8]"}`}>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="mb-1 text-xs font-bold uppercase tracking-[0.08em] text-[#FF5C3A]">
                     작업 링크 첨부
                   </p>
-                  <h3 className="text-xl font-bold text-[#12382D]">
+                  <h3 className={`text-xl font-bold ${isNight ? "text-white" : "text-[#12382D]"}`}>
                     디자인 파일 공유
                   </h3>
-                  <p className="mt-1 text-sm text-gray-600">
+                  <p className={`mt-1 text-sm ${isNight ? "text-white/50" : "text-gray-600"}`}>
                     링크를 붙이면 채팅에 깔끔한 프로젝트 카드로 첨부됩니다.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={closeIntegrationModal}
-                  className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-white hover:text-gray-800"
+                  className={`rounded-lg p-2 transition-colors ${isNight ? "text-white/40 hover:bg-white/10 hover:text-white/60" : "text-gray-500 hover:bg-white hover:text-gray-800"}`}
                   aria-label="링크 첨부 닫기"
                 >
                   <XCircle className="size-5" />
@@ -5168,7 +5444,7 @@ export default function Messages() {
 
               <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {integrationProviderOrder.map((provider) => {
-                  const meta = integrationProviderMeta[provider];
+                  const meta = getIntegrationMeta(provider, isNight);
                   const isSelected = integrationModalProvider === provider;
 
                   return (
@@ -5181,8 +5457,8 @@ export default function Messages() {
                       }}
                       className={`rounded-lg border p-3 text-left transition-all ${
                         isSelected
-                          ? `${meta.borderClassName} bg-white shadow-sm`
-                          : "border-gray-200 bg-white/60 hover:bg-white"
+                          ? `${meta.borderClassName} ${isNight ? "bg-white/5" : "bg-white"} shadow-sm`
+                          : isNight ? "border-white/10 bg-white/[0.02] hover:bg-white/5" : "border-gray-200 bg-white/60 hover:bg-white"
                       }`}
                     >
                       <span
@@ -5190,7 +5466,7 @@ export default function Messages() {
                       >
                         {renderIntegrationProviderIcon(provider, "size-4")}
                       </span>
-                      <span className="block text-xs font-bold text-[#12382D]">
+                      <span className={`block text-xs font-bold ${isNight ? "text-white" : "text-[#12382D]"}`}>
                         {meta.shortLabel}
                       </span>
                     </button>
@@ -5201,14 +5477,16 @@ export default function Messages() {
 
             <div className="space-y-4 p-5">
               <div>
-                <label className="mb-2 block text-sm font-bold text-[#12382D]">
+                <label className={`mb-2 block text-sm font-bold ${isNight ? "text-white" : "text-[#12382D]"}`}>
                   {integrationModalMeta.title}
                 </label>
                 <div
-                  className={`flex items-center gap-3 rounded-lg border bg-white px-3 py-3 transition-colors ${
+                  className={`flex items-center gap-3 rounded-lg border px-3 py-3 transition-colors ${
+                    isNight ? "bg-[#0e1524]" : "bg-white"
+                  } ${
                     integrationUrlTouched && !canSubmitIntegrationLink
                       ? "border-[#FF5C3A]"
-                      : "border-gray-200 focus-within:border-[#00C9A7]"
+                      : isNight ? "border-white/10 focus-within:border-[#00C9A7]" : "border-gray-200 focus-within:border-[#00C9A7]"
                   }`}
                 >
                   <span
@@ -5226,17 +5504,17 @@ export default function Messages() {
                     }}
                     autoFocus
                     placeholder={integrationModalMeta.placeholder}
-                    className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                    className={`min-w-0 flex-1 bg-transparent text-sm outline-none ${isNight ? "text-white placeholder:text-white/30" : ""}`}
                   />
                 </div>
                 {integrationUrlTouched && !canSubmitIntegrationLink && (
-                  <p className="mt-2 text-xs font-semibold text-[#D84325]">
+                  <p className={`mt-2 text-xs font-semibold ${isNight ? "text-[#FF8A6E]" : "text-[#D84325]"}`}>
                     공유할 수 있는 링크 주소를 입력해주세요.
                   </p>
                 )}
               </div>
 
-              <div className={`rounded-lg border p-4 ${integrationModalMeta.borderClassName} bg-white`}>
+              <div className={`rounded-lg border p-4 ${integrationModalMeta.borderClassName} ${isNight ? "bg-white/5" : "bg-white"}`}>
                 <div className="flex gap-3">
                   <span
                     className={`flex size-11 shrink-0 items-center justify-center rounded-lg ${integrationModalMeta.iconClassName}`}
@@ -5245,19 +5523,19 @@ export default function Messages() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="mb-1 flex items-center gap-2">
-                      <p className="truncate text-sm font-bold text-[#12382D]">
+                      <p className={`truncate text-sm font-bold ${isNight ? "text-white" : "text-[#12382D]"}`}>
                         {integrationModalMeta.previewTitle}
                       </p>
-                      <ExternalLink className="size-4 shrink-0 text-gray-400" />
+                      <ExternalLink className={`size-4 shrink-0 ${isNight ? "text-white/30" : "text-gray-400"}`} />
                     </div>
-                    <p className="text-xs leading-relaxed text-gray-600">
+                    <p className={`text-xs leading-relaxed ${isNight ? "text-white/50" : "text-gray-600"}`}>
                       {integrationModalMeta.description}
                     </p>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <span className={`rounded-lg px-2.5 py-1 text-xs font-bold ${integrationModalMeta.chipClassName}`}>
                         {integrationModalMeta.shortLabel}
                       </span>
-                      <span className="max-w-[210px] truncate rounded-lg bg-[#F7F7F5] px-2.5 py-1 text-xs font-semibold text-gray-500">
+                      <span className={`max-w-[210px] truncate rounded-lg px-2.5 py-1 text-xs font-semibold ${isNight ? "bg-white/10 text-white/40" : "bg-[#F7F7F5] text-gray-500"}`}>
                         {integrationUrlHost || "링크를 붙이면 도메인이 보여요"}
                       </span>
                     </div>
@@ -5266,11 +5544,11 @@ export default function Messages() {
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 border-t border-gray-200 bg-[#FAFBF8] p-4">
+            <div className={`flex items-center justify-end gap-2 border-t p-4 ${isNight ? "border-white/10 bg-[#0e1524]" : "border-gray-200 bg-[#FAFBF8]"}`}>
               <button
                 type="button"
                 onClick={closeIntegrationModal}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+                className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors ${isNight ? "border-white/10 bg-white/5 text-white/60 hover:bg-white/10" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}
               >
                 취소
               </button>
@@ -5293,25 +5571,25 @@ export default function Messages() {
           onClick={requestCloseProcessModal}
         >
           <div
-            className="modal-panel-in flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl"
+            className={`modal-panel-in flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg shadow-2xl ${isNight ? "bg-[#141d30]" : "bg-white"}`}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-start justify-between border-b border-gray-200 p-5">
+            <div className={`flex items-start justify-between border-b p-5 ${isNight ? "border-white/10" : "border-gray-200"}`}>
               <div>
                 <p className="mb-1 text-xs font-semibold uppercase text-[#FF5C3A]">
                   작업 프로세스
                 </p>
-                <h3 className="text-xl font-bold text-[#12382D]">
+                <h3 className={`text-xl font-bold ${isNight ? "text-white" : "text-[#12382D]"}`}>
                   프로세스 섹션 만들기
                 </h3>
-                <p className="mt-1 text-sm text-gray-600">
+                <p className={`mt-1 text-sm ${isNight ? "text-white/50" : "text-gray-600"}`}>
                   큰 프로세스를 나누고, 각 섹션 안에 세부 프로세스를 추가하세요.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={requestCloseProcessModal}
-                className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
+                className={`rounded-lg p-2 transition-colors ${isNight ? "text-white/40 hover:bg-white/10 hover:text-white/60" : "text-gray-500 hover:bg-gray-100 hover:text-gray-800"}`}
                 aria-label="프로세스 모달 닫기"
               >
                 <XCircle className="size-5" />
@@ -5326,10 +5604,10 @@ export default function Messages() {
                     if (draggingDraftProcessId !== null) event.preventDefault();
                   }}
                   onDrop={() => handleDraftProcessDrop(process.id)}
-                  className={`rounded-lg border bg-white p-4 shadow-sm transition-all ${
+                  className={`rounded-lg border p-4 shadow-sm transition-all ${
                     draggingDraftProcessId === process.id
-                      ? "border-[#FF5C3A] bg-[#FFF7F4]"
-                      : "border-gray-200"
+                      ? isNight ? "border-[#FF5C3A]/40 bg-[#FF5C3A]/5" : "border-[#FF5C3A] bg-[#FFF7F4]"
+                      : isNight ? "border-white/10 bg-[#1a2035]" : "border-gray-200 bg-white"
                   }`}
                 >
                   <div className="mb-4 flex items-center gap-3">
@@ -5341,16 +5619,16 @@ export default function Messages() {
                         setDraggingDraftProcessId(process.id);
                       }}
                       onDragEnd={() => setDraggingDraftProcessId(null)}
-                      className="flex size-8 shrink-0 cursor-grab items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-400 transition-colors hover:border-[#FF5C3A] hover:text-[#FF5C3A] active:cursor-grabbing"
+                      className={`flex size-8 shrink-0 cursor-grab items-center justify-center rounded-lg border transition-colors hover:border-[#FF5C3A] hover:text-[#FF5C3A] active:cursor-grabbing ${isNight ? "border-white/10 bg-transparent text-white/30" : "border-gray-200 bg-white text-gray-400"}`}
                       aria-label="프로세스 순서 변경"
                     >
                       <GripVertical className="size-4" />
                     </button>
-                    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#FFF1ED] text-sm font-bold text-[#FF5C3A]">
+                    <span className={`flex size-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${isNight ? "bg-[#FF5C3A]/15 text-[#FF8A6E]" : "bg-[#FFF1ED] text-[#FF5C3A]"}`}>
                       {processIndex + 1}
                     </span>
                     <label className="min-w-0 flex-1">
-                      <span className="mb-1 block text-xs font-semibold text-gray-500">
+                      <span className={`mb-1 block text-xs font-semibold ${isNight ? "text-white/40" : "text-gray-500"}`}>
                         프로세스 이름
                       </span>
                       <input
@@ -5359,29 +5637,29 @@ export default function Messages() {
                         onChange={(event) =>
                           updateDraftProcessTitle(process.id, event.target.value)
                         }
-                        className="w-full rounded-lg border border-gray-200 bg-[#FAFBF8] px-3 py-2 text-sm font-semibold text-[#12382D] outline-none transition-colors focus:border-[#FF5C3A] focus:bg-white"
+                        className={`w-full rounded-lg border px-3 py-2 text-sm font-semibold outline-none transition-colors focus:border-[#FF5C3A] ${isNight ? "border-white/10 bg-[#0e1524] text-white focus:bg-[#141d30] placeholder:text-white/30" : "border-gray-200 bg-[#FAFBF8] text-[#12382D] focus:bg-white"}`}
                         placeholder={`프로세스 ${processIndex + 1}`}
                       />
                     </label>
                     <button
                       type="button"
                       onClick={() => removeDraftProcess(process.id)}
-                      className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-[#FFD1C8] bg-[#FFF7F4] text-[#D84325] transition-colors hover:bg-[#FFF1ED]"
+                      className={`flex size-9 shrink-0 items-center justify-center rounded-lg border transition-colors ${isNight ? "border-[#FF5C3A]/20 bg-[#FF5C3A]/10 text-[#FF8A6E] hover:bg-[#FF5C3A]/15" : "border-[#FFD1C8] bg-[#FFF7F4] text-[#D84325] hover:bg-[#FFF1ED]"}`}
                       aria-label="프로세스 삭제"
                     >
                       <Trash2 className="size-4" />
                     </button>
                   </div>
 
-                  <div className="rounded-lg bg-[#F7F7F5] p-3">
+                  <div className={`rounded-lg p-3 ${isNight ? "bg-white/5" : "bg-[#F7F7F5]"}`}>
                     <div className="mb-3 flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-gray-700">
+                      <p className={`text-sm font-semibold ${isNight ? "text-white/70" : "text-gray-700"}`}>
                         세부 프로세스
                       </p>
                       <button
                         type="button"
                         onClick={() => addDraftTask(process.id)}
-                        className="inline-flex items-center gap-1 rounded-lg bg-white px-3 py-1.5 text-xs font-semibold text-[#00A88C] shadow-sm transition-colors hover:bg-[#EFFBF6]"
+                        className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors ${isNight ? "bg-[#141d30] text-[#00C9A7] hover:bg-[#1a2035]" : "bg-white text-[#00A88C] hover:bg-[#EFFBF6]"}`}
                       >
                         <Plus className="size-3.5" />
                         추가
@@ -5398,11 +5676,11 @@ export default function Messages() {
                             }
                           }}
                           onDrop={() => handleDraftTaskDrop(process.id, task.id)}
-                          className={`flex items-center gap-2 rounded-lg border bg-white px-2 py-2 transition-all ${
+                          className={`flex items-center gap-2 rounded-lg border px-2 py-2 transition-all ${
                             draggingDraftTask?.processId === process.id &&
                             draggingDraftTask.taskId === task.id
-                              ? "border-[#00A88C] bg-[#EFFBF6]"
-                              : "border-gray-200"
+                              ? isNight ? "border-[#00C9A7]/40 bg-[#00C9A7]/10" : "border-[#00A88C] bg-[#EFFBF6]"
+                              : isNight ? "border-white/10 bg-[#141d30]" : "border-gray-200 bg-white"
                           }`}
                         >
                           <button
@@ -5416,12 +5694,12 @@ export default function Messages() {
                               });
                             }}
                             onDragEnd={() => setDraggingDraftTask(null)}
-                            className="flex size-7 shrink-0 cursor-grab items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-[#EFFBF6] hover:text-[#00A88C] active:cursor-grabbing"
+                            className={`flex size-7 shrink-0 cursor-grab items-center justify-center rounded-lg transition-colors active:cursor-grabbing ${isNight ? "text-white/30 hover:bg-white/10 hover:text-[#00C9A7]" : "text-gray-400 hover:bg-[#EFFBF6] hover:text-[#00A88C]"}`}
                             aria-label="세부 프로세스 순서 변경"
                           >
                             <GripVertical className="size-4" />
                           </button>
-                          <span className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-[#EFFBF6] text-xs font-bold text-[#00A88C]">
+                          <span className={`flex size-6 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${isNight ? "bg-[#00C9A7]/15 text-[#00C9A7]" : "bg-[#EFFBF6] text-[#00A88C]"}`}>
                             {taskIndex + 1}
                           </span>
                           <input
@@ -5430,13 +5708,13 @@ export default function Messages() {
                             onChange={(event) =>
                               updateDraftTaskText(process.id, task.id, event.target.value)
                             }
-                            className="min-w-0 flex-1 bg-transparent text-sm text-gray-700 outline-none"
+                            className={`min-w-0 flex-1 bg-transparent text-sm outline-none ${isNight ? "text-white/70 placeholder:text-white/30" : "text-gray-700"}`}
                             placeholder={`세부 프로세스 ${taskIndex + 1}`}
                           />
                           <button
                             type="button"
                             onClick={() => removeDraftTask(process.id, task.id)}
-                            className="flex size-7 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-[#FFF1ED] hover:text-[#D84325]"
+                            className={`flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors ${isNight ? "text-white/30 hover:bg-[#FF5C3A]/10 hover:text-[#FF8A6E]" : "text-gray-400 hover:bg-[#FFF1ED] hover:text-[#D84325]"}`}
                             aria-label="세부 프로세스 삭제"
                           >
                             <Trash2 className="size-3.5" />
@@ -5445,7 +5723,7 @@ export default function Messages() {
                       ))}
 
                       {process.tasks.length === 0 && (
-                        <div className="rounded-lg border border-dashed border-gray-300 bg-white/70 px-3 py-4 text-center text-xs font-semibold text-gray-500">
+                        <div className={`rounded-lg border border-dashed px-3 py-4 text-center text-xs font-semibold ${isNight ? "border-white/10 bg-white/5 text-white/40" : "border-gray-300 bg-white/70 text-gray-500"}`}>
                           세부 프로세스를 하나 이상 추가해주세요.
                         </div>
                       )}
@@ -5457,16 +5735,16 @@ export default function Messages() {
               <button
                 type="button"
                 onClick={addDraftProcess}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[#FF5C3A] bg-[#FFF7F4] px-4 py-3 text-sm font-semibold text-[#FF5C3A] transition-colors hover:bg-[#FFF1ED]"
+                className={`flex w-full items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-3 text-sm font-semibold transition-colors ${isNight ? "border-[#FF5C3A]/30 bg-[#FF5C3A]/5 text-[#FF8A6E] hover:bg-[#FF5C3A]/10" : "border-[#FF5C3A] bg-[#FFF7F4] text-[#FF5C3A] hover:bg-[#FFF1ED]"}`}
               >
                 <Plus className="size-4" />
                 프로세스 추가
               </button>
 
-              <section className="rounded-lg border border-[#BDEFD8] bg-[#F5FFFB] p-4">
+              <section className={`rounded-lg border p-4 ${isNight ? "border-[#00C9A7]/20 bg-[#00C9A7]/5" : "border-[#BDEFD8] bg-[#F5FFFB]"}`}>
                 <div className="flex items-center gap-2">
                   <Eye className="size-4 text-[#00A88C]" />
-                  <p className="text-sm font-bold text-[#12382D]">
+                  <p className={`text-sm font-bold ${isNight ? "text-white" : "text-[#12382D]"}`}>
                     저장 전 미리보기
                   </p>
                 </div>
@@ -5475,13 +5753,13 @@ export default function Messages() {
                     draftProcesses.map((process, processIndex) => (
                       <div
                         key={`preview-${process.id}`}
-                        className="rounded-lg border border-[#DCEFE7] bg-white p-3"
+                        className={`rounded-lg border p-3 ${isNight ? "border-white/10 bg-[#141d30]" : "border-[#DCEFE7] bg-white"}`}
                       >
                         <div className="flex items-center gap-2">
-                          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-[#FFF1ED] text-xs font-bold text-[#FF5C3A]">
+                          <span className={`flex size-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${isNight ? "bg-[#FF5C3A]/15 text-[#FF8A6E]" : "bg-[#FFF1ED] text-[#FF5C3A]"}`}>
                             {processIndex + 1}
                           </span>
-                          <p className="min-w-0 flex-1 truncate text-sm font-bold text-[#12382D]">
+                          <p className={`min-w-0 flex-1 truncate text-sm font-bold ${isNight ? "text-white" : "text-[#12382D]"}`}>
                             {process.title.trim() || "프로세스 이름 없음"}
                           </p>
                         </div>
@@ -5490,13 +5768,13 @@ export default function Messages() {
                             process.tasks.map((task, taskIndex) => (
                               <span
                                 key={`preview-task-${task.id}`}
-                                className="rounded-lg bg-[#EFFBF6] px-2 py-1 text-xs font-semibold text-[#007E68]"
+                                className={`rounded-lg px-2 py-1 text-xs font-semibold ${isNight ? "bg-[#00C9A7]/15 text-[#00C9A7]" : "bg-[#EFFBF6] text-[#007E68]"}`}
                               >
                                 {taskIndex + 1}. {task.text.trim() || "세부 이름 없음"}
                               </span>
                             ))
                           ) : (
-                            <span className="rounded-lg bg-[#FFF1ED] px-2 py-1 text-xs font-semibold text-[#D84325]">
+                            <span className={`rounded-lg px-2 py-1 text-xs font-semibold ${isNight ? "bg-[#FF5C3A]/15 text-[#FF8A6E]" : "bg-[#FFF1ED] text-[#D84325]"}`}>
                               세부 프로세스 없음
                             </span>
                           )}
@@ -5504,7 +5782,7 @@ export default function Messages() {
                       </div>
                     ))
                   ) : (
-                    <div className="rounded-lg border border-dashed border-[#DCEFE7] bg-white/70 px-3 py-5 text-center text-sm font-semibold text-gray-500">
+                    <div className={`rounded-lg border border-dashed px-3 py-5 text-center text-sm font-semibold ${isNight ? "border-white/10 bg-white/5 text-white/40" : "border-[#DCEFE7] bg-white/70 text-gray-500"}`}>
                       미리볼 프로세스가 없습니다.
                     </div>
                   )}
@@ -5512,10 +5790,10 @@ export default function Messages() {
               </section>
             </div>
 
-            <div className="flex flex-col gap-3 border-t border-gray-200 bg-[#FAFBF8] p-4 md:flex-row md:items-center md:justify-between">
+            <div className={`flex flex-col gap-3 border-t p-4 md:flex-row md:items-center md:justify-between ${isNight ? "border-white/10 bg-[#0e1524]" : "border-gray-200 bg-[#FAFBF8]"}`}>
               <p
                 className={`text-xs font-semibold ${
-                  draftValidationMessage ? "text-[#D84325]" : "text-gray-500"
+                  draftValidationMessage ? isNight ? "text-[#FF8A6E]" : "text-[#D84325]" : isNight ? "text-white/40" : "text-gray-500"
                 }`}
               >
                 {draftValidationMessage || "미리보기를 확인한 뒤 저장할 수 있어요."}
@@ -5524,7 +5802,7 @@ export default function Messages() {
                 <button
                   type="button"
                   onClick={requestCloseProcessModal}
-                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50"
+                  className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors ${isNight ? "border-white/10 bg-white/5 text-white/60 hover:bg-white/10" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}
                 >
                   취소
                 </button>
@@ -5534,7 +5812,7 @@ export default function Messages() {
                   disabled={Boolean(draftValidationMessage)}
                   className={`rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all ${
                     draftValidationMessage
-                      ? "cursor-not-allowed bg-gray-300"
+                      ? isNight ? "cursor-not-allowed bg-white/10" : "cursor-not-allowed bg-gray-300"
                       : "bg-[#FF5C3A] hover:bg-[#E94F2F] hover:shadow-md"
                   }`}
                 >
