@@ -7,6 +7,7 @@ public record CreateProjectRequest(
         String postType,
         String title,
         String category,
+        List<String> categories,
         String jobState,
         String experienceLevel,
         Integer budget,

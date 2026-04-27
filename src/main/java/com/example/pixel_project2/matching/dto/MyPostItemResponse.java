@@ -1,12 +1,19 @@
 package com.example.pixel_project2.matching.dto;
 
+import java.util.List;
+
 public record MyPostItemResponse(
         Long postId,
+        Long clientUserId,
         String title,
-        String overview,      // 💡 추가
-        String category,      // 💡 추가
-        String projectState,  // 💡 추가 (백엔드 엔티티의 state)
-        String jobState,      // 💡 추가 (단기/중기/장기)
-        String deadline
+        String overview,
+        String profileImage,
+        String category,
+        List<String> categories,
+        String projectState,
+        String jobState,
+        String deadline,
+        String thumbnailImageUrl,
+        List<String> imageUrls
 ) {
 }

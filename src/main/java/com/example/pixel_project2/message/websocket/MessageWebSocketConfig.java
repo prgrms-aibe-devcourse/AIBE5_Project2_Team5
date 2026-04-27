@@ -1,6 +1,7 @@
 package com.example.pixel_project2.message.websocket;
 
 import jakarta.websocket.server.ServerContainer;
+import com.example.pixel_project2.notification.websocket.NotificationSocketHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.boot.web.servlet.ServletContextInitializer;
@@ -18,6 +19,7 @@ public class MessageWebSocketConfig implements WebSocketConfigurer {
     private static final long ASYNC_SEND_TIMEOUT_MILLIS = 15_000L;
 
     private final MessageSocketHandler messageSocketHandler;
+    private final NotificationSocketHandler notificationSocketHandler;
     private final MessageSocketHandshakeInterceptor handshakeInterceptor;
 
     @Bean
@@ -38,6 +40,9 @@ public class MessageWebSocketConfig implements WebSocketConfigurer {
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         registry.addHandler(messageSocketHandler, "/ws/messages")
+                .addInterceptors(handshakeInterceptor)
+                .setAllowedOriginPatterns("*");
+        registry.addHandler(notificationSocketHandler, "/ws/notifications")
                 .addInterceptors(handshakeInterceptor)
                 .setAllowedOriginPatterns("*");
     }

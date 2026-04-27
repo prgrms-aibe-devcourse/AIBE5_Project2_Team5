@@ -116,7 +116,6 @@ const creatorProfiles = [
   },
 ];
 
-
 // 카테고리 카드 버튼용 배경 이미지 (Unsplash CDN, 작은 사이즈로 최적화)
 const CATEGORY_IMAGES: Record<string, string> = {
   "그래픽 디자인": "https://images.unsplash.com/photo-1561070791-2526d30994b8?w=240&q=70&auto=format&fit=crop",
@@ -184,6 +183,13 @@ export default function Explore() {
     currentUser?.nickname,
   );
   const currentUserName = currentUser?.nickname || currentUser?.name || "내 프로필";
+
+  function toCommentAuthorRole(role: string) {
+    if (role === "CLIENT") return "프로젝트 클라이언트";
+    if (role === "DESIGNER") return "디자이너";
+    return role;
+  }
+
   const categories = matchingCategories;
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
@@ -199,7 +205,7 @@ export default function Explore() {
   const [designers, setDesigners] = useState<ExploreDesignerResponseDto[]>([]);
   const [isDesignersLoading, setIsDesignersLoading] = useState(false);
 
-  // 페이징 상태
+  // 페이지 상태
   const [feedPage, setFeedPage] = useState(0);
   const [hasMoreFeeds, setHasMoreFeeds] = useState(true);
   const [isFetchingMoreFeeds, setIsFetchingMoreFeeds] = useState(false);
@@ -249,12 +255,6 @@ export default function Explore() {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
-  function toCommentAuthorRole(role: string) {
-    if (role === "CLIENT") return "프로젝트 클라이언트";
-    if (role === "DESIGNER") return "디자이너";
-    return role;
-  }
-
   const {
     commentText,
     setCommentText,
@@ -284,7 +284,7 @@ export default function Explore() {
     toFeedCommentRole: toCommentAuthorRole,
   });
 
-  // useFeedDetail 훅 적용 (피드 페이지와 동일한 상세 로딩 로직)
+  // useFeedDetail 적용 전까지 사용하는 피드 상세 로딩 로직
   const { isLoading: isFeedDetailLoading } = useFeedDetail({
     selectedFeed: selectedExploreFeed,
     setApiFeedItems: setFeeds as React.Dispatch<React.SetStateAction<FeedCardItem[]>>,
@@ -296,14 +296,14 @@ export default function Explore() {
     setModalImageIndex(0);
   };
 
-  // 피드 액션 헬퍼
+  // 피드 ?≪뀡 ?ы띁
   const toggleLike = async (id: number, e?: React.MouseEvent) => {
     e?.stopPropagation();
     try {
-      // 서버에 좋아요 요청 전송
+      // 서버에 좋아요 토글 요청
       const response = await toggleFeedPickApi(id);
 
-      // 1. 하트 활성화 상태 업데이트 (Set)
+      // 1. 로컬 좋아요 상태 업데이트
       setLikedItems(prev => {
         const newSet = new Set(prev);
         if (response.picked) newSet.add(id);
@@ -311,7 +311,7 @@ export default function Explore() {
         return newSet;
       });
 
-      // 2. 피드 목록(feeds) 데이터의 좋아요 수 동기화
+      // 2. 피드 목록의 좋아요 수와 상태 동기화
       setFeeds(prevFeeds =>
         prevFeeds.map(feed =>
           feed.id === id
@@ -320,7 +320,7 @@ export default function Explore() {
         )
       );
 
-      // 3. 만약 상세 모달이 열려있다면 상세 데이터도 동기화
+      // 3. 상세 모달이 열려 있으면 모달 데이터도 함께 업데이트
       if (selectedExploreFeed && selectedExploreFeed.id === id) {
         setSelectedExploreFeed(prev =>
           prev ? { ...prev, likes: response.pickCount, likedByMe: response.picked } : null
@@ -372,7 +372,7 @@ export default function Explore() {
     }
 
     const now = Date.now();
-    const proposalMessage = `안녕하세요. "${item.title}" 작업을 보고 프로젝트 제안을 드리고 싶어 연락드립니다. 작업 가능 여부와 일정, 견적을 함께 이야기해보고 싶습니다.`;
+    const proposalMessage = `안녕하세요. "${item.title}" 작업을 보고 프로젝트 제안을 드리고 싶어 연락드립니다. 작업 가능 여부와 일정, 견적 등을 이야기해보고 싶습니다.`;
 
     setStartingProposalPostId(item.id);
     try {
@@ -430,12 +430,12 @@ export default function Explore() {
   const scrollCat = (dir: "left" | "right") => {
     const el = catScrollRef.current;
     if (!el) return;
-    // 가시 영역의 80% 정도씩 부드럽게 이동
+    // 가시 영역의 약 80% 정도를 부드럽게 이동
     const amount = Math.max(240, el.clientWidth * 0.8);
     el.scrollBy({ left: dir === "left" ? -amount : amount, behavior: "smooth" });
   };
 
-  // 수직 휠 → 수평 스크롤 변환 (카테고리 행용)
+  // 카테고리 레일 수평 스크롤 버튼
   const handleCatWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
       const el = catScrollRef.current;
@@ -449,7 +449,7 @@ export default function Explore() {
   const lastFeedsRequestId = useRef(0);
   const lastDesignersRequestId = useRef(0);
 
-  // 피드 목록 조회 (초기화 및 무한 스크롤 병합)
+  // 피드 목록 조회 (초기 로드 + 무한 스크롤 공용)
   const fetchFeeds = useCallback(async (pageNum: number, isInitial: boolean = false) => {
     const requestId = ++lastFeedsRequestId.current;
     try {
@@ -541,7 +541,7 @@ export default function Explore() {
     }
   }, [debouncedSearchQuery]);
 
-  // 검색 조건 변경 시 초기화 및 첫 페이지 로드
+  // 검색/필터 변경 시 초기화 후 첫 페이지 로드
   useEffect(() => {
     setFeedPage(0);
     setDesignerPage(0);
@@ -592,7 +592,7 @@ export default function Explore() {
   const filteredProjects = useMemo(() => {
     const list = [...feeds];
     if (sortBy === "latest") {
-      // createdAt 키 부재 시 id 내림차순으로 폴백
+      // createdAt이 없어서 id 내림차순으로 대체
       list.sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
     } else if (sortBy === "popular") {
       list.sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0));
@@ -611,14 +611,14 @@ export default function Explore() {
   // AI 채팅 하단 스크롤
 
 
-  // 댓글 모달 입력의 onCommentKeyDown으로 전달되는 녹아웃 핸들러 (현재는 no-op)
+  // 댓글 모달 입력에서 전달받는 keydown 핸들러 자리 (현재 no-op)
   const handleSearchKeyDown = (_e: React.KeyboardEvent) => {};
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FAFAF8]">
       <Navigation />
 
-      {/* 탐색 검색바 (단일 capsule pill) */}
+      {/* 탐색 검색바 */}
       <section className="relative z-30">
         <div className="max-w-[1800px] mx-auto px-5 pt-7 pb-3">
           <div className="flex items-center h-12 rounded-full bg-white border border-gray-200/70 shadow-sm hover:border-gray-300 focus-within:border-[#00C9A7]/40 focus-within:shadow-[0_0_0_3px_rgba(0,201,167,0.1)] transition-all duration-300">
@@ -629,7 +629,7 @@ export default function Explore() {
                 ref={searchRef}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="pickxel에서 검색..."
+                placeholder="Pickxel에서 검색..."
                 className="w-full h-12 pl-3 pr-2 bg-transparent text-[14px] text-[#0F0F0F] placeholder:text-gray-400 focus:outline-none"
               />
               {searchQuery && (
@@ -641,7 +641,7 @@ export default function Explore() {
 
             <div className="w-px h-6 bg-gray-200 shrink-0" />
 
-            {/* 탭 segmented (피드/프로필) */}
+            {/* segmented control (피드 / 프로필) */}
             <div className="relative flex items-center px-1.5 shrink-0">
               <button
                 onClick={() => setActiveTab("feed")}
@@ -672,12 +672,11 @@ export default function Explore() {
                     transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                   />
                 )}
-                <Users className={`relative z-[2] size-3.5 transition-colors ${activeTab === "profile" ? "text-white" : "text-gray-400"}`} />
                 <span className="relative z-[2]">프로필</span>
               </button>
             </div>
 
-            {/* 정렬 셀렉터 (양쪽 탭 공통 노출, jitter 제거) */}
+            {/* 정렬 셀렉터 */}
             <div className="w-px h-6 bg-gray-200 shrink-0" />
             <div className="relative shrink-0 pr-2">
                   <button
@@ -700,7 +699,7 @@ export default function Explore() {
                         >
                           {([
                             { key: "recommended", icon: Star, label: "추천", desc: "Pickxel 큐레이션" },
-                            { key: "latest", icon: Clock, label: "최신", desc: "새로 등록된 순" },
+                            { key: "latest", icon: Clock, label: "최신", desc: "최근 등록된 순" },
                             { key: "popular", icon: TrendingUp, label: "인기", desc: "좋아요 많은 순" },
                           ] as const).map(({ key, icon: Icon, label, desc }) => (
                             <button
@@ -727,23 +726,23 @@ export default function Explore() {
         </div>
       </section>
 
-      {/* 탐색 카테고리 필터 (한 줄 균등 분배, 한눈에 노출) */}
+      {/* 탐색 카테고리 필터 */}
       {activeTab === "feed" && (
         <section className="bg-transparent pb-3">
           <div className="max-w-[1800px] mx-auto px-5">
             <div className="flex items-stretch gap-1.5 py-3 px-1">
-                  {/* 전체 버튼 (솔리드 그라디언트) */}
+                  {/* 전체 버튼 */}
                   <button
                     onClick={() => setSelectedCategory(null)}
                     className={`relative h-[52px] flex-1 basis-0 min-w-0 rounded-md overflow-visible transition-all duration-200 ${
                       !selectedCategory ? "scale-[1.03] shadow-lg shadow-[#00C9A7]/30" : "hover:-translate-y-0.5 hover:shadow-md"
                     }`}
                   >
-                    {/* 배경 (overflow-hidden을 안쪽 span으로 격리) */}
+                    {/* 배경 레이어 */}
                     <span className="absolute inset-0 rounded-md overflow-hidden">
                       <span className="absolute inset-0 bg-gradient-to-br from-[#00C9A7] via-[#00A88C] to-[#008F77]" />
                     </span>
-                    {/* 조명 켜지듯 글로우 bloom */}
+                    {/* 선택 강조 glow */}
                     <AnimatePresence>
                       {!selectedCategory && (
                         <motion.span
@@ -774,7 +773,7 @@ export default function Explore() {
                           isActive ? "scale-[1.03] shadow-lg shadow-[#00C9A7]/25" : "hover:-translate-y-0.5 hover:shadow-md"
                         }`}
                       >
-                        {/* 이미지 + 오버레이 (overflow-hidden 격리) */}
+                        {/* 이미지 + 오버레이 */}
                         <span className="absolute inset-0 rounded-md overflow-hidden">
                           {image && (
                             <img
@@ -798,7 +797,7 @@ export default function Explore() {
                           />
                         </span>
 
-                        {/* 조명 켜지듯 글로우 bloom */}
+                        {/* 선택 강조 glow */}
                         <AnimatePresence>
                           {isActive && (
                             <motion.span
@@ -832,7 +831,7 @@ export default function Explore() {
 
       {/* 탐색 메인 콘텐츠 */}
       <div className="flex-1">
-        {/* 피드 카드 그리드 */}
+        {/* 피드 移대뱶 洹몃━??*/}
         {activeTab === "feed" && (
           <section className="max-w-[1800px] mx-auto px-5 pt-1 pb-16">
             {isFeedsLoading ? (
@@ -842,7 +841,7 @@ export default function Explore() {
               </div>
             ) : filteredProjects.length > 0 ? (
               <>
-                {/* 균일 그리드: 모든 카드 4:3 동일 사이즈 */}
+                {/* 카드 그리드: 모든 카드는 4:3 비율 */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
                   {filteredProjects.map((project, index) => {
                     const isSaved = savedProjectIds.has(project.id);
@@ -865,7 +864,7 @@ export default function Explore() {
                             className="w-full h-full object-cover block group-hover:scale-[1.03] transition-transform duration-700 ease-out"
                           />
 
-                          {/* 카테고리 배지 (좌상단, 호버 시 노출) */}
+                          {/* 카테고리 배지 */}
                           {project.category && (
                             <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 -translate-y-1 group-hover:translate-y-0 transition-all duration-300 z-10">
                               <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-md text-[11px] font-semibold text-[#0F0F0F] shadow-sm">
@@ -874,7 +873,6 @@ export default function Explore() {
                             </div>
                           )}
 
-                          {/* 저장 버튼 (우상단 리본 태그 - 역V 제비꼬리) */}
                           <button
                             onClick={(e) => { e.stopPropagation(); openCollectionModal(project, e); }}
                             title="컬렉션에 저장"
@@ -894,11 +892,11 @@ export default function Explore() {
                             </span>
                           </button>
 
-                          {/* 하단 살짝 그라디언트(호버 시 카테고리/저장 배지 가독성용) */}
+                          {/* 하단 오버레이 */}
                           <div className="absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
                         </div>
 
-                        {/* 카드 외부 캡션 (Behance 톤: 제목 / 작가 + 좋아요·댓글) */}
+                        {/* 카드 메타 캡션 */}
                         <div className="pt-2.5 px-0.5 pb-2">
                           <h3 className="font-semibold text-[13.5px] text-[#0F0F0F] truncate group-hover:text-[#00A88C] transition-colors duration-300 leading-snug">
                             {project.title}
@@ -929,7 +927,7 @@ export default function Explore() {
                   })}
                 </div>
 
-                {/* 무한 스크롤 감지 및 로딩 표시 */}
+                {/* 무한 스크롤 로딩 상태 */}
                 <div ref={observerRef} className="h-20 flex items-center justify-center mt-10">
                   {isFetchingMoreFeeds && (
                     <div className="flex flex-col items-center gap-2">
@@ -938,7 +936,7 @@ export default function Explore() {
                     </div>
                   )}
                   {!hasMoreFeeds && filteredProjects.length > 0 && (
-                    <p className="text-sm text-gray-400">모든 피드를 확인했습니다 ✨</p>
+                    <p className="text-sm text-gray-400 font-medium">모든 피드를 확인했습니다.</p>
                   )}
                 </div>
               </>
@@ -1012,7 +1010,7 @@ export default function Explore() {
 
                         {/* 본문 영역 */}
                         <div className="px-4 pb-4 pt-0 -mt-8 relative">
-                          {/* 큰 아바타 (배너에 걸침) */}
+                          {/* 프로필 아바타 */}
                           <ImageWithFallback
                             src={getUserAvatar(profile.profileImage, profile.userId, profile.nickname)}
                             alt={profile.nickname}
@@ -1025,15 +1023,15 @@ export default function Explore() {
                             {profile.job || "디자이너"}
                           </p>
                           <p className="text-[12px] text-gray-400 mt-2 line-clamp-2 leading-relaxed min-h-[34px]">
-                            {profile.introduction || "멋진 작업을 만드는 디자이너입니다."}
+                            {profile.introduction || "멋진 작업을 만들어가는 디자이너입니다."}
                           </p>
 
-                          {/* 메타 행 */}
+                          {/* 메타 정보 */}
                           <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-[12px]">
                             <div className="flex items-center gap-3">
                               <span className="text-gray-500">
                                 <strong className="text-[#0F0F0F] text-[13px] font-bold">{profile.followCount}</strong>{" "}
-                                <span className="text-[11px]">팔로우</span>
+                                <span className="text-[11px]">팔로워</span>
                               </span>
                               <span className="w-px h-3 bg-gray-200" />
                               <span className="text-gray-500">
@@ -1049,16 +1047,16 @@ export default function Explore() {
                   ))}
                 </div>
 
-                {/* 무한 스크롤 감지 및 로딩 표시 (디자이너) */}
+                {/* 무한 스크롤 로딩 상태 (디자이너) */}
                 <div ref={observerRef} className="h-20 flex items-center justify-center mt-10">
                   {isFetchingMoreDesigners && (
                     <div className="flex flex-col items-center gap-2">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#00C9A7]"></div>
-                      <p className="text-xs text-gray-400 font-medium">디자이너를 더 불러오는 중...</p>
+                      <p className="text-xs text-gray-400 font-medium">디자이너를 불러오는 중...</p>
                     </div>
                   )}
                   {!hasMoreDesigners && filteredDesigners.length > 0 && (
-                    <p className="text-sm text-gray-400">모든 디자이너를 확인했습니다 ✨</p>
+                    <p className="text-sm text-gray-400 font-medium">모든 디자이너를 확인했습니다.</p>
                   )}
                 </div>
               </>
@@ -1214,7 +1212,7 @@ export default function Explore() {
                     type="text"
                     value={newCollectionName}
                     onChange={(e) => setNewCollectionName(e.target.value)}
-                    placeholder="예: 메인 페이지 레퍼런스"
+                    placeholder="예) 메인 페이지 레퍼런스"
                     className="flex-1 px-3 py-2.5 rounded-lg bg-[#F7F7F5] border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7]"
                   />
                   <button

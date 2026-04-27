@@ -2,7 +2,8 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { Bell, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { motion, LayoutGroup } from "motion/react";
-import { fetchUnreadCount } from "../utils/notificationState";
+import { createNotificationSocket } from "../api/notificationSocket";
+import { applyLiveNotificationCreated, fetchUnreadCount, subscribeNotificationState } from "../utils/notificationState";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { clearAuthenticated, getCurrentUser, subscribeCurrentUser } from "../utils/auth";
 import { DEFAULT_AVATAR } from "../utils/avatar";
@@ -48,7 +49,30 @@ export default function Navigation() {
       }
     };
     refreshUnreadState();
+
+    const unsubscribe = subscribeNotificationState(() => {
+      void refreshUnreadState();
+    });
+
+    return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (!currentUser?.userId) {
+      return;
+    }
+
+    const notificationSocket = createNotificationSocket({
+      onEvent: (event) => {
+        if (event.type === "notification.created") {
+          applyLiveNotificationCreated(event.notification, event.unreadCount);
+        }
+      },
+    });
+
+    notificationSocket.connect();
+    return () => notificationSocket.close();
+  }, [currentUser?.userId]);
 
   useEffect(() => {
     const refreshCurrentUser = () => setCurrentUserState(getCurrentUser());

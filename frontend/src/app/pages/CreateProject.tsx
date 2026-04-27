@@ -1,14 +1,22 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
-import { useNavigate } from "react-router";
+﻿import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { Check, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import Navigation from "../components/Navigation";
-import { createProjectApi, getProjectFilterOptionsApi, type FilteringResponse } from "../api/projectApi";
+import CompletionModal from "../components/CompletionModal";
+import {
+  createProjectApi,
+  getProjectDetailApi,
+  getProjectFilterOptionsApi,
+  updateProjectApi,
+  type FilteringResponse,
+} from "../api/projectApi";
 import { uploadFeedImagesApi } from "../api/uploadApi";
+import { getCurrentUser } from "../utils/auth";
 
 const SKILL_PRESETS = ["Figma", "Illustrator", "Photoshop", "After Effects", "Cinema 4D", "Blender", "Webflow"];
-// 예산과 일정이 Step 1으로 이동했으므로 Step을 3개로 압축합니다.
-const STEP_LABELS = ["Basic", "Details", "Submit"] as const;
+// 예산과 일정 입력을 1단계로 옮겨서 전체 단계를 3개로 유지합니다.
+const STEP_LABELS = ["기본 정보", "상세 정보", "등록 확인"] as const;
 const DEFAULT_FILTERS: FilteringResponse = {
   categories: [],
   experienceLevels: [],
@@ -24,9 +32,9 @@ const readImageFileAsDataUrl = (file: File) =>
         resolve(reader.result);
         return;
       }
-      reject(new Error("Failed to preview image."));
+      reject(new Error("이미지 미리보기에 실패했어요."));
     };
-    reader.onerror = () => reject(new Error("Failed to preview image."));
+    reader.onerror = () => reject(new Error("이미지 미리보기에 실패했어요."));
     reader.readAsDataURL(file);
   });
 
@@ -69,7 +77,7 @@ function TagInput({
                   addTag(input);
                 }
               }}
-              placeholder={tags.length === 0 ? "Add a skill and press Enter" : ""}
+              placeholder={tags.length === 0 ? "필요한 기술을 입력하고 엔터를 눌러주세요" : ""}
               className="min-w-40 flex-1 bg-transparent text-sm outline-none"
           />
         </div>
@@ -115,7 +123,7 @@ function DynamicList({
   return (
       <div className="space-y-3">
         {items.map((item, index) => (
-            // 💡 여기가 수정되었습니다! key={`${index}-${item}`} -> key={index}
+            // 리스트 key 충돌을 피하려고 index만 사용합니다.
             <div key={index} className="flex items-center gap-2">
               <input
                   value={item}
@@ -134,7 +142,7 @@ function DynamicList({
             className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-600"
         >
           <Plus className="size-4" />
-          Add item
+          항목 추가
         </button>
       </div>
   );
@@ -142,14 +150,21 @@ function DynamicList({
 
 export default function CreateProject() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const currentUser = getCurrentUser();
+  const editingPostId = Number.parseInt(searchParams.get("edit") ?? "", 10);
+  const isEditMode = Number.isFinite(editingPostId);
   const [step, setStep] = useState(1);
   const [filters, setFilters] = useState<FilteringResponse>(DEFAULT_FILTERS);
   const [loadingFilters, setLoadingFilters] = useState(true);
+  const [loadingProject, setLoadingProject] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [createdProjectTitle, setCreatedProjectTitle] = useState("");
+  const [completionMode, setCompletionMode] = useState<"create" | "update" | null>(null);
 
   const [title, setTitle] = useState("");
   const [budget, setBudget] = useState(""); // 만원 단위 예산
-  const [category, setCategory] = useState("");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [jobState, setJobState] = useState("");
   const [experienceLevel, setExperienceLevel] = useState("");
   const [overview, setOverview] = useState("");
@@ -163,6 +178,15 @@ export default function CreateProject() {
   const minDeadline = new Date().toISOString().split("T")[0];
 
   useEffect(() => {
+    if (currentUser?.role !== "designer") {
+      return;
+    }
+
+    toast.error("클라이언트만 프로젝트를 등록할 수 있습니다.");
+    navigate("/projects", { replace: true });
+  }, [currentUser?.role, navigate]);
+
+  useEffect(() => {
     let mounted = true;
 
     async function loadFilters() {
@@ -173,7 +197,7 @@ export default function CreateProject() {
         setFilters(response ?? DEFAULT_FILTERS);
       } catch (error) {
         if (!mounted) return;
-        toast.error(error instanceof Error ? error.message : "Failed to load filters.");
+        toast.error(error instanceof Error ? error.message : "필터 옵션을 불러오지 못했어요.");
       } finally {
         if (mounted) setLoadingFilters(false);
       }
@@ -186,7 +210,53 @@ export default function CreateProject() {
     };
   }, []);
 
-  const step1Valid = Boolean(title.trim() && category && jobState && experienceLevel && deadline && budget.trim());
+  useEffect(() => {
+    if (!isEditMode) {
+      return;
+    }
+
+    let mounted = true;
+
+    async function loadProjectDetail() {
+      try {
+        setLoadingProject(true);
+        const detail = await getProjectDetailApi(editingPostId);
+        if (!mounted) return;
+
+        setTitle(detail.title ?? "");
+        setBudget(detail.budget != null ? String(detail.budget) : "");
+        setSelectedCategories(
+          Array.isArray(detail.categories) && detail.categories.length > 0
+            ? detail.categories
+            : detail.category
+              ? [detail.category]
+              : [],
+        );
+        setJobState(detail.jobState ?? "");
+        setExperienceLevel(detail.experienceLevel ?? "");
+        setOverview(detail.overview ?? "");
+        setFullDescription(detail.fullDescription ?? "");
+        setSkills(detail.skills ?? []);
+        setResponsibilities(detail.responsibilities?.length ? detail.responsibilities : [""]);
+        setQualifications(detail.qualifications?.length ? detail.qualifications : [""]);
+        setDeadline(detail.deadline ?? "");
+      } catch (error) {
+        if (!mounted) return;
+        toast.error(error instanceof Error ? error.message : "프로젝트 정보를 불러오지 못했어요.");
+        navigate("/projects", { replace: true });
+      } finally {
+        if (mounted) setLoadingProject(false);
+      }
+    }
+
+    void loadProjectDetail();
+
+    return () => {
+      mounted = false;
+    };
+  }, [editingPostId, isEditMode, navigate]);
+
+  const step1Valid = Boolean(title.trim() && selectedCategories.length > 0 && jobState && experienceLevel && deadline && budget.trim());
   const step2Valid = Boolean(
       overview.trim() &&
       fullDescription.trim() &&
@@ -203,6 +273,14 @@ export default function CreateProject() {
 
   const submitDisabled = !step1Valid || !step2Valid || submitting;
 
+  const toggleCategory = (category: string) => {
+    setSelectedCategories((current) =>
+      current.includes(category)
+        ? current.filter((item) => item !== category)
+        : [...current, category],
+    );
+  };
+
   const handleProjectImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
       .filter((file) => file.type.startsWith("image/"))
@@ -210,7 +288,7 @@ export default function CreateProject() {
 
     event.target.value = "";
     if (files.length === 0) {
-      toast.error(`You can upload up to ${MAX_PROJECT_IMAGES} image files.`);
+      toast.error(`이미지는 최대 ${MAX_PROJECT_IMAGES}장까지 업로드할 수 있어요.`);
       return;
     }
 
@@ -219,7 +297,7 @@ export default function CreateProject() {
       setProjectImageFiles((current) => [...current, ...files].slice(0, MAX_PROJECT_IMAGES));
       setProjectImagePreviews((current) => [...current, ...previews].slice(0, MAX_PROJECT_IMAGES));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to preview image.");
+      toast.error(error instanceof Error ? error.message : "이미지 미리보기에 실패했어요.");
     }
   };
 
@@ -229,62 +307,79 @@ export default function CreateProject() {
   };
 
   const handleSubmit = async () => {
+    if (currentUser?.role === "designer") {
+      toast.error("클라이언트만 프로젝트를 등록할 수 있습니다.");
+      navigate("/projects", { replace: true });
+      return;
+    }
     if (submitDisabled) {
-      toast.error("Fill in all required fields first.");
+      toast.error("필수 항목을 먼저 입력해주세요.");
       return;
     }
 
     try {
       setSubmitting(true);
-      const response = await createProjectApi({
+
+      const payload = {
         postType: "JOB_POST",
         title: title.trim(),
-        category,
+        category: selectedCategories[0] ?? "",
+        categories: selectedCategories,
         jobState,
         experienceLevel,
-        budget: Number(budget), // 만원 단위 정수로 파싱하여 전송
+        budget: Number(budget),
         overview: overview.trim(),
         fullDescription: fullDescription.trim(),
         skills,
-        // 빈 배열을 걸러내고 순수 텍스트 배열(List<String>)을 그대로 전송합니다. (백엔드 CLOB 연동)
         responsibilities: responsibilities.filter((r) => r.trim()),
         qualifications: qualifications.filter((q) => q.trim()),
         state: "OPEN",
         deadline,
-      });
+      };
 
-      if (projectImageFiles.length > 0) {
+      const response = isEditMode
+        ? await updateProjectApi(editingPostId, payload)
+        : await createProjectApi(payload);
+
+      if (!isEditMode && projectImageFiles.length > 0) {
         try {
           await uploadFeedImagesApi(response.postId, projectImageFiles);
         } catch (error) {
           toast.error(
             error instanceof Error
-              ? `Project created, but image upload failed: ${error.message}`
-              : "Project created, but image upload failed.",
+              ? `프로젝트는 등록됐지만 이미지 업로드에 실패했어요: ${error.message}`
+              : "프로젝트는 등록됐지만 이미지 업로드에 실패했어요.",
           );
           navigate("/projects");
           return;
         }
       }
 
-      toast.success("Project created.");
-      navigate("/projects");
+      setCreatedProjectTitle(response.title.trim() || title.trim());
+      setCompletionMode(isEditMode ? "update" : "create");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create project.");
+      toast.error(error instanceof Error ? error.message : isEditMode ? "프로젝트 수정에 실패했어요." : "프로젝트 등록에 실패했어요.");
     } finally {
       setSubmitting(false);
     }
   };
 
+  const handleProjectCreateComplete = () => {
+    setCreatedProjectTitle("");
+    setCompletionMode(null);
+    navigate("/projects");
+  };
+
   const goNext = () => {
     if (!canProceed) {
-      toast.error("Complete this step first.");
+      toast.error("현재 단계의 정보를 먼저 입력해주세요.");
       return;
     }
     setStep((current) => Math.min(current + 1, STEP_LABELS.length));
   };
 
   return (
+    <>
       <div className="min-h-screen bg-[#f7f7f5]">
         <Navigation />
 
@@ -317,11 +412,11 @@ export default function CreateProject() {
 
         <div className="mx-auto grid max-w-5xl gap-6 px-6 py-8 lg:grid-cols-[1fr_320px]">
           <div className="space-y-6">
-            {/* ── STEP 1: 기본 정보 ── */}
+            {/* STEP 1: 기본 정보 */}
             {step === 1 && (
                 <section className="rounded-3xl bg-white p-6 shadow-sm">
-                  <h1 className="text-2xl font-bold text-slate-900">프로젝트를 소개해주세요</h1>
-                  <p className="mt-2 text-sm text-gray-500">핵심 정보를 입력하면 적합한 디자이너가 더 빨리 찾아옵니다.</p>
+                  <h1 className="text-2xl font-bold text-slate-900">{isEditMode ? "프로젝트를 수정해주세요" : "프로젝트를 소개해주세요"}</h1>
+                  <p className="mt-2 text-sm text-gray-500">핵심 정보를 입력하면 적합한 디자이너가 더 빨리 프로젝트를 찾을 수 있어요.</p>
 
                   <div className="mt-6 space-y-6">
                     <div>
@@ -330,7 +425,7 @@ export default function CreateProject() {
                           value={title}
                           onChange={(event) => setTitle(event.target.value)}
                           className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-emerald-400"
-                          placeholder="Project title"
+                          placeholder="프로젝트 제목을 입력해주세요"
                       />
                     </div>
 
@@ -341,9 +436,9 @@ export default function CreateProject() {
                             <button
                                 key={item}
                                 type="button"
-                                onClick={() => setCategory(item)}
+                                onClick={() => toggleCategory(item)}
                                 className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                                    category === item ? "bg-emerald-500 text-white" : "bg-gray-100 text-gray-600"
+                                    selectedCategories.includes(item) ? "bg-emerald-500 text-white" : "bg-gray-100 text-gray-600"
                                 }`}
                             >
                               {item}
@@ -396,7 +491,7 @@ export default function CreateProject() {
                             value={budget}
                             onChange={(event) => setBudget(event.target.value)} // 기존 setTitle 버그 수정
                             className="flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-emerald-400"
-                            placeholder="예: 500"
+                            placeholder="예) 500"
                         />
                         <p className="whitespace-nowrap text-sm text-gray-700">만원 이하</p>
                       </div>
@@ -416,10 +511,10 @@ export default function CreateProject() {
                 </section>
             )}
 
-            {/* ── STEP 2: 상세 정보 ── */}
+            {/* STEP 2: 상세 정보 */}
             {step === 2 && (
                 <section className="rounded-3xl bg-white p-6 shadow-sm">
-                  <h1 className="text-2xl font-bold text-slate-900">Project details</h1>
+                  <h1 className="text-2xl font-bold text-slate-900">프로젝트 상세 정보</h1>
                   <div className="mt-6 space-y-6">
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-gray-700">프로젝트 개요</label>
@@ -428,7 +523,7 @@ export default function CreateProject() {
                           onChange={(event) => setOverview(event.target.value)}
                           rows={4}
                           className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-emerald-400"
-                          placeholder="Short project summary"
+                          placeholder="프로젝트를 짧고 명확하게 소개해주세요"
                       />
                     </div>
 
@@ -439,26 +534,26 @@ export default function CreateProject() {
                           onChange={(event) => setFullDescription(event.target.value)}
                           rows={6}
                           className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-emerald-400"
-                          placeholder="Detailed project description"
+                          placeholder="프로젝트 상세 내용을 입력해주세요"
                       />
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-sm font-semibold text-gray-700">필요 기술역량</label>
+                      <label className="mb-2 block text-sm font-semibold text-gray-700">요구 스킬</label>
                       <TagInput tags={skills} onChange={setSkills} />
                     </div>
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-gray-700">담당 업무</label>
-                      <DynamicList items={responsibilities} onChange={setResponsibilities} placeholder="Responsibility item" />
+                      <DynamicList items={responsibilities} onChange={setResponsibilities} placeholder="담당 업무를 입력해주세요" />
                     </div>
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-gray-700">지원 자격</label>
-                      <DynamicList items={qualifications} onChange={setQualifications} placeholder="Qualification item" />
+                      <DynamicList items={qualifications} onChange={setQualifications} placeholder="지원 자격을 입력해주세요" />
                     </div>
                     <div>
-                      <label className="mb-2 block text-sm font-semibold text-gray-700">Project images (optional)</label>
+                      <label className="mb-2 block text-sm font-semibold text-gray-700">프로젝트 이미지 (선택)</label>
                       <input
                           type="file"
                           accept="image/*"
@@ -467,18 +562,18 @@ export default function CreateProject() {
                           className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:px-3 file:py-2 file:font-semibold file:text-emerald-700"
                       />
                       <p className="mt-2 text-xs text-gray-500">
-                        You can upload up to {MAX_PROJECT_IMAGES} images. Images will be uploaded when you submit.
+                        이미지는 최대 {MAX_PROJECT_IMAGES}장까지 올릴 수 있고, 등록 후 바로 업로드돼요.
                       </p>
                       {projectImagePreviews.length > 0 && (
                           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
                             {projectImagePreviews.map((preview, index) => (
                                 <div key={`${preview}-${index}`} className="relative aspect-square overflow-hidden rounded-xl border border-gray-200">
-                                  <img src={preview} alt={`Project preview ${index + 1}`} className="h-full w-full object-cover" />
+                                  <img src={preview} alt={`프로젝트 미리보기 ${index + 1}`} className="h-full w-full object-cover" />
                                   <button
                                       type="button"
                                       onClick={() => handleRemoveProjectImage(index)}
                                       className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white"
-                                      aria-label="Remove image"
+                                      aria-label="이미지 삭제"
                                   >
                                     <X className="size-3" />
                                   </button>
@@ -491,14 +586,14 @@ export default function CreateProject() {
                 </section>
             )}
 
-            {/* ── STEP 3: 최종 확인 ── */}
+            {/* STEP 3: 최종 확인 */}
             {step === 3 && (
                 <section className="rounded-3xl bg-white p-6 shadow-sm">
                   <h1 className="text-2xl font-bold text-slate-900">등록 전 확인</h1>
                   <div className="mt-6 space-y-4 text-sm text-gray-700">
                     <div className="rounded-2xl bg-gray-50 p-4">
-                      <p className="font-semibold text-slate-900">{title || "Untitled project"}</p>
-                      <p className="mt-1">{category} / {jobState} / {experienceLevel}</p>
+                      <p className="font-semibold text-slate-900">{title || "제목 없음"}</p>
+                      <p className="mt-1">{selectedCategories.join(", ")} / {jobState} / {experienceLevel}</p>
                       <p className="mt-1">예산 상한: {budget ? `${budget} 만원` : "-"}</p>
                       <p className="mt-1">마감일: {deadline || "-"}</p>
                     </div>
@@ -531,14 +626,14 @@ export default function CreateProject() {
                       </ul>
                     </div>
                     <div className="rounded-2xl bg-gray-50 p-4">
-                      <p className="font-semibold text-slate-900">Project images</p>
+                      <p className="font-semibold text-slate-900">프로젝트 이미지</p>
                       {projectImagePreviews.length > 0 ? (
                           <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                             {projectImagePreviews.map((preview, index) => (
                                 <img
                                     key={`${preview}-${index}`}
                                     src={preview}
-                                    alt={`Project image ${index + 1}`}
+                                    alt={`프로젝트 이미지 ${index + 1}`}
                                     className="aspect-square w-full rounded-lg object-cover"
                                 />
                             ))}
@@ -561,7 +656,7 @@ export default function CreateProject() {
                       className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-5 py-3 text-sm font-semibold text-gray-700"
                   >
                     <ChevronLeft className="size-4" />
-                    Previous
+                    이전
                   </button>
               ) : (
                   <div />
@@ -576,7 +671,7 @@ export default function CreateProject() {
                           canProceed ? "bg-slate-900 text-white" : "bg-gray-100 text-gray-400"
                       }`}
                   >
-                    Next
+                    다음
                     <ChevronRight className="size-4" />
                   </button>
               ) : (
@@ -588,22 +683,22 @@ export default function CreateProject() {
                           submitDisabled ? "bg-gray-100 text-gray-400" : "bg-emerald-500 text-white"
                       }`}
                   >
-                    {submitting ? "Submitting..." : "Create project"}
+                    {submitting ? (isEditMode ? "수정 중..." : "등록 중...") : (isEditMode ? "프로젝트 수정" : "프로젝트 등록")}
                   </button>
               )}
             </div>
           </div>
 
-          {/* ── 우측 라이브 프리뷰 사이드바 ── */}
+          {/* 우측 라이브 프리뷰 사이드바 */}
           <aside className="rounded-3xl bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-bold text-slate-900">Live preview</h2>
-            {loadingFilters ? (
-                <p className="mt-4 text-sm text-gray-500">Loading filter options...</p>
+            <h2 className="text-lg font-bold text-slate-900">미리보기</h2>
+            {loadingFilters || loadingProject ? (
+                <p className="mt-4 text-sm text-gray-500">{loadingProject ? "프로젝트 정보를 불러오는 중이에요..." : "필터 옵션을 불러오는 중이에요..."}</p>
             ) : (
                 <div className="mt-4 space-y-3 text-sm text-gray-600">
                   <div>
-                    <p className="font-bold text-slate-900">제목: {title || "Project title"}</p>
-                    <p className="mt-1">카테고리: {category || "미선택"}</p>
+                    <p className="font-bold text-slate-900">제목: {title || "프로젝트 제목"}</p>
+                    <p className="mt-1">카테고리: {selectedCategories.length > 0 ? selectedCategories.join(", ") : "미선택"}</p>
                     <p>
                       프로젝트 유형: {jobState || "미선택"}
                       {jobState === "단기" && " (1~3개월)"}
@@ -628,20 +723,36 @@ export default function CreateProject() {
                     ))}
                   </div>
                   <hr />
-                  <h2 className="text-lg font-bold text-slate-900">Project Content</h2>
+                  <h2 className="text-lg font-bold text-slate-900">프로젝트 내용</h2>
                   <div>
                     <p className="font-bold text-slate-900">[ 프로젝트 개요 ]</p>
-                    <p>{overview || "Project Summary"}</p>
+                    <p>{overview || "프로젝트 개요"}</p>
                   </div>
                   <br />
                   <div>
                     <p className="font-bold text-slate-900">[ 상세내용 ]</p>
-                    <p className="whitespace-pre-wrap">{fullDescription || "Detailed Description"}</p>
+                    <p className="whitespace-pre-wrap">{fullDescription || "상세 내용"}</p>
                   </div>
                 </div>
             )}
           </aside>
         </div>
       </div>
+      <CompletionModal
+        open={Boolean(createdProjectTitle) && completionMode !== null}
+        eyebrow={completionMode === "update" ? "프로젝트 수정 완료" : "프로젝트 등록 완료"}
+        title={completionMode === "update" ? "프로젝트 수정이 완료되었습니다." : "공고 등록이 완료되었습니다."}
+        description={
+          completionMode === "update"
+            ? `${createdProjectTitle || "이 프로젝트"} 공고 내용이 저장되었어요.\n프로젝트 목록에서 변경된 내용을 바로 확인할 수 있어요.`
+            : `${createdProjectTitle || "이 프로젝트"} 공고가 등록되었어요.\n이제 프로젝트 목록에서 지원 현황을 확인할 수 있어요.`
+        }
+        primaryActionLabel="프로젝트 목록으로 이동"
+        onPrimaryAction={handleProjectCreateComplete}
+        onClose={handleProjectCreateComplete}
+      />
+    </>
   );
 }
+
+
