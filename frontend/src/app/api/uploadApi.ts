@@ -26,6 +26,14 @@ export type FeedImagesUploadResponse = {
   thumbnailImageUrl: string | null;
 };
 
+export type ApplicationPortfolioUploadResponse = {
+  postId: number;
+  fileUrl: string;
+  fileName: string;
+  contentType: string;
+  size: number;
+};
+
 export type MessageAttachmentUploadItemResponse = {
   type: "image" | "file";
   name: string;
@@ -85,6 +93,21 @@ export async function replaceFeedImagesApi(
       body: formData,
     },
     "Failed to replace feed images.",
+  );
+}
+
+export async function uploadProjectApplicationPortfolioApi(postId: number, file: File) {
+  const formData = new FormData();
+  formData.append("postId", String(postId));
+  formData.append("file", normalizeFileType(file));
+
+  return apiRequest<ApplicationPortfolioUploadResponse>(
+    "/api/uploads/project-application-portfolio",
+    {
+      method: "POST",
+      body: formData,
+    },
+    "Failed to upload project application portfolio.",
   );
 }
 

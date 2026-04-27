@@ -2,6 +2,7 @@ package com.example.pixel_project2.upload.controller;
 
 import com.example.pixel_project2.common.dto.ApiResponse;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
+import com.example.pixel_project2.upload.dto.ApplicationPortfolioUploadResponse;
 import com.example.pixel_project2.upload.dto.FeedImagesUploadResponse;
 import com.example.pixel_project2.upload.dto.MessageAttachmentsUploadResponse;
 import com.example.pixel_project2.upload.dto.ProfileImageUploadResponse;
@@ -50,6 +51,18 @@ public class UploadController {
         return ApiResponse.ok(
                 "Feed images replaced.",
                 uploadService.replaceFeedImages(currentUser, postId, existingImageUrls, files)
+        );
+    }
+
+    @PostMapping(value = "/project-application-portfolio", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<ApplicationPortfolioUploadResponse> uploadProjectApplicationPortfolio(
+            @AuthenticationPrincipal AuthenticatedUser currentUser,
+            @RequestParam("postId") Long postId,
+            @RequestParam("file") MultipartFile file
+    ) {
+        return ApiResponse.ok(
+                "Project application portfolio uploaded.",
+                uploadService.uploadProjectApplicationPortfolio(currentUser, postId, file)
         );
     }
 

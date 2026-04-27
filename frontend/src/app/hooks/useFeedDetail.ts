@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "../api/apiClient";
 import { getUserAvatar } from "../utils/avatar";
+import { getFeedIntegrationLabel, parseFeedIntegrations } from "../utils/feedIntegrations";
 import { normalizeCategoryLabel, normalizePostTypeLabel } from "../utils/matchingCategories";
 
 type FeedAuthor = {
@@ -122,9 +123,10 @@ export function useFeedDetail<TFeed extends BaseFeedItem>({
             normalizePostTypeLabel(detail.postType),
           ].filter(Boolean),
           category: normalizeCategoryLabel(detail.category),
-          integrations: detail.portfolioUrl
-            ? [{ provider: "figma" as const, label: "Portfolio", url: detail.portfolioUrl }]
-            : undefined,
+          integrations: parseFeedIntegrations(detail.portfolioUrl).map((integration) => ({
+            ...integration,
+            label: getFeedIntegrationLabel(integration.provider),
+          })),
           createdAt: detail.createdAt,
           userId: detail.userId,
           portfolioUrl: detail.portfolioUrl,

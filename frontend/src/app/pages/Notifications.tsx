@@ -297,7 +297,7 @@ export default function Notifications() {
     await markNotificationRead(notification.id);
 
     if (notification.actionType === "proposal") {
-      setSelectedProposalNotification(notification);
+      navigate("/projects");
       await loadNotifications();
       return;
     }

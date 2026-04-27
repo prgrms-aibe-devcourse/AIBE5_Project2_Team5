@@ -14,6 +14,7 @@ import "lenis/dist/lenis.css";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { FeedDetailModal } from "../components/feed/FeedDetailModal";
 import { useFeedComments } from "../hooks/useFeedComments";
+import { getFeedIntegrationLabel, parseFeedIntegrations } from "../utils/feedIntegrations";
 import { matchingCategories, normalizeCategoryLabel, normalizePostTypeLabel } from "../utils/matchingCategories";
 import {
   getExploreFeedsApi,
@@ -408,9 +409,10 @@ export default function Explore() {
         Boolean,
       ) as string[],
       category: normalizeCategoryLabel(detail?.category ?? selectedProjectForModal.category ?? ""),
-      integrations: detail?.portfolioUrl
-        ? [{ provider: "figma", label: "Portfolio", url: detail.portfolioUrl }]
-        : undefined,
+      integrations: parseFeedIntegrations(detail?.portfolioUrl).map((integration) => ({
+        ...integration,
+        label: getFeedIntegrationLabel(integration.provider),
+      })),
       createdAt: detail?.createdAt,
       userId: selectedProjectForModal.userId,
       portfolioUrl: detail?.portfolioUrl ?? null,

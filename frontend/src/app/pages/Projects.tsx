@@ -1,5 +1,6 @@
 import {useEffect, useMemo, useState} from "react";
 import {Link} from "react-router";
+import { toast } from "sonner";
 import {
     AlertTriangle,
     ArrowRight,
@@ -15,25 +16,33 @@ import Footer from "../components/Footer";
 import ProjectDetailModal from "../components/ProjectDetailModal";
 import type {ProjectData} from "../components/ProjectDetailModal";
 import {ImageWithFallback} from "../components/figma/ImageWithFallback";
-import {publicApiRequest} from "../api/apiClient";
+import {apiRequest} from "../api/apiClient";
 
 import {
+    getProjectFilterOptionsApi,
     getProjectDetailApi,
     getMyPostsApi,
-    getMyApplicationsApi
+    getMyApplicationsApi,
+    getProjectApplicationsApi,
+    type ProjectApplicationItemResponse
 } from "../api/projectApi";
+import { getCurrentUser } from "../utils/auth";
 
 type ProjectApiItem = {
     id: number;
     nickname: string;
+    profileImage?: string | null;
     companyName: string | null;
     category: string | null;
+    categories?: string[] | null;
     title: string;
     overview: string;
     budget: string;
     deadline: string;
     experienceLevel: string;
     jobState: string;
+    thumbnailImageUrl?: string | null;
+    imageUrls?: string[];
 };
 
 type FilterOptions = {
@@ -82,6 +91,18 @@ function getBadge(deadline: string): string {
 }
 
 function toProjectData(project: ProjectApiItem): ProjectData {
+    const categories =
+        Array.isArray(project.categories) && project.categories.length > 0
+            ? project.categories
+            : project.category
+                ? [project.category]
+                : [];
+    const referenceImages = project.imageUrls ?? [];
+    const imageUrl =
+        project.thumbnailImageUrl ??
+        referenceImages[0] ??
+        "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400";
+
     return {
         id: project.id,
         badge: getBadge(project.deadline),
@@ -91,26 +112,42 @@ function toProjectData(project: ProjectApiItem): ProjectData {
         fullDescription: "",
         client: {
             name: project.nickname,
-            avatar: DEFAULT_AVATAR,
+            avatar: project.profileImage || DEFAULT_AVATAR,
             verified: true,
         },
-        category: project.category ?? "Uncategorized",
+        category: project.category ?? categories[0] ?? "Uncategorized",
+        categories,
         skills: [],
         budget: parseBudgetToManwon(project.budget).toString(),
         duration: project.jobState,
         deadline: project.deadline,
         applicants: 0,
         remote: true,
-        imageUrl: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-        referenceImages: [],
+        imageUrl,
+        referenceImages,
         requirements: [],
         responsibilities: [],
         projectType: project.jobState,
         experienceLevel: project.experienceLevel,
         companyInfo: {
             size: project.companyName ?? "",
-            industry: project.category ?? "Client",
+            industry: project.category ?? categories[0] ?? "Client",
         },
+    };
+}
+
+function toProjectApplicant(application: ProjectApplicationItemResponse) {
+    return {
+        applicationId: application.applicationId,
+        designerId: application.designerId,
+        designerName: application.designerName,
+        designerNickname: application.designerNickname,
+        designerProfileImage: application.designerProfileImage,
+        expectedBudget: application.expectedBudget,
+        summary: application.summary,
+        coverLetter: application.coverLetter,
+        portfolioUrl: application.portfolioUrl,
+        startDate: application.startDate,
     };
 }
 
@@ -149,6 +186,7 @@ function Thumbnail({project, mode}: { project: ProjectData; mode: "list" | "grid
 }
 
 export default function Projects() {
+    const currentUser = getCurrentUser();
     const [apiProjects, setApiProjects] = useState<ProjectApiItem[]>([]);
     const [filterOptions, setFilterOptions] = useState<FilterOptions>({
         jobStates: [],
@@ -180,8 +218,8 @@ export default function Projects() {
             try {
                 setLoading(true);
                 const [projectsData, filtersData] = await Promise.all([
-                    publicApiRequest<ProjectApiItem[]>(PROJECTS_API_URL),
-                    publicApiRequest<FilterOptions>(`${PROJECTS_API_URL}/filtering`),
+                    apiRequest<ProjectApiItem[]>(PROJECTS_API_URL),
+                    getProjectFilterOptionsApi(),
                 ]);
 
                 if (!mounted) return;
@@ -230,7 +268,7 @@ export default function Projects() {
 
     const categoryCounts = useMemo(() => {
         return filterOptions.categories.reduce<Record<string, number>>((acc, category) => {
-            acc[category] = projectsData.filter((project) => project.category === category).length;
+            acc[category] = projectsData.filter((project) => project.categories?.includes(category) || project.category === category).length;
             return acc;
         }, {});
     }, [projectsData, filterOptions.categories]);
@@ -239,7 +277,7 @@ export default function Projects() {
         let list = [...projectsData];
 
         if (selectedCategory) {
-            list = list.filter((project) => project.category === selectedCategory);
+            list = list.filter((project) => project.categories?.includes(selectedCategory) || project.category === selectedCategory);
         }
 
         if (selectedExperience) {
@@ -266,16 +304,28 @@ export default function Projects() {
         setDetailLoading(project.id);
 
         try {
-            const detail = await getProjectDetailApi(project.id);
+            const [detail, applications] = await Promise.all([
+                getProjectDetailApi(project.id),
+                project.ownerView ? getProjectApplicationsApi(project.id) : Promise.resolve(null),
+            ]);
 
             setSelectedProject((current) => {
                 if (!current || current.id !== project.id) {
                     return current;
                 }
 
+                const mappedApplications = applications?.map(toProjectApplicant) ?? current.applications ?? [];
+
                 return {
                     ...current,
-                    category: detail.category || current.category,
+                    client: {
+                        ...current.client,
+                        avatar: detail.profileImage || current.client.avatar,
+                    },
+                    category: detail.categories && detail.categories.length > 0
+                        ? detail.categories.join(", ")
+                        : detail.category || current.category,
+                    categories: detail.categories ?? current.categories,
                     title: detail.title || current.title,
                     description: detail.overview || current.description,
                     fullDescription: detail.fullDescription || "",
@@ -287,6 +337,13 @@ export default function Projects() {
                     projectType: detail.jobState || current.projectType,
                     experienceLevel: detail.experienceLevel || current.experienceLevel,
                     deadline: detail.deadline || current.deadline,
+                    applicants: project.ownerView ? mappedApplications.length : current.applicants,
+                    imageUrl:
+                        detail.thumbnailImageUrl ||
+                        detail.imageUrls?.[0] ||
+                        current.imageUrl,
+                    referenceImages: detail.imageUrls ?? current.referenceImages,
+                    applications: mappedApplications,
                 };
             });
         } catch {
@@ -303,6 +360,7 @@ export default function Projects() {
 
     // 💡 신규: 사이드바 활동 내역 아이템 클릭 핸들러
     function handleActivityItemClick(item: any) {
+        const ownerView = activeTab === "posts";
         const projectData: ProjectData = {
             id: item.postId,
             badge: item.projectState === 'OPEN' ? '모집중' : '마감',
@@ -312,22 +370,28 @@ export default function Projects() {
             fullDescription: "",
             client: {
                 name: "나의 프로젝트",
-                avatar: DEFAULT_AVATAR,
+                avatar: item.profileImage || DEFAULT_AVATAR,
                 verified: true,
             },
             category: item.category || "Uncategorized",
+            categories: item.categories ?? (item.category ? [item.category] : []),
             skills: [],
             budget: "0",
             duration: item.jobState,
             deadline: item.deadline,
             applicants: 0,
             remote: true,
-            imageUrl: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-            referenceImages: [],
+            imageUrl:
+                item.thumbnailImageUrl ||
+                item.imageUrls?.[0] ||
+                "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
+            referenceImages: item.imageUrls ?? [],
             requirements: [],
             responsibilities: [],
             projectType: item.jobState,
             experienceLevel: "",
+            ownerView,
+            applications: ownerView ? [] : undefined,
             companyInfo: {
                 size: "",
                 industry: item.category || "",
@@ -379,6 +443,14 @@ export default function Projects() {
 
                         <Link
                             to="/projects/new"
+                            onClick={(event) => {
+                                if (currentUser?.role !== "designer") {
+                                    return;
+                                }
+
+                                event.preventDefault();
+                                toast.error("클라이언트만 프로젝트를 등록할 수 있습니다.");
+                            }}
                             className="rounded-xl bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-900 transition hover:bg-emerald-300"
                         >
                             + 프로젝트 등록
@@ -678,7 +750,7 @@ export default function Projects() {
                             매칭 성공률을 높이고 싶다면?<br />
                             포트폴리오를 업데이트 하세요!
                         </p>
-                        <Link to="/profile" className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-emerald-400 hover:underline">
+                        <Link to="/profile/me" className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-emerald-400 hover:underline">
                             프로필 수정하기 <ArrowRight className="size-3" />
                         </Link>
                     </div>

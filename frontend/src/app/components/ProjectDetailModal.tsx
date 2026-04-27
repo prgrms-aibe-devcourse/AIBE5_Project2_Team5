@@ -7,6 +7,9 @@ import {
   ChevronLeft, ChevronRight, Link2, Paperclip, Calendar,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import CompletionModal from "./CompletionModal";
+import { applyProjectApi } from "../api/projectApi";
+import { uploadProjectApplicationPortfolioApi } from "../api/uploadApi";
 
 export interface ProjectMilestone {
   label: string;
@@ -24,6 +27,19 @@ export interface ProjectClient {
   verified: boolean;
 }
 
+export interface ProjectApplicant {
+  applicationId: number;
+  designerId: number;
+  designerName: string;
+  designerNickname?: string | null;
+  designerProfileImage?: string | null;
+  expectedBudget?: number | null;
+  summary?: string | null;
+  coverLetter?: string | null;
+  portfolioUrl?: string | null;
+  startDate?: string | null;
+}
+
 export interface ProjectData {
   id: number;
   badge: string;
@@ -33,6 +49,7 @@ export interface ProjectData {
   fullDescription?: string;
   client: ProjectClient;
   category: string;
+  categories?: string[];
   skills: string[];
   budget: number | string;
   duration: string;
@@ -47,6 +64,8 @@ export interface ProjectData {
   experienceLevel?: string;
   milestones?: ProjectMilestone[];
   companyInfo?: ProjectCompanyInfo;
+  ownerView?: boolean;
+  applications?: ProjectApplicant[];
 }
 
 interface Props {
@@ -67,6 +86,11 @@ function formatBudgetLabel(budget: number | string) {
 
   const parsed = Number.parseInt(String(budget).replace(/\D/g, ""), 10);
   return Number.isFinite(parsed) ? `${parsed}만원` : String(budget);
+}
+
+function formatApplicantBudgetLabel(budget?: number | null) {
+  if (budget == null) return "협의 가능";
+  return `${budget}만원`;
 }
 
 function DdayBadge({ deadline }: { deadline: string }) {
@@ -142,8 +166,11 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
   const [applyExp, setApplyExp] = useState("");
   const [applyPortfolioTab, setApplyPortfolioTab] = useState<"url" | "file">("url");
   const [applyPortfolioUrl, setApplyPortfolioUrl] = useState("");
+  const [applyPortfolioFile, setApplyPortfolioFile] = useState<File | null>(null);
   const [applyBudget, setApplyBudget] = useState("");
   const [applyStartDate, setApplyStartDate] = useState("");
+  const [isSubmittingApply, setIsSubmittingApply] = useState(false);
+  const [showApplyCompletionModal, setShowApplyCompletionModal] = useState(false);
 
   const refImages = project?.referenceImages ?? [];
   const PREVIEW = 3;
@@ -157,8 +184,11 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
     setApplyExp("");
     setApplyPortfolioTab("url");
     setApplyPortfolioUrl("");
+    setApplyPortfolioFile(null);
     setApplyBudget("");
     setApplyStartDate("");
+    setIsSubmittingApply(false);
+    setShowApplyCompletionModal(false);
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
   }, [project]);
@@ -179,7 +209,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
     return () => { document.removeEventListener("keydown", handleKey); };
   }, [project, onClose, lightboxIndex, refImages.length]);
 
-  function handleSubmitApply() {
+  function handleSubmitApplyLegacy() {
     if (!applyMsg.trim() || !applyExp.trim()) return;
     setApplied(true);
     setShowApplyForm(false);
@@ -187,6 +217,55 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
       description: "클라이언트가 검토 후 연락드립니다.",
       duration: 4000,
     });
+  }
+
+  function handlePortfolioFileSelect(file: File | null) {
+    setApplyPortfolioFile(file);
+  }
+
+  function parseApplyBudgetValue(value: string) {
+    const digitsOnly = value.replace(/\D/g, "");
+    if (!digitsOnly) return undefined;
+    const parsed = Number.parseInt(digitsOnly, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  async function handleSubmitApply() {
+    if (!project || !applyMsg.trim() || !applyExp.trim() || isSubmittingApply) return;
+    if (applyPortfolioTab === "file" && !applyPortfolioFile) {
+      toast.error("포트폴리오 파일을 선택해주세요.");
+      return;
+    }
+
+    try {
+      setIsSubmittingApply(true);
+
+      let portfolioUrl = applyPortfolioTab === "url" ? applyPortfolioUrl.trim() : "";
+      if (applyPortfolioTab === "file" && applyPortfolioFile) {
+        const uploadResult = await uploadProjectApplicationPortfolioApi(project.id, applyPortfolioFile);
+        portfolioUrl = uploadResult.fileUrl;
+      }
+
+      await applyProjectApi(project.id, {
+        coverLetter: applyMsg.trim(),
+        summary: applyExp.trim(),
+        expectedBudget: parseApplyBudgetValue(applyBudget),
+        portfolioUrl: portfolioUrl || undefined,
+        startDate: applyStartDate || undefined,
+      });
+
+      setApplied(true);
+      setShowApplyForm(false);
+      setShowApplyCompletionModal(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "지원서를 제출하지 못했어요.");
+    } finally {
+      setIsSubmittingApply(false);
+    }
+  }
+
+  function handleApplyCompletionClose() {
+    setShowApplyCompletionModal(false);
   }
 
   function handleShare() {
@@ -460,17 +539,24 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                 <div className="p-4 space-y-3">
 
                   {/* 지원하기 */}
-                  <button
-                    onClick={() => { if (!applied) setShowApplyForm(true); }}
-                    disabled={applied}
-                    className={`w-full py-3.5 rounded-2xl text-sm font-bold transition-all ${
-                      applied
-                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                        : "bg-gradient-to-r from-[#00C9A7] to-[#00A88C] text-white hover:shadow-[0_0_24px_rgba(0,201,167,0.4)] hover:scale-[1.02] active:scale-[0.98]"
-                    }`}
-                  >
-                    {applied ? "✓ 지원 완료" : "지원하기"}
-                  </button>
+                  {project.ownerView ? (
+                    <div className="w-full rounded-2xl border border-[#00C9A7]/20 bg-[#00C9A7]/8 px-4 py-3 text-center">
+                      <p className="text-sm font-bold text-[#00A88C]">내가 등록한 공고</p>
+                      <p className="mt-1 text-xs text-gray-500">아래에서 디자이너 지원 내역을 바로 확인할 수 있어요.</p>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => { if (!applied) setShowApplyForm(true); }}
+                      disabled={applied}
+                      className={`w-full py-3.5 rounded-2xl text-sm font-bold transition-all ${
+                        applied
+                          ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                          : "bg-gradient-to-r from-[#00C9A7] to-[#00A88C] text-white hover:shadow-[0_0_24px_rgba(0,201,167,0.4)] hover:scale-[1.02] active:scale-[0.98]"
+                      }`}
+                    >
+                      {applied ? "✓ 지원 완료" : "지원하기"}
+                    </button>
+                  )}
 
                   {/* 북마크 / 공유 */}
                   <div className="flex gap-2">
@@ -536,6 +622,72 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                       <MessageCircle className="size-3.5" /> 문의하기
                     </button>
                   </div>
+
+                  {project.ownerView && (
+                    <div className="bg-[#FAFBFC] rounded-2xl p-3.5">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">지원 내역</p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            {project.applications?.length ? `${project.applications.length}명의 디자이너가 지원했어요.` : "아직 지원한 디자이너가 없어요."}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        {(project.applications ?? []).map((application) => (
+                          <div
+                            key={application.applicationId}
+                            className="rounded-2xl border border-white bg-white p-3 shadow-sm"
+                          >
+                            <div className="flex items-center gap-3">
+                              <ImageWithFallback
+                                src={application.designerProfileImage || "/default-avatar.svg"}
+                                alt={application.designerNickname || application.designerName}
+                                className="size-10 rounded-xl object-cover border border-gray-100"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-bold text-[#0F0F0F]">
+                                  {application.designerNickname || application.designerName}
+                                </p>
+                                <p className="mt-0.5 text-[11px] text-gray-500">
+                                  희망 예산 {formatApplicantBudgetLabel(application.expectedBudget)}
+                                </p>
+                              </div>
+                            </div>
+
+                            {application.summary && (
+                              <p className="mt-3 text-xs leading-relaxed text-gray-600">
+                                {application.summary}
+                              </p>
+                            )}
+
+                            {application.coverLetter && (
+                              <p className="mt-2 text-xs leading-relaxed text-gray-500">
+                                {application.coverLetter}
+                              </p>
+                            )}
+
+                            <div className="mt-3 space-y-1.5 text-[11px] text-gray-500">
+                              {application.startDate && (
+                                <p>작업 시작 가능일 {application.startDate}</p>
+                              )}
+                              {application.portfolioUrl && (
+                                <a
+                                  href={application.portfolioUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="block truncate text-[#00A88C] hover:underline"
+                                >
+                                  포트폴리오 보기
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                 </div>
               </div>
@@ -633,11 +785,27 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                             className="w-full text-sm rounded-xl border border-gray-200 px-3.5 py-3 focus:outline-none focus:border-[#00C9A7] transition-colors placeholder:text-gray-300"
                           />
                         ) : (
-                          <label className="flex flex-col items-center justify-center gap-2 w-full border-2 border-dashed border-gray-200 rounded-xl p-5 cursor-pointer hover:border-[#00C9A7]/50 hover:bg-[#00C9A7]/5 transition-all">
+                          <label
+                            className="flex flex-col items-center justify-center gap-2 w-full border-2 border-dashed border-gray-200 rounded-xl p-5 cursor-pointer hover:border-[#00C9A7]/50 hover:bg-[#00C9A7]/5 transition-all"
+                            onDragOver={(event) => event.preventDefault()}
+                            onDrop={(event) => {
+                              event.preventDefault();
+                              handlePortfolioFileSelect(event.dataTransfer.files?.[0] ?? null);
+                            }}
+                          >
                             <Paperclip className="size-6 text-gray-300" />
                             <span className="text-xs text-gray-400">파일을 드래그하거나</span>
                             <span className="text-xs text-[#00A88C] font-semibold">직접 선택</span>
-                            <input type="file" className="hidden" />
+                            {applyPortfolioFile && (
+                              <span className="max-w-full truncate text-xs font-medium text-gray-500">
+                                {applyPortfolioFile.name}
+                              </span>
+                            )}
+                            <input
+                              type="file"
+                              className="hidden"
+                              onChange={(event) => handlePortfolioFileSelect(event.target.files?.[0] ?? null)}
+                            />
                           </label>
                         )}
                       </div>
@@ -676,9 +844,9 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                     <div className="px-5 py-4 border-t border-gray-100 shrink-0 bg-white">
                       <button
                         onClick={handleSubmitApply}
-                        disabled={!applyMsg.trim() || !applyExp.trim()}
+                        disabled={!applyMsg.trim() || !applyExp.trim() || isSubmittingApply}
                         className={`w-full py-3.5 rounded-2xl text-sm font-bold transition-all ${
-                          !applyMsg.trim() || !applyExp.trim()
+                          !applyMsg.trim() || !applyExp.trim() || isSubmittingApply
                             ? "bg-gray-100 text-gray-300 cursor-not-allowed"
                             : "bg-gradient-to-r from-[#00C9A7] to-[#00A88C] text-white hover:shadow-[0_0_24px_rgba(0,201,167,0.4)] hover:scale-[1.02] active:scale-[0.98]"
                         }`}
@@ -770,6 +938,15 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
             )}
           </motion.div>
         )}
+        <CompletionModal
+          open={showApplyCompletionModal}
+          eyebrow="프로젝트 지원 완료"
+          title="지원서 제출이 완료되었습니다"
+          description={`${project.title} 공고에 지원이 등록되었어요.\n클라이언트가 지원 내용을 확인한 뒤 연락할 거예요.`}
+          primaryActionLabel="확인"
+          onPrimaryAction={handleApplyCompletionClose}
+          onClose={handleApplyCompletionClose}
+        />
         </>
       )}
     </AnimatePresence>

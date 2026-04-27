@@ -2,13 +2,18 @@ package com.example.pixel_project2.matching.service;
 
 import com.example.pixel_project2.common.entity.JobSkill;
 import com.example.pixel_project2.common.entity.Post;
+import com.example.pixel_project2.common.entity.PostImage;
 import com.example.pixel_project2.common.entity.Project;
+import com.example.pixel_project2.common.entity.Application;
 import com.example.pixel_project2.common.entity.User;
 import com.example.pixel_project2.common.entity.enums.Category;
 import com.example.pixel_project2.common.entity.enums.ExperienceLevel;
 import com.example.pixel_project2.common.entity.enums.JobState;
+import com.example.pixel_project2.common.entity.enums.NotificationType;
 import com.example.pixel_project2.common.entity.enums.PostType;
 import com.example.pixel_project2.common.entity.enums.ProjectState;
+import com.example.pixel_project2.common.entity.enums.UserRole;
+import com.example.pixel_project2.common.repository.ApplicationRepository;
 import com.example.pixel_project2.common.repository.PostRepository;
 import com.example.pixel_project2.common.repository.UserRepository;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
@@ -23,6 +28,7 @@ import com.example.pixel_project2.matching.dto.ProjectListItemResponse;
 import com.example.pixel_project2.matching.dto.UpdateProjectRequest;
 import com.example.pixel_project2.matching.repository.JobSkillRepository;
 import com.example.pixel_project2.matching.repository.ProjectRepository;
+import com.example.pixel_project2.notification.service.NotificationService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -30,6 +36,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.text.NumberFormat;
+import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -42,6 +50,8 @@ public class MatchingServiceImpl implements MatchingService {
     private final JobSkillRepository jobSkillRepository;
     private final PostRepository postRepository;
     private final UserRepository userRepository;
+    private final ApplicationRepository applicationRepository;
+    private final NotificationService notificationService;
 
     @Override
     @Transactional(readOnly = true)
@@ -50,30 +60,33 @@ public class MatchingServiceImpl implements MatchingService {
 
         return projects.stream()
                 .map(project -> {
-                    // 1. Post와 User에 대한 안전한 Null Check
                     Post post = project.getPost();
-                    User user = (post != null) ? post.getUser() : null;
+                    User user = post != null ? post.getUser() : null;
+                    List<String> imageUrls = getPostImageUrls(post);
+                    List<String> categoryLabels = getProjectCategories(project);
 
-                    // 2. 안전하게 데이터 추출
-                    String nickname = (user != null) ? user.getNickname() : null;
-                    String companyName = (user != null && user.getClient() != null)
-                            ? user.getClient().getCompanyName() : null;
-                    String categoryLabel = (post != null && post.getCategory() != null)
-                            ? post.getCategory().getLabel() : null;
-                    String title = (post != null) ? post.getTitle() : null;
+                    String nickname = user != null ? user.getNickname() : null;
+                    String companyName = user != null && user.getClient() != null
+                            ? user.getClient().getCompanyName()
+                            : null;
+                    String categoryLabel = categoryLabels.isEmpty() ? null : categoryLabels.get(0);
+                    String title = post != null ? post.getTitle() : null;
 
-                    // 3. DTO 반환
                     return new ProjectListItemResponse(
                             project.getPost_id(),
                             nickname,
+                            user != null ? user.getProfileImage() : null,
                             companyName,
                             categoryLabel,
+                            categoryLabels,
                             title,
                             project.getOverview(),
                             formatBudget(project.getBudget()),
                             project.getExperienceLevel() != null ? project.getExperienceLevel().getLabel() : null,
                             project.getJobState() != null ? project.getJobState().getLabel() : null,
-                            project.getDeadline() != null ? project.getDeadline().toString() : null
+                            project.getDeadline() != null ? project.getDeadline().toString() : null,
+                            imageUrls.isEmpty() ? null : imageUrls.get(0),
+                            imageUrls
                     );
                 })
                 .toList();
@@ -82,7 +95,7 @@ public class MatchingServiceImpl implements MatchingService {
     @Override
     @Transactional(readOnly = true)
     public ProjectDetailResponse getProjectDetail(Long postId) {
-        Project project = projectRepository.findById(postId)
+        Project project = projectRepository.findByPostIdWithDetails(postId)
                 .orElseThrow(() -> new EntityNotFoundException("Project not found: " + postId));
 
         return toProjectDetailResponse(project);
@@ -93,29 +106,31 @@ public class MatchingServiceImpl implements MatchingService {
     public ProjectDetailResponse createProject(Long userId, CreateProjectRequest request) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
+        if (user.getRole() != UserRole.CLIENT) {
+            throw new IllegalArgumentException("클라이언트만 프로젝트를 등록할 수 있습니다.");
+        }
+        List<String> categories = normalizeProjectCategories(request.categories(), request.category());
 
         Post post = postRepository.save(Post.builder()
                 .user(user)
                 .title(request.title())
                 .postType(parsePostType(request.postType()))
-                .category(parseCategory(request.category()))
+                .category(parseCategory(categories.get(0)))
                 .build());
 
-        // 수정 포인트 1: 별도의 반복문 삽입(addAll)을 제거하고 builder에 바로 String List를 넣어줍니다.
         Project project = projectRepository.save(Project.builder()
                 .post(post)
                 .overview(request.overview())
                 .budget(request.budget())
                 .fullDescription(request.fullDescription())
-                .responsibilities(sanitizeStringList(request.responsibilities())) // CLOB 필드 매핑
-                .qualifications(sanitizeStringList(request.qualifications()))     // CLOB 필드 매핑
+                .responsibilities(sanitizeStringList(request.responsibilities()))
+                .qualifications(sanitizeStringList(request.qualifications()))
+                .categories(categories)
                 .projectState(parseProjectState(request.state()))
                 .jobState(parseJobState(request.jobState()))
                 .experienceLevel(parseExperienceLevel(request.experienceLevel()))
                 .deadline(request.deadline())
                 .build());
-
-        // 기존에 있던 Responsibilities, Qualifications 객체 생성 로직 완전 제거
 
         List<String> sanitizedSkills = sanitizeStringList(request.skills());
         if (!sanitizedSkills.isEmpty()) {
@@ -138,25 +153,48 @@ public class MatchingServiceImpl implements MatchingService {
                 .filter(value -> !value.isBlank())
                 .distinct()
                 .toList();
+        List<String> imageUrls = getPostImageUrls(project.getPost());
+        List<String> categories = getProjectCategories(project);
+        String primaryCategory = categories.isEmpty() ? null : categories.get(0);
+
         return new ProjectDetailResponse(
                 project.getPost_id(),
                 project.getPost().getPostType().name(),
-                project.getPost().getCategory().name(),
+                project.getPost().getUser() != null ? project.getPost().getUser().getProfileImage() : null,
+                primaryCategory,
+                categories,
                 project.getPost().getTitle(),
                 project.getBudget(),
                 project.getOverview(),
                 project.getFullDescription(),
-                // 수정 포인트 2: 엔티티 객체에서 꺼낼 필요 없이 바로 List<String>을 반환합니다.
                 project.getResponsibilities(),
                 project.getQualifications(),
                 skills,
                 project.getExperienceLevel() != null ? project.getExperienceLevel().getLabel() : null,
                 project.getJobState() != null ? project.getJobState().getLabel() : null,
-                project.getDeadline() != null ? project.getDeadline().toString() : null
+                project.getDeadline() != null ? project.getDeadline().toString() : null,
+                imageUrls.isEmpty() ? null : imageUrls.get(0),
+                imageUrls
         );
     }
 
-    // 수정 포인트 3: Skill뿐만 아니라 Responsibilities, Qualifications에도 사용할 수 있도록 공통화 처리
+    private List<String> getPostImageUrls(Post post) {
+        if (post == null || post.getImages() == null) {
+            return List.of();
+        }
+
+        return post.getImages().stream()
+                .sorted(Comparator.comparing(
+                        PostImage::getSortOrder,
+                        Comparator.nullsLast(Integer::compareTo)
+                ))
+                .map(PostImage::getImageUrl)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .toList();
+    }
+
     private List<String> sanitizeStringList(List<String> list) {
         if (list == null) {
             return List.of();
@@ -166,8 +204,51 @@ public class MatchingServiceImpl implements MatchingService {
                 .filter(Objects::nonNull)
                 .map(String::trim)
                 .filter(value -> !value.isBlank())
-                .distinct() // 중복 방지
+                .distinct()
                 .toList();
+    }
+
+    private List<String> getProjectCategories(Project project) {
+        List<String> categories = sanitizeStringList(project.getCategories());
+        String primaryCategory = project.getPost() != null && project.getPost().getCategory() != null
+                ? project.getPost().getCategory().getLabel()
+                : null;
+
+        if (primaryCategory == null || primaryCategory.isBlank()) {
+            return categories;
+        }
+
+        if (categories.isEmpty()) {
+            return List.of(primaryCategory);
+        }
+
+        if (categories.contains(primaryCategory)) {
+            return categories;
+        }
+
+        java.util.ArrayList<String> normalized = new java.util.ArrayList<>();
+        normalized.add(primaryCategory);
+        normalized.addAll(categories);
+        return normalized;
+    }
+
+    private List<String> normalizeProjectCategories(List<String> categories, String legacyCategory) {
+        List<String> rawCategories = sanitizeStringList(categories);
+        if (rawCategories.isEmpty() && legacyCategory != null && !legacyCategory.isBlank()) {
+            rawCategories = List.of(legacyCategory);
+        }
+
+        List<String> normalized = rawCategories.stream()
+                .map(this::parseCategory)
+                .map(Category::getLabel)
+                .distinct()
+                .toList();
+
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException("At least one category is required.");
+        }
+
+        return normalized;
     }
 
     private String formatBudget(Integer budget) {
@@ -223,41 +304,114 @@ public class MatchingServiceImpl implements MatchingService {
     }
 
     @Override
+    @Transactional
     public String applyProject(Long postId, ApplyProjectRequest request) {
+        AuthenticatedUser currentUser = getCurrentUser();
+        User applicant = userRepository.findById(currentUser.id())
+                .orElseThrow(() -> new EntityNotFoundException("User not found: " + currentUser.id()));
+        Project project = projectRepository.findByPostIdWithDetails(postId)
+                .orElseThrow(() -> new EntityNotFoundException("Project not found: " + postId));
+        Post post = project.getPost();
+        User poster = post.getUser();
+
+        validateApplicationRequest(request);
+
+        if (project.getProjectState() == ProjectState.CLOSED) {
+            throw new IllegalArgumentException("Closed projects cannot receive new applications.");
+        }
+        if (poster != null && Objects.equals(poster.getId(), applicant.getId())) {
+            throw new IllegalArgumentException("You cannot apply to your own project.");
+        }
+        if (applicationRepository.existsByApplicant_IdAndPost_Id(applicant.getId(), postId)) {
+            throw new IllegalArgumentException("You have already applied to this project.");
+        }
+
+        applicationRepository.save(Application.builder()
+                .applicant(applicant)
+                .poster(poster)
+                .post(post)
+                .coverLetter(normalizeNullableText(request.coverLetter()))
+                .summary(normalizeNullableText(request.summary()))
+                .expectedBudget(request.expectedBudget())
+                .portfolioUrl(normalizeNullableText(request.portfolioUrl()))
+                .startDate(request.startDate() == null ? null : request.startDate().atStartOfDay())
+                .build());
+
+        if (poster != null) {
+            String applicantLabel = normalizeNullableText(applicant.getNickname());
+            if (applicantLabel == null) {
+                applicantLabel = normalizeNullableText(applicant.getName());
+            }
+            notificationService.createNotification(
+                    poster.getId(),
+                    applicant.getId(),
+                    NotificationType.PROJECT_APPLY,
+                    postId,
+                    (applicantLabel == null ? "새 지원자" : applicantLabel) + "님이 프로젝트에 지원했습니다."
+            );
+        }
+
         return "postId=" + postId + " application submitted.";
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<MyApplicationItemResponse> getMyApplications() {
-        return List.of(
-                new MyApplicationItemResponse(1L, 101L, "Application 1", 2800000, "OPEN", "2026-05-15T18:00:00"),
-                new MyApplicationItemResponse(2L, 102L, "Application 2", 1800000, "CLOSED", "2026-04-30T18:00:00")
-        );
+        AuthenticatedUser currentUser = getCurrentUser();
+
+        return applicationRepository.findAllByApplicantIdWithPost(currentUser.id()).stream()
+                .map(application -> {
+                    Post post = application.getPost();
+                    Project project = projectRepository.findByPostIdWithDetails(post.getId()).orElse(null);
+                    List<String> imageUrls = getPostImageUrls(post);
+                    List<String> categoryLabels = project == null ? List.of() : getProjectCategories(project);
+
+                    return new MyApplicationItemResponse(
+                            application.getApplication_id(),
+                            post.getId(),
+                            post.getTitle(),
+                            project != null ? project.getOverview() : null,
+                            post.getUser() != null ? post.getUser().getProfileImage() : null,
+                            application.getExpectedBudget(),
+                            project != null ? project.getProjectState().name() : null,
+                            project != null && project.getJobState() != null ? project.getJobState().getLabel() : null,
+                            categoryLabels.isEmpty() ? null : categoryLabels.get(0),
+                            categoryLabels,
+                            project != null && project.getDeadline() != null ? project.getDeadline().toString() : null,
+                            imageUrls.stream().findFirst().orElse(null),
+                            imageUrls
+                    );
+                })
+                .toList();
     }
 
     @Override
     @Transactional
     public List<MyPostItemResponse> getMyPosts() {
-        // 1. 현재 인증된 사용자 ID 추출 (SecurityContextHolder 활용 가정)
         AuthenticatedUser user = (AuthenticatedUser) SecurityContextHolder.getContext()
                 .getAuthentication().getPrincipal();
         Long userId = user.id();
 
-        // 2. 리포지토리에서 해당 유저의 프로젝트 공고 조회
-        // PostType.java에 정의된 JOB_POST(매칭공고) 타입을 기준으로 조회합니다.
         List<Project> myProjects = projectRepository.findAllByUserIdAndPostType(userId, PostType.JOB_POST);
 
-        // 3. MyPostItemResponse DTO로 매핑하여 반환
         return myProjects.stream()
-                .map(project -> new MyPostItemResponse(
-                        project.getPost_id(),                  // postId (PK)
-                        project.getPost().getTitle(),          // 제목 (Post 엔티티)
-                        project.getOverview(),                 // 프로젝트 개요
-                        project.getPost().getCategory().getLabel(),// 카테고리 (Post 엔티티)
-                        project.getProjectState().name(),      // 모집상태 (OPEN/CLOSED)
-                        project.getJobState().getLabel(),      // 기간 (단기/중기/장기)
-                        project.getDeadline().toString()       // 마감일
-                ))
+                .map(project -> {
+                    List<String> imageUrls = getPostImageUrls(project.getPost());
+                    List<String> categoryLabels = getProjectCategories(project);
+                    return new MyPostItemResponse(
+                            project.getPost_id(),
+                            project.getPost().getTitle(),
+                            project.getOverview(),
+                            project.getPost().getUser() != null ? project.getPost().getUser().getProfileImage() : null,
+                            categoryLabels.isEmpty() ? null : categoryLabels.get(0),
+                            categoryLabels,
+                            project.getProjectState().name(),
+                            project.getJobState().getLabel(),
+                            project.getDeadline().toString(),
+                            imageUrls.stream().findFirst().orElse(null),
+                            imageUrls
+                    );
+                })
                 .collect(Collectors.toList());
     }
 
@@ -282,10 +436,65 @@ public class MatchingServiceImpl implements MatchingService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<ProjectApplicationItemResponse> getProjectApplications(Long postId) {
-        return List.of(
-                new ProjectApplicationItemResponse(1L, 210L, "ApplicantA", 2500000, "Portfolio submitted."),
-                new ProjectApplicationItemResponse(2L, 211L, "ApplicantB", 2700000, "Relevant experience included.")
-        );
+        AuthenticatedUser currentUser = getCurrentUser();
+        Project project = projectRepository.findByPostIdWithDetails(postId)
+                .orElseThrow(() -> new EntityNotFoundException("Project not found: " + postId));
+        User poster = project.getPost() != null ? project.getPost().getUser() : null;
+
+        if (poster == null || !Objects.equals(poster.getId(), currentUser.id())) {
+            throw new IllegalArgumentException("본인 공고의 지원 내역만 볼 수 있습니다.");
+        }
+
+        return applicationRepository.findAllByPostIdWithApplicant(postId).stream()
+                .map(application -> new ProjectApplicationItemResponse(
+                        application.getApplication_id(),
+                        application.getApplicant().getId(),
+                        application.getApplicant().getName(),
+                        application.getApplicant().getNickname(),
+                        application.getApplicant().getProfileImage(),
+                        application.getExpectedBudget(),
+                        application.getSummary(),
+                        application.getCoverLetter(),
+                        application.getPortfolioUrl(),
+                        application.getStartDate() != null ? application.getStartDate().toLocalDate().toString() : null
+                ))
+                .toList();
+    }
+
+    private AuthenticatedUser getCurrentUser() {
+        return (AuthenticatedUser) SecurityContextHolder.getContext()
+                .getAuthentication()
+                .getPrincipal();
+    }
+
+    private void validateApplicationRequest(ApplyProjectRequest request) {
+        if (request == null) {
+            throw new IllegalArgumentException("Application request is required.");
+        }
+        if (normalizeNullableText(request.coverLetter()) == null) {
+            throw new IllegalArgumentException("Cover letter is required.");
+        }
+        if (normalizeNullableText(request.summary()) == null) {
+            throw new IllegalArgumentException("Summary is required.");
+        }
+        if (request.expectedBudget() != null && request.expectedBudget() < 0) {
+            throw new IllegalArgumentException("Expected budget cannot be negative.");
+        }
+        if (request.startDate() != null) {
+            LocalDateTime requestedStartAt = request.startDate().atStartOfDay();
+            if (requestedStartAt.isBefore(LocalDateTime.now().minusDays(1))) {
+                throw new IllegalArgumentException("Start date cannot be in the past.");
+            }
+        }
+    }
+
+    private String normalizeNullableText(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isBlank() ? null : trimmed;
     }
 }
