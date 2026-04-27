@@ -2,6 +2,8 @@ import Navigation from "../components/Navigation";
 import { CheckCircle, Star, Send, ThumbsUp, MessageSquare, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
+import { toast } from "sonner";
+import { saveConversationProcessesApi } from "../api/messageApi";
 import { createProfileReviewApi } from "../api/profileApi";
 import { useNightMode } from "../contexts/NightModeContext";
 import { matchingCategories } from "../utils/matchingCategories";
@@ -162,6 +164,14 @@ export default function ReviewWrite() {
         workCategories: selectedWorkCategories,
         complimentTags: shouldShowImprovements ? selectedImprovements : selectedCompliments,
       });
+      try {
+        await saveConversationProcessesApi(conversationId, []);
+      } catch (clearError) {
+        console.error(clearError);
+        toast.warning(
+          "후기는 저장되었습니다. 메시지 화면 작업 탭에서 「작업 종료」를 눌러 프로세스를 정리해 주세요.",
+        );
+      }
       rememberHiddenConversation(conversationId);
       setIsThankYouOpen(true);
       return;
@@ -172,26 +182,6 @@ export default function ReviewWrite() {
       );
       return;
     }
-
-    // 실제로는 여기서 API 호출하여 후기 저장
-    const reviewData = {
-      clientName,
-      projectName,
-      workCategories: selectedWorkCategories,
-      rating,
-      complimentTags: selectedCompliments,
-      improvementTags: [],
-      review,
-      date: new Date().toISOString(),
-    };
-
-    // localStorage에 임시 저장 (실제로는 백엔드 API로 전송)
-    const existingReviews = JSON.parse(localStorage.getItem("reviews") || "[]");
-    existingReviews.push(reviewData);
-    localStorage.setItem("reviews", JSON.stringify(existingReviews));
-
-    setHasSubmitted(true);
-    setIsThankYouOpen(true);
   };
 
   const RatingStars = ({
