@@ -936,7 +936,7 @@ export default function Explore() {
                     </div>
                   )}
                   {!hasMoreFeeds && filteredProjects.length > 0 && (
-                    <p className="text-sm text-gray-400 font-medium">모든 피드를 확인했습니다.</p>
+                    <p className="text-sm text-gray-400">모든 피드를 확인했습니다 ✨</p>
                   )}
                 </div>
               </>
@@ -1056,7 +1056,7 @@ export default function Explore() {
                     </div>
                   )}
                   {!hasMoreDesigners && filteredDesigners.length > 0 && (
-                    <p className="text-sm text-gray-400 font-medium">모든 디자이너를 확인했습니다.</p>
+                    <p className="text-sm text-gray-400">모든 디자이너를 확인했습니다 ✨</p>
                   )}
                 </div>
               </>

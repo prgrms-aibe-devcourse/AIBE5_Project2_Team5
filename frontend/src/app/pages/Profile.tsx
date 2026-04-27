@@ -215,67 +215,6 @@ const projects: FeedProject[] = [
   },
 ];
 
-const reviews = [
-  {
-    id: 1,
-    company: "TechFlow Solutions",
-    author: "김태현 대표",
-    rating: 5,
-    text: "디자인 품질이 정말 훌륭했습니다. 프로젝트를 한 단계 더 높은 수준으로 끌어올려주었고, 커뮤니케이션도 명확해서 매우 만족스러운 협업이었습니다.",
-    tags: ["#webDesign", "#branding"],
-    avatar: "https://i.pravatar.cc/160?img=11",
-    displayCompany: "브랜드 리뉴얼 프로젝트",
-    displayAuthor: "김서현 클라이언트",
-    displayText: "브랜드 방향을 빠르게 이해하고 시안별 장단점을 깔끔하게 정리해줬어요. 피드백 반영도 정확해서 마지막까지 안심하고 진행했습니다.",
-    workCategories: ["그래픽 디자인", "UI/UX"],
-    complimentTags: ["말이 잘 통했어요", "디테일 장인", "수정이 깔끔해요", "다음에도 함께"],
-    displayTags: [],
-  },
-  {
-    id: 2,
-    company: "CreativeLoft",
-    author: "이수진 팀장",
-    rating: 5,
-    text: "콘셉트 이해도가 뛰어나고 시각적 완성도가 높았습니다. 레퍼런스를 빠르게 해석해 브랜드에 맞는 결과물로 잘 정리해주었습니다.",
-    tags: ["#app-mobile-app"],
-    avatar: "https://i.pravatar.cc/160?img=32",
-    displayCompany: "제품 상세 페이지 촬영",
-    displayAuthor: "이수진 클라이언트",
-    displayRating: 4,
-    displayText: "제품의 질감이 잘 보이도록 촬영 톤을 잡아줬고, 상세 페이지에 들어갈 컷 구성도 실용적이었어요. 일정 공유가 빨라서 협업이 편했습니다.",
-    workCategories: ["포토그래피", "제품 디자인"],
-    complimentTags: ["답장이 빨라요", "센스가 좋아요", "일정이 믿음직해요"],
-    displayTags: [],
-  },
-  {
-    id: 3,
-    company: "캐릭터 일러스트 의뢰",
-    author: "박민호 클라이언트",
-    rating: 5,
-    text: "러프 단계부터 캐릭터 성격이 잘 살아났고, 컬러 수정도 요청 의도를 정확히 반영해줬어요. 납품 파일 정리까지 깔끔했습니다.",
-    workCategories: ["일러스트레이션"],
-    complimentTags: ["설명이 쉬워요", "결과물이 예뻐요", "피드백 정리가 좋아요"],
-    tags: [],
-    avatar: "https://i.pravatar.cc/160?img=45",
-  },
-];
-
-const reviewRatingOptions = [
-  { value: 1, label: "조금 아쉬웠어요", description: "다음엔 더 맞춰봐요" },
-  { value: 2, label: "무난했어요", description: "큰 문제는 없었어요" },
-  { value: 3, label: "괜찮았어요", description: "기본은 탄탄했어요" },
-  { value: 4, label: "만족했어요", description: "다시 맡겨도 좋아요" },
-  { value: 5, label: "완전 추천해요", description: "협업 감각이 좋았어요" },
-];
-
-const reviewDetailItems = [
-  { key: "communication", label: "의사소통" },
-  { key: "professionalism", label: "전문성" },
-  { key: "payment", label: "결제/일정" },
-] as const;
-
-const getReviewRatingOption = (value?: number) =>
-  reviewRatingOptions.find((option) => option.value === value);
 
 const categoryTagSuggestions: Record<string, string[]> = {
   "UI/UX": ["#앱디자인", "#와이어프레임", "#프로토타입"],
@@ -397,6 +336,8 @@ export default function Profile() {
   const [feedEditError, setFeedEditError] = useState("");
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<FeedProject | null>(null);
+  const [isCollectionDeleteModalOpen, setIsCollectionDeleteModalOpen] = useState(false);
+  const [collectionToDeleteId, setCollectionToDeleteId] = useState<number | null>(null);
   const profileImageInputRef = useRef<HTMLInputElement>(null);
   const workImageInputRef = useRef<HTMLInputElement>(null);
   const editFeedImageInputRef = useRef<HTMLInputElement>(null);
@@ -952,16 +893,23 @@ export default function Profile() {
     }
   };
 
-  const handleDeleteCollection = async (folderId: number) => {
-    if (!window.confirm("이 컬렉션 폴더를 삭제할까요?")) return;
+  const handleDeleteCollection = (folderId: number) => {
+    setCollectionToDeleteId(folderId);
+    setIsCollectionDeleteModalOpen(true);
+  };
 
+  const confirmDeleteCollection = async () => {
+    if (!collectionToDeleteId) return;
     try {
-      await deleteCollectionFolderApi(folderId);
-      setCollectionFolders((current) => current.filter((item) => item.folderId !== folderId));
-      setSelectedCollection((current) => (current?.folderId === folderId ? null : current));
+      await deleteCollectionFolderApi(collectionToDeleteId);
+      setCollectionFolders((current) => current.filter((item) => item.folderId !== collectionToDeleteId));
+      setSelectedCollection((current) => (current?.folderId === collectionToDeleteId ? null : current));
       setCollectionError("");
     } catch (error) {
       setCollectionError(error instanceof Error ? error.message : "컬렉션을 삭제하지 못했습니다.");
+    } finally {
+      setIsCollectionDeleteModalOpen(false);
+      setCollectionToDeleteId(null);
     }
   };
 
@@ -2022,8 +1970,8 @@ export default function Profile() {
             ) : collectionFolders.length === 0 ? (
               <div className="rounded-lg border border-gray-200 bg-white py-16 text-center">
                 <FolderOpen className="mx-auto mb-4 size-12 text-gray-300" />
-                <h3 className="mb-2 text-2xl font-bold">받아온 컬렉션 데이터가 없어요</h3>
-                <p className="text-gray-600">API 연결은 준비됐고, 데이터가 생기면 이 영역에 목록이 표시됩니다.</p>
+                <h3 className="mb-2 text-2xl font-bold">아직 컬렉션이 없어요</h3>
+                <p className="text-gray-600">마음에 드는 피드를 저장해 나만의 컬렉션을 만들어보세요.</p>
               </div>
             ) : (
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -2216,7 +2164,7 @@ export default function Profile() {
                 <Star className="mx-auto mb-3 size-10 text-gray-300" />
                 <h3 className="text-lg font-bold text-[#12382D]">아직 프로젝트 후기가 없어요</h3>
                 <p className="mt-2 text-sm text-gray-500">
-                  메시지에서 작업 완료와 후기 작성 흐름이 연결되면 이곳에 받은 후기가 표시됩니다.
+                  프로젝트를 완료하면 클라이언트가 남긴 후기가 이곳에 표시됩니다.
                 </p>
               </div>
             ) : (
@@ -2271,38 +2219,6 @@ export default function Profile() {
                         </div>
                       )}
 
-                      {/* Button-style detailed ratings if available */}
-                      {(review as any).communication && (
-                        <div className="grid gap-2 mb-4 rounded-lg bg-[#F7F7F5] p-3 sm:grid-cols-3">
-                          {reviewDetailItems.map((item) => {
-                            const option = getReviewRatingOption((review as any)[item.key]);
-                            const savedLabel = (review as any)[`${item.key}Label`];
-                            const displayLabel = savedLabel || option?.label;
-
-                            if (!displayLabel) return null;
-
-                            return (
-                              <div
-                                key={item.key}
-                                className="rounded-lg border border-[#00C9A7]/30 bg-white px-3 py-2 shadow-sm"
-                              >
-                                <div className="mb-1 text-xs font-semibold text-gray-500">
-                                  {item.label}
-                                </div>
-                                <div className="flex items-center gap-1.5 text-sm font-bold text-[#007E68]">
-                                  <CheckCircle className="size-4 text-[#00C9A7]" />
-                                  {displayLabel}
-                                </div>
-                                {option?.description && (
-                                  <div className="mt-0.5 text-[11px] font-medium text-gray-500">
-                                    {option.description}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
                       {review.complimentTags?.length > 0 && (
                         <div className="mb-3 flex flex-wrap gap-2">
                           {review.complimentTags.map((tag) => (
@@ -2320,18 +2236,6 @@ export default function Profile() {
                   <p className="text-gray-700 leading-relaxed mb-3">
                     {review.content}
                   </p>
-                  {(((review as any).displayTags ?? (review as any).tags)?.length ?? 0) > 0 && (
-                    <div className="flex gap-2">
-                      {((review as any).displayTags ?? (review as any).tags).map((tag: string, idx: number) => (
-                        <span
-                          key={idx}
-                          className="bg-[#A8F0E4]/20 text-[#00A88C] px-3 py-1 rounded-full text-xs font-medium"
-                        >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
                   {review.createdAt && (
                     <div className="text-xs text-gray-500 mt-3">
                       {new Date(review.createdAt).toLocaleDateString("ko-KR", {
@@ -3405,6 +3309,45 @@ export default function Profile() {
                   className="h-11 rounded-lg bg-[#00C9A7] px-4 text-sm font-bold text-[#0F0F0F] transition-colors hover:bg-[#00A88C]"
                 >
                   피드 보기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isCollectionDeleteModalOpen && (
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+          onClick={() => setIsCollectionDeleteModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 text-center">
+              <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-[#FFF1ED] text-[#FF5C3A]">
+                <AlertTriangle className="size-8" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900">컬렉션을 삭제할까요?</h3>
+              <p className="mt-2 text-sm text-gray-500">
+                폴더 안의 저장 목록이 모두 사라집니다.<br />
+                삭제 후에는 복구할 수 없습니다.
+              </p>
+              <div className="mt-8 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsCollectionDeleteModalOpen(false)}
+                  className="flex-1 rounded-xl border border-gray-200 bg-white py-3 text-sm font-bold text-gray-600 transition-all hover:bg-gray-50"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDeleteCollection}
+                  className="flex-1 rounded-xl bg-[#FF5C3A] py-3 text-sm font-bold text-white transition-all hover:bg-[#E54D2E] shadow-[0_8px_20px_rgba(255,92,58,0.25)]"
+                >
+                  삭제하기
                 </button>
               </div>
             </div>

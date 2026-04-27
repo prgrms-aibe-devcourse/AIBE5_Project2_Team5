@@ -7,7 +7,7 @@ export default function Footer() {
             <div className="font-bold text-xl mb-2">
               <span className="text-[#FF5C3A]">p</span>ick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A]">.</span>
             </div>
-            <p className="text-sm text-gray-400">© 2024 pickxel. 크리에이터와 의뢰인을 위한 연결 플랫폼.</p>
+            <p className="text-sm text-gray-400">© 2026 pickxel. pick your designer · sell your work</p>
           </div>
           <div className="flex gap-8 text-sm text-gray-400">
             <a href="#" className="hover:text-white transition-colors">이용약관</a>
