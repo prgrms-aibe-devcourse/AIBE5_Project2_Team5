@@ -181,10 +181,15 @@ export const fetchUnreadCount = async (): Promise<boolean> => {
 
 export const markNotificationRead = async (notificationId: number) => {
   await notificationApi.markAsRead(notificationId);
+  const hasUnread = await fetchUnreadCount();
+  setUnreadNotificationFlag(hasUnread);
+  emitNotificationStateChange();
 };
 
 export const markAllNotificationsRead = async () => {
   await notificationApi.markAllAsRead();
+  setUnreadNotificationFlag(false);
+  emitNotificationStateChange();
 };
 
 export const applyLiveNotificationCreated = (

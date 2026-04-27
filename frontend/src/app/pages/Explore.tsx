@@ -1,4 +1,4 @@
-﻿import Navigation from "../components/Navigation";
+import Navigation from "../components/Navigation";
 import { apiRequest } from "../api/apiClient";
 import {
   Search, Sparkles, Heart, Users, UserSearch, ImageOff,
@@ -194,17 +194,17 @@ export default function Explore() {
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"feed" | "profile">("feed");
-  // ?뺣젹 ?곹깭: 異붿쿇(?쒕쾭 湲곕낯) | 理쒖떊(id ?대┝李⑥닚) | ?멸린(醫뗭븘???대┝李⑥닚)
+  // 정렬 상태: 추천(서버 기본) | 최신(id 내림차순) | 인기(좋아요 내림차순)
   const [sortBy, setSortBy] = useState<"recommended" | "latest" | "popular">("recommended");
   const [isSortOpen, setIsSortOpen] = useState(false);
 
-  // ?쒕쾭 ?곗씠???곹깭
+  // 서버 데이터 상태
   const [feeds, setFeeds] = useState<FeedCardItem[]>([]);
   const [isFeedsLoading, setIsFeedsLoading] = useState(true);
   const [designers, setDesigners] = useState<ExploreDesignerResponseDto[]>([]);
   const [isDesignersLoading, setIsDesignersLoading] = useState(false);
 
-  // ?섏씠吏??곹깭
+  // 페이지 상태
   const [feedPage, setFeedPage] = useState(0);
   const [hasMoreFeeds, setHasMoreFeeds] = useState(true);
   const [isFetchingMoreFeeds, setIsFetchingMoreFeeds] = useState(false);
@@ -214,11 +214,11 @@ export default function Explore() {
 
   const observerRef = useRef<HTMLDivElement>(null);
 
-  // ?곹샇?묒슜 ?곹깭
+  // 상호작용 상태
   const [likedItems, setLikedItems] = useState<Set<number>>(new Set());
   const commentInputRef = useRef<HTMLInputElement | null>(null);
 
-  // 紐⑤떖 ?곹깭
+  // 모달 상태
   const [selectedExploreFeed, setSelectedExploreFeed] = useState<FeedCardItem | null>(null);
   const [commentFeedItems, setCommentFeedItems] = useState<FeedCardItem[]>([]);
   const [modalImageIndex, setModalImageIndex] = useState(0);
@@ -241,7 +241,7 @@ export default function Explore() {
     createCollectionAndSave,
   } = useFeedCollections<FeedCardItem>();
 
-  // 寃?됱뼱 ?붾컮?댁뒪 泥섎━
+  // 검색어 디바운스 처리
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearchQuery(searchQuery);
@@ -283,7 +283,7 @@ export default function Explore() {
     toFeedCommentRole: toCommentAuthorRole,
   });
 
-  // useFeedDetail ???곸슜 (?쇰뱶 ?섏씠吏? ?숈씪???곸꽭 濡쒕뵫 濡쒖쭅)
+  // useFeedDetail 적용 전까지 사용하는 피드 상세 로딩 로직
   const { isLoading: isFeedDetailLoading } = useFeedDetail({
     selectedFeed: selectedExploreFeed,
     setApiFeedItems: setFeeds as React.Dispatch<React.SetStateAction<FeedCardItem[]>>,
@@ -295,14 +295,14 @@ export default function Explore() {
     setModalImageIndex(0);
   };
 
-  // ?쇰뱶 ?≪뀡 ?ы띁
+  // 피드 ?≪뀡 ?ы띁
   const toggleLike = async (id: number, e?: React.MouseEvent) => {
     e?.stopPropagation();
     try {
-      // ?쒕쾭??醫뗭븘???붿껌 ?꾩넚
+      // 서버에 좋아요 토글 요청
       const response = await toggleFeedPickApi(id);
 
-      // 1. ?섑듃 ?쒖꽦???곹깭 ?낅뜲?댄듃 (Set)
+      // 1. 로컬 좋아요 상태 업데이트
       setLikedItems(prev => {
         const newSet = new Set(prev);
         if (response.picked) newSet.add(id);
@@ -310,7 +310,7 @@ export default function Explore() {
         return newSet;
       });
 
-      // 2. ?쇰뱶 紐⑸줉(feeds) ?곗씠?곗쓽 醫뗭븘?????숆린??
+      // 2. 피드 목록의 좋아요 수와 상태 동기화
       setFeeds(prevFeeds =>
         prevFeeds.map(feed =>
           feed.id === id
@@ -319,15 +319,15 @@ export default function Explore() {
         )
       );
 
-      // 3. 留뚯빟 ?곸꽭 紐⑤떖???대젮?덈떎硫??곸꽭 ?곗씠?곕룄 ?숆린??
+      // 3. 상세 모달이 열려 있으면 모달 데이터도 함께 업데이트
       if (selectedExploreFeed && selectedExploreFeed.id === id) {
         setSelectedExploreFeed(prev =>
           prev ? { ...prev, likes: response.pickCount, likedByMe: response.picked } : null
         );
       }
     } catch (error) {
-      console.error("醫뗭븘??泥섎━ 以??ㅻ쪟 諛쒖깮:", error);
-      alert("醫뗭븘??泥섎━???ㅽ뙣?덉뒿?덈떎. ?ㅼ떆 ?쒕룄?댁＜?몄슂.");
+      console.error("좋아요 처리 중 오류 발생:", error);
+      alert("좋아요 처리에 실패했습니다. 다시 시도해주세요.");
     }
   };
 
@@ -336,8 +336,8 @@ export default function Explore() {
     const copyToClipboard = () => {
       navigator.clipboard
         .writeText(window.location.href)
-        .then(() => alert("怨듭쑀 留곹겕媛 ?대┰蹂대뱶??蹂듭궗?섏뿀?듬땲??"))
-        .catch(() => alert("留곹겕 蹂듭궗???ㅽ뙣?덉뒿?덈떎."));
+        .then(() => alert("공유 링크가 클립보드에 복사되었습니다."))
+        .catch(() => alert("링크 복사에 실패했습니다."));
     };
     if (navigator.share) {
       navigator
@@ -361,17 +361,17 @@ export default function Explore() {
     e?.stopPropagation();
 
     if (!item.author?.userId) {
-      alert("?곷?諛??뺣낫瑜?李얠쓣 ???놁뒿?덈떎.");
+      alert("상대방 정보를 찾을 수 없습니다.");
       return;
     }
 
     if (currentUser?.userId === item.author.userId) {
-      alert("???쇰뱶?먮뒗 ?쒖븞??蹂대궪 ???놁뒿?덈떎.");
+      alert("내 피드에는 제안을 보낼 수 없습니다.");
       return;
     }
 
     const now = Date.now();
-    const proposalMessage = `?덈뀞?섏꽭?? "${item.title}" ?묒뾽??蹂닿퀬 ?꾨줈?앺듃 ?쒖븞???쒕━怨??띠뼱 ?곕씫?쒕┰?덈떎. ?묒뾽 媛???щ?? ?쇱젙, 寃ъ쟻???④퍡 ?댁빞湲고빐蹂닿퀬 ?띠뒿?덈떎.`;
+    const proposalMessage = `안녕하세요. "${item.title}" 작업을 보고 프로젝트 제안을 드리고 싶어 연락드립니다. 작업 가능 여부와 일정, 견적 등을 이야기해보고 싶습니다.`;
 
     setStartingProposalPostId(item.id);
     try {
@@ -394,13 +394,13 @@ export default function Explore() {
 
       navigate(`/messages?conversationId=${conversation.id}`);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "??붾? ?쒖옉?섏? 紐삵뻽?듬땲??");
+      alert(error instanceof Error ? error.message : "대화를 시작하지 못했습니다.");
     } finally {
       setStartingProposalPostId(null);
     }
   };
 
-  // Lenis smooth scroll ?ㅼ젙
+  // Lenis smooth scroll 설정
   useEffect(() => {
     const lenis = new Lenis({ lerp: 0.08, smoothWheel: true });
     
@@ -429,12 +429,12 @@ export default function Explore() {
   const scrollCat = (dir: "left" | "right") => {
     const el = catScrollRef.current;
     if (!el) return;
-    // 媛???곸뿭??80% ?뺣룄??遺?쒕읇寃??대룞
+    // 가시 영역의 약 80% 정도를 부드럽게 이동
     const amount = Math.max(240, el.clientWidth * 0.8);
     el.scrollBy({ left: dir === "left" ? -amount : amount, behavior: "smooth" });
   };
 
-  // ?섏쭅 ?????섑룊 ?ㅽ겕濡?蹂??(移댄뀒怨좊━ ?됱슜)
+  // 카테고리 레일 수평 스크롤 버튼
   const handleCatWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
       const el = catScrollRef.current;
@@ -444,11 +444,11 @@ export default function Explore() {
     }
   };
 
-  // ?덉씠??而⑤뵒??諛⑹?瑜??꾪븳 ?붿껌 ID 愿由?
+  // 레이스 컨디션 방지를 위한 요청 ID 관리
   const lastFeedsRequestId = useRef(0);
   const lastDesignersRequestId = useRef(0);
 
-  // ?쇰뱶 紐⑸줉 議고쉶 (珥덇린??諛?臾댄븳 ?ㅽ겕濡?蹂묓빀)
+  // 피드 목록 조회 (초기 로드 + 무한 스크롤 공용)
   const fetchFeeds = useCallback(async (pageNum: number, isInitial: boolean = false) => {
     const requestId = ++lastFeedsRequestId.current;
     try {
@@ -457,7 +457,7 @@ export default function Explore() {
 
       const data = await getExploreFeedsApi(selectedCategory || "all", debouncedSearchQuery, pageNum, 20);
       
-      // 理쒖떊 ?붿껌???꾨땲硫??곹깭 ?낅뜲?댄듃 臾댁떆
+      // 최신 요청이 아니면 상태 업데이트 무시
       if (requestId !== lastFeedsRequestId.current) return;
 
       const mappedFeeds: FeedCardItem[] = data.map(item => ({
@@ -466,7 +466,7 @@ export default function Explore() {
         author: {
           userId: item.userId,
           name: item.nickname,
-          role: item.job || "?붿옄?대꼫",
+          role: item.job || "디자이너",
           avatar: getUserAvatar(item.profileImage, item.userId, item.nickname),
           profileKey: String(item.userId),
         },
@@ -499,7 +499,7 @@ export default function Explore() {
       setHasMoreFeeds(data.length === 20);
     } catch (error) {
       if (requestId === lastFeedsRequestId.current) {
-        console.error("?쇰뱶 濡쒕뵫 以??ㅻ쪟:", error);
+        console.error("피드 로딩 중 오류:", error);
       }
     } finally {
       if (requestId === lastFeedsRequestId.current) {
@@ -509,7 +509,7 @@ export default function Explore() {
     }
   }, [selectedCategory, debouncedSearchQuery]);
 
-  // ?붿옄?대꼫 紐⑸줉 議고쉶
+  // 디자이너 목록 조회
   const fetchDesigners = useCallback(async (pageNum: number, isInitial: boolean = false) => {
     const requestId = ++lastDesignersRequestId.current;
     try {
@@ -518,7 +518,7 @@ export default function Explore() {
 
       const data = await getExploreDesignersApi(debouncedSearchQuery, pageNum, 20);
       
-      // 理쒖떊 ?붿껌???꾨땲硫??곹깭 ?낅뜲?댄듃 臾댁떆
+      // 최신 요청이 아니면 상태 업데이트 무시
       if (requestId !== lastDesignersRequestId.current) return;
 
       if (isInitial) {
@@ -530,7 +530,7 @@ export default function Explore() {
       setHasMoreDesigners(data.length === 20);
     } catch (error) {
       if (requestId === lastDesignersRequestId.current) {
-        console.error("?붿옄?대꼫 濡쒕뵫 以??ㅻ쪟:", error);
+        console.error("디자이너 로딩 중 오류:", error);
       }
     } finally {
       if (requestId === lastDesignersRequestId.current) {
@@ -540,7 +540,7 @@ export default function Explore() {
     }
   }, [debouncedSearchQuery]);
 
-  // 寃??議곌굔 蹂寃???珥덇린??諛?泥??섏씠吏 濡쒕뱶
+  // 검색/필터 변경 시 초기화 후 첫 페이지 로드
   useEffect(() => {
     setFeedPage(0);
     setDesignerPage(0);
@@ -554,7 +554,7 @@ export default function Explore() {
     }
   }, [selectedCategory, debouncedSearchQuery, activeTab, fetchFeeds, fetchDesigners]);
 
-  // ?섏씠吏 踰덊샇 利앷? ??異붽? ?곗씠??濡쒕뱶
+  // 페이지 번호 증가 시 추가 데이터 로드
   useEffect(() => {
     if (feedPage > 0 && activeTab === "feed") {
       fetchFeeds(feedPage);
@@ -567,7 +567,7 @@ export default function Explore() {
     }
   }, [designerPage, activeTab, fetchDesigners]);
 
-  // 臾댄븳 ?ㅽ겕濡?Observer ?ㅼ젙
+  // 무한 스크롤 Observer 설정
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -591,7 +591,7 @@ export default function Explore() {
   const filteredProjects = useMemo(() => {
     const list = [...feeds];
     if (sortBy === "latest") {
-      // createdAt ??遺????id ?대┝李⑥닚?쇰줈 ?대갚
+      // createdAt이 없어서 id 내림차순으로 대체
       list.sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
     } else if (sortBy === "popular") {
       list.sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0));
@@ -600,39 +600,39 @@ export default function Explore() {
   }, [feeds, sortBy]);
 
   const sortLabel: Record<typeof sortBy, string> = {
-    recommended: "異붿쿇",
-    latest: "理쒖떊",
-    popular: "?멸린",
+    recommended: "추천",
+    latest: "최신",
+    popular: "인기",
   };
 
   const filteredDesigners = useMemo(() => designers, [designers]);
 
-  // AI 梨꾪똿 ?섎떒 ?ㅽ겕濡?
+  // AI 채팅 하단 스크롤
 
 
-  // ?볤? 紐⑤떖 ?낅젰??onCommentKeyDown?쇰줈 ?꾨떖?섎뒗 ?뱀븘???몃뱾??(?꾩옱??no-op)
+  // 댓글 모달 입력에서 전달받는 keydown 핸들러 자리 (현재 no-op)
   const handleSearchKeyDown = (_e: React.KeyboardEvent) => {};
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FAFAF8]">
       <Navigation />
 
-      {/* ?먯깋 寃?됰컮 (?⑥씪 capsule pill) */}
+      {/* 탐색 검색바 */}
       <section className="relative z-30">
         <div className="max-w-[1800px] mx-auto px-5 pt-7 pb-3">
           <div className="flex items-center h-12 rounded-full bg-white border border-gray-200/70 shadow-sm hover:border-gray-300 focus-within:border-[#00C9A7]/40 focus-within:shadow-[0_0_0_3px_rgba(0,201,167,0.1)] transition-all duration-300">
-            {/* 寃???명뭼 */}
+            {/* 검색 인풋 */}
             <div className="relative flex-1 min-w-0 flex items-center pl-5 pr-2">
               <Search className="size-4 text-gray-400 shrink-0" />
               <input
                 ref={searchRef}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="pickxel?먯꽌 寃??.."
+                placeholder="Pickxel에서 검색..."
                 className="w-full h-12 pl-3 pr-2 bg-transparent text-[14px] text-[#0F0F0F] placeholder:text-gray-400 focus:outline-none"
               />
               {searchQuery && (
-                <button onClick={() => setSearchQuery("")} className="p-0.5 hover:bg-gray-100 rounded-full transition-colors shrink-0" aria-label="寃?됱뼱 吏?곌린">
+                <button onClick={() => setSearchQuery("")} className="p-0.5 hover:bg-gray-100 rounded-full transition-colors shrink-0" aria-label="검색어 지우기">
                   <X className="size-3.5 text-gray-400" />
                 </button>
               )}
@@ -640,7 +640,7 @@ export default function Explore() {
 
             <div className="w-px h-6 bg-gray-200 shrink-0" />
 
-            {/* ??segmented (?쇰뱶/?꾨줈?? */}
+            {/* segmented control (피드 / 프로필) */}
             <div className="relative flex items-center px-1.5 shrink-0">
               <button
                 onClick={() => setActiveTab("feed")}
@@ -656,7 +656,7 @@ export default function Explore() {
                   />
                 )}
                 <LayoutGrid className={`relative z-[2] size-3.5 transition-colors ${activeTab === "feed" ? "text-white" : "text-gray-400"}`} />
-                <span className="relative z-[2]">?쇰뱶</span>
+                <span className="relative z-[2]">피드</span>
               </button>
               <button
                 onClick={() => setActiveTab("profile")}
@@ -675,7 +675,7 @@ export default function Explore() {
               </button>
             </div>
 
-            {/* ?뺣젹 ??됲꽣 (?묒そ ??怨듯넻 ?몄텧, jitter ?쒓굅) */}
+            {/* 정렬 셀렉터 */}
             <div className="w-px h-6 bg-gray-200 shrink-0" />
             <div className="relative shrink-0 pr-2">
                   <button
@@ -725,23 +725,23 @@ export default function Explore() {
         </div>
       </section>
 
-      {/* ?먯깋 移댄뀒怨좊━ ?꾪꽣 (??以?洹좊벑 遺꾨같, ?쒕늿???몄텧) */}
+      {/* 탐색 카테고리 필터 */}
       {activeTab === "feed" && (
         <section className="bg-transparent pb-3">
           <div className="max-w-[1800px] mx-auto px-5">
             <div className="flex items-stretch gap-1.5 py-3 px-1">
-                  {/* ?꾩껜 踰꾪듉 (?붾━??洹몃씪?붿뼵?? */}
+                  {/* 전체 버튼 */}
                   <button
                     onClick={() => setSelectedCategory(null)}
                     className={`relative h-[52px] flex-1 basis-0 min-w-0 rounded-md overflow-visible transition-all duration-200 ${
                       !selectedCategory ? "scale-[1.03] shadow-lg shadow-[#00C9A7]/30" : "hover:-translate-y-0.5 hover:shadow-md"
                     }`}
                   >
-                    {/* 諛곌꼍 (overflow-hidden???덉そ span?쇰줈 寃⑸━) */}
+                    {/* 배경 레이어 */}
                     <span className="absolute inset-0 rounded-md overflow-hidden">
                       <span className="absolute inset-0 bg-gradient-to-br from-[#00C9A7] via-[#00A88C] to-[#008F77]" />
                     </span>
-                    {/* 議곕챸 耳쒖???湲濡쒖슦 bloom */}
+                    {/* 선택 강조 glow */}
                     <AnimatePresence>
                       {!selectedCategory && (
                         <motion.span
@@ -756,7 +756,7 @@ export default function Explore() {
                     </AnimatePresence>
                     <span className="relative z-[1] flex items-center justify-center gap-1 h-full px-1 text-white">
                       <LayoutGrid className="size-3.5 shrink-0" strokeWidth={2.2} />
-                      <span className="text-[12.5px] font-bold tracking-tight">?꾩껜</span>
+                      <span className="text-[12.5px] font-bold tracking-tight">전체</span>
                     </span>
                   </button>
 
@@ -772,7 +772,7 @@ export default function Explore() {
                           isActive ? "scale-[1.03] shadow-lg shadow-[#00C9A7]/25" : "hover:-translate-y-0.5 hover:shadow-md"
                         }`}
                       >
-                        {/* ?대?吏 + ?ㅻ쾭?덉씠 (overflow-hidden 寃⑸━) */}
+                        {/* 이미지 + 오버레이 */}
                         <span className="absolute inset-0 rounded-md overflow-hidden">
                           {image && (
                             <img
@@ -796,7 +796,7 @@ export default function Explore() {
                           />
                         </span>
 
-                        {/* 議곕챸 耳쒖???湲濡쒖슦 bloom */}
+                        {/* 선택 강조 glow */}
                         <AnimatePresence>
                           {isActive && (
                             <motion.span
@@ -810,7 +810,7 @@ export default function Explore() {
                           )}
                         </AnimatePresence>
 
-                        {/* 肄섑뀗痢?*/}
+                        {/* 콘텐츠 */}
                         <span className="relative z-[1] flex items-center justify-center gap-1.5 h-full px-2 text-white">
                           <Icon className="size-3.5 shrink-0" />
                           <span
@@ -828,19 +828,19 @@ export default function Explore() {
         </section>
       )}
 
-      {/* ?먯깋 硫붿씤 肄섑뀗痢?*/}
+      {/* 탐색 메인 콘텐츠 */}
       <div className="flex-1">
-        {/* ?쇰뱶 移대뱶 洹몃━??*/}
+        {/* 피드 移대뱶 洹몃━??*/}
         {activeTab === "feed" && (
           <section className="max-w-[1800px] mx-auto px-5 pt-1 pb-16">
             {isFeedsLoading ? (
-              // 濡쒕뵫 ?ㅽ뵾??
+              // 로딩 스피너
               <div className="flex justify-center py-20">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00C9A7]"></div>
               </div>
             ) : filteredProjects.length > 0 ? (
               <>
-                {/* 洹좎씪 洹몃━?? 紐⑤뱺 移대뱶 4:3 ?숈씪 ?ъ씠利?*/}
+                {/* 카드 그리드: 모든 카드는 4:3 비율 */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
                   {filteredProjects.map((project, index) => {
                     const isSaved = savedProjectIds.has(project.id);
@@ -855,7 +855,7 @@ export default function Explore() {
                         className="group cursor-pointer"
                         onClick={() => openFeedDetail(project)}
                       >
-                        {/* ?대?吏 移대뱶 (4:3 怨좎젙) */}
+                        {/* 이미지 카드 (4:3 고정) */}
                         <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] group-hover:shadow-[0_18px_40px_rgba(0,0,0,0.14)] transition-shadow duration-500">
                           <ImageWithFallback
                             src={project.image || ""}
@@ -863,7 +863,7 @@ export default function Explore() {
                             className="w-full h-full object-cover block group-hover:scale-[1.03] transition-transform duration-700 ease-out"
                           />
 
-                          {/* 移댄뀒怨좊━ 諛곗? (醫뚯긽?? ?몃쾭 ???몄텧) */}
+                          {/* 카테고리 배지 */}
                           {project.category && (
                             <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 -translate-y-1 group-hover:translate-y-0 transition-all duration-300 z-10">
                               <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-md text-[11px] font-semibold text-[#0F0F0F] shadow-sm">
@@ -891,11 +891,11 @@ export default function Explore() {
                             </span>
                           </button>
 
-                          {/* ?섎떒 ?댁쭩 洹몃씪?붿뼵???몃쾭 ??移댄뀒怨좊━/???諛곗? 媛?낆꽦?? */}
+                          {/* 하단 오버레이 */}
                           <div className="absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
                         </div>
 
-                        {/* 移대뱶 ?몃? 罹≪뀡 (Behance ?? ?쒕ぉ / ?묎? + 醫뗭븘?붋룸뙎湲) */}
+                        {/* 카드 메타 캡션 */}
                         <div className="pt-2.5 px-0.5 pb-2">
                           <h3 className="font-semibold text-[13.5px] text-[#0F0F0F] truncate group-hover:text-[#00A88C] transition-colors duration-300 leading-snug">
                             {project.title}
@@ -926,7 +926,7 @@ export default function Explore() {
                   })}
                 </div>
 
-                {/* 臾댄븳 ?ㅽ겕濡?媛먯? 諛?濡쒕뵫 ?쒖떆 */}
+                {/* 무한 스크롤 로딩 상태 */}
                 <div ref={observerRef} className="h-20 flex items-center justify-center mt-10">
                   {isFetchingMoreFeeds && (
                     <div className="flex flex-col items-center gap-2">
@@ -945,12 +945,12 @@ export default function Explore() {
                   <ImageOff className="size-12 text-gray-300" />
                 </div>
                 <h3 className="text-lg font-semibold text-gray-700 mb-1">
-                  {selectedCategory ? `"${selectedCategory}" 移댄뀒怨좊━???묓뭹???놁뒿?덈떎` : searchQuery ? `"${searchQuery}" 寃??寃곌낵媛 ?놁뒿?덈떎` : "?쒖떆???묓뭹???놁뒿?덈떎"}
+                  {selectedCategory ? `"${selectedCategory}" 카테고리의 작품이 없습니다` : searchQuery ? `"${searchQuery}" 검색 결과가 없습니다` : "표시할 작품이 없습니다"}
                 </h3>
-                <p className="text-sm text-gray-400 mb-5">?ㅻⅨ 移댄뀒怨좊━瑜??좏깮?섍굅??寃?됱뼱瑜?蹂寃쏀빐蹂댁꽭??</p>
+                <p className="text-sm text-gray-400 mb-5">다른 카테고리를 선택하거나 검색어를 변경해보세요.</p>
                 {(selectedCategory || searchQuery) && (
                   <motion.button whileTap={{ scale: 0.95 }} onClick={() => { setSelectedCategory(null); setSearchQuery(""); }} className="px-6 py-2.5 rounded-lg bg-[#0F0F0F] text-white text-sm font-medium hover:bg-gray-800 transition-colors">
-                    ?꾪꽣 珥덇린??
+                    필터 초기화
                   </motion.button>
                 )}
               </div>
@@ -958,7 +958,7 @@ export default function Explore() {
           </section>
         )}
 
-        {/* ?붿옄?대꼫 紐⑸줉 */}
+        {/* 디자이너 목록 */}
         {activeTab === "profile" && (
           <section className="max-w-[1800px] mx-auto px-5 py-6">
             <div className="mb-5 flex items-center gap-2">
@@ -986,7 +986,7 @@ export default function Explore() {
                         to={`/profile/${profile.nickname}`}
                         className="block bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] group-hover:border-[#00C9A7]/40 group-hover:shadow-[0_18px_40px_rgba(0,0,0,0.1)] group-hover:-translate-y-1 transition-all duration-500"
                       >
-                        {/* ?곷떒 諛곕꼫 (16:9) */}
+                        {/* 상단 배너 (16:9) */}
                         <div className="relative aspect-[16/9] overflow-hidden bg-[#F9FAFB]">
                           {profile.bannerImage ? (
                             <>
@@ -1007,9 +1007,9 @@ export default function Explore() {
                           )}
                         </div>
 
-                        {/* 蹂몃Ц ?곸뿭 */}
+                        {/* 본문 영역 */}
                         <div className="px-4 pb-4 pt-0 -mt-8 relative">
-                          {/* ???꾨컮? (諛곕꼫??嫄몄묠) */}
+                          {/* 프로필 아바타 */}
                           <ImageWithFallback
                             src={profile.profileImage || `https://i.pravatar.cc/150?u=${profile.userId}`}
                             alt={profile.nickname}
@@ -1025,7 +1025,7 @@ export default function Explore() {
                             {profile.introduction || "멋진 작업을 만들어가는 디자이너입니다."}
                           </p>
 
-                          {/* 硫뷀? ??*/}
+                          {/* 메타 정보 */}
                           <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-[12px]">
                             <div className="flex items-center gap-3">
                               <span className="text-gray-500">
@@ -1035,7 +1035,7 @@ export default function Explore() {
                               <span className="w-px h-3 bg-gray-200" />
                               <span className="text-gray-500">
                                 <strong className="text-[#0F0F0F] text-[13px] font-bold">{profile.postCount}</strong>{" "}
-                                <span className="text-[11px]">?묓뭹</span>
+                                <span className="text-[11px]">작품</span>
                               </span>
                             </div>
                             <ArrowRight className="size-3.5 text-gray-300 group-hover:text-[#00A88C] group-hover:translate-x-0.5 transition-all" />
@@ -1046,7 +1046,7 @@ export default function Explore() {
                   ))}
                 </div>
 
-                {/* 臾댄븳 ?ㅽ겕濡?媛먯? 諛?濡쒕뵫 ?쒖떆 (?붿옄?대꼫) */}
+                {/* 무한 스크롤 로딩 상태 (디자이너) */}
                 <div ref={observerRef} className="h-20 flex items-center justify-center mt-10">
                   {isFetchingMoreDesigners && (
                     <div className="flex flex-col items-center gap-2">
@@ -1147,7 +1147,7 @@ export default function Explore() {
 
 
 
-      {/* 而щ젆?????紐⑤떖 */}
+      {/* 컬렉션 저장 모달 */}
       <AnimatePresence>
         {collectionModalProject && (
           <motion.div

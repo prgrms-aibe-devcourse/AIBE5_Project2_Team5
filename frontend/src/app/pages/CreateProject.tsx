@@ -15,7 +15,7 @@ import { uploadFeedImagesApi } from "../api/uploadApi";
 import { getCurrentUser } from "../utils/auth";
 
 const SKILL_PRESETS = ["Figma", "Illustrator", "Photoshop", "After Effects", "Cinema 4D", "Blender", "Webflow"];
-// ?덉궛怨??쇱젙??Step 1?쇰줈 ?대룞?덉쑝誘濡?Step??3媛쒕줈 ?뺤텞?⑸땲??
+// 예산과 일정 입력을 1단계로 옮겨서 전체 단계를 3개로 유지합니다.
 const STEP_LABELS = ["기본 정보", "상세 정보", "등록 확인"] as const;
 const DEFAULT_FILTERS: FilteringResponse = {
   categories: [],
@@ -123,7 +123,7 @@ function DynamicList({
   return (
       <div className="space-y-3">
         {items.map((item, index) => (
-            // ?뮕 ?ш린媛 ?섏젙?섏뿀?듬땲?? key={`${index}-${item}`} -> key={index}
+            // 리스트 key 충돌을 피하려고 index만 사용합니다.
             <div key={index} className="flex items-center gap-2">
               <input
                   value={item}
@@ -163,7 +163,7 @@ export default function CreateProject() {
   const [completionMode, setCompletionMode] = useState<"create" | "update" | null>(null);
 
   const [title, setTitle] = useState("");
-  const [budget, setBudget] = useState(""); // 留뚯썝 ?⑥쐞 ?덉궛
+  const [budget, setBudget] = useState(""); // 만원 단위 예산
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [jobState, setJobState] = useState("");
   const [experienceLevel, setExperienceLevel] = useState("");
@@ -412,7 +412,7 @@ export default function CreateProject() {
 
         <div className="mx-auto grid max-w-5xl gap-6 px-6 py-8 lg:grid-cols-[1fr_320px]">
           <div className="space-y-6">
-            {/* ?? STEP 1: 湲곕낯 ?뺣낫 ?? */}
+            {/* STEP 1: 기본 정보 */}
             {step === 1 && (
                 <section className="rounded-3xl bg-white p-6 shadow-sm">
                   <h1 className="text-2xl font-bold text-slate-900">{isEditMode ? "프로젝트를 수정해주세요" : "프로젝트를 소개해주세요"}</h1>
@@ -489,7 +489,7 @@ export default function CreateProject() {
                         <input
                             type="number"
                             value={budget}
-                            onChange={(event) => setBudget(event.target.value)} // 湲곗〈 setTitle 踰꾧렇 ?섏젙
+                            onChange={(event) => setBudget(event.target.value)} // 기존 setTitle 버그 수정
                             className="flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none transition focus:border-emerald-400"
                             placeholder="예) 500"
                         />
@@ -511,7 +511,7 @@ export default function CreateProject() {
                 </section>
             )}
 
-            {/* ?? STEP 2: ?곸꽭 ?뺣낫 ?? */}
+            {/* STEP 2: 상세 정보 */}
             {step === 2 && (
                 <section className="rounded-3xl bg-white p-6 shadow-sm">
                   <h1 className="text-2xl font-bold text-slate-900">프로젝트 상세 정보</h1>
@@ -586,7 +586,7 @@ export default function CreateProject() {
                 </section>
             )}
 
-            {/* ?? STEP 3: 理쒖쥌 ?뺤씤 ?? */}
+            {/* STEP 3: 최종 확인 */}
             {step === 3 && (
                 <section className="rounded-3xl bg-white p-6 shadow-sm">
                   <h1 className="text-2xl font-bold text-slate-900">등록 전 확인</h1>
@@ -647,7 +647,7 @@ export default function CreateProject() {
                 </section>
             )}
 
-            {/* ?섎떒 ?ㅻ퉬寃뚯씠??踰꾪듉 */}
+            {/* 하단 네비게이션 버튼 */}
             <div className="flex items-center justify-between">
               {step > 1 ? (
                   <button
@@ -689,7 +689,7 @@ export default function CreateProject() {
             </div>
           </div>
 
-          {/* ?? ?곗륫 ?쇱씠釉??꾨━酉??ъ씠?쒕컮 ?? */}
+          {/* 우측 라이브 프리뷰 사이드바 */}
           <aside className="rounded-3xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-bold text-slate-900">미리보기</h2>
             {loadingFilters || loadingProject ? (

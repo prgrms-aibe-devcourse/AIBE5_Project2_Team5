@@ -9,7 +9,7 @@ import {
     LayoutGrid,
     LayoutList,
     Search,
-    BadgeCheck, // 異붽?
+    BadgeCheck,
 } from "lucide-react";
 import Navigation from "../components/Navigation";
 import Footer from "../components/Footer";
@@ -54,7 +54,7 @@ type FilterOptions = {
     categories: string[];
 };
 
-// ?뮕 ?좉퇋 ???異붽?
+// 우측 내 활동 패널의 탭 상태
 type MyActivityTab = "posts" | "applications";
 
 const API_BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "").replace(/\/$/, "");
@@ -210,7 +210,7 @@ export default function Projects() {
     const [detailLoading, setDetailLoading] = useState<number | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    // ?뮕 ?좉퇋 ?곹깭 異붽? (?쒕룞 ?댁뿭)
+    // 우측 사이드바용 활동 데이터 상태
     const [activeTab, setActiveTab] = useState<MyActivityTab>("posts");
     const [myPosts, setMyPosts] = useState<any[]>([]);
     const [myApplications, setMyApplications] = useState<any[]>([]);
@@ -221,7 +221,7 @@ export default function Projects() {
         setMyApplications(Array.isArray(response) ? response : (response as any).data || []);
     }
 
-    // 1. 珥덇린 ?곗씠??濡쒕뱶 (硫붿씤 紐⑸줉 諛??꾪꽣) - 留덉슫????1???ㅽ뻾
+    // 1. 초기 데이터 로드: 메인 목록과 필터 옵션
     useEffect(() => {
         let mounted = true;
 
@@ -245,16 +245,16 @@ export default function Projects() {
 
         void loadInitialData();
         return () => { mounted = false; };
-    }, []); // ?뮕 ?섏〈??諛곗뿴??鍮꾩썙 泥섏쓬?먮쭔 ?ㅽ뻾
+    }, []); // 최초 1회 실행
 
-// 2. ?ъ씠?쒕컮 ?쒕룞 ?곗씠??濡쒕뱶 - ??蹂寃????ㅽ뻾
+// 2. 우측 사이드바 활동 데이터 로드 - 탭 변경 시 실행
     useEffect(() => {
         let mounted = true;
 
         const fetchActivityData = async () => {
             setIsActivityLoading(true);
             try {
-                // ?꾩옱 ?쒖꽦?붾맂 ??쓽 ?곗씠?곕쭔 ?⑥묶
+                // 현재 선택된 탭의 데이터만 로드
                 if (activeTab === "posts") {
                     const response = await getMyPostsApi();
                     if (!mounted) return;
@@ -273,7 +273,7 @@ export default function Projects() {
 
         void fetchActivityData();
         return () => { mounted = false; };
-    }, [activeTab]); // ?뮕 ??씠 諛붾??뚮쭔 ?ㅽ뻾
+    }, [activeTab]); // 탭이 바뀔 때만 실행
 
     const projectsData = useMemo(() => apiProjects.map(toProjectData), [apiProjects]);
 
@@ -728,18 +728,18 @@ export default function Projects() {
                     )}
                 </main>
 
-                {/* ?뮕 ?좉퇋 ?곗륫 ?ъ씠?쒕컮 (My Activity) */}
+                {/* 우측 사이드바: 내 활동 */}
                 <aside className="hidden w-full shrink-0 space-y-6 lg:block xl:w-80">
                     <div className="rounded-3xl border border-white/70 bg-white p-5 shadow-sm">
                         <h2 className="mb-4 text-sm font-bold uppercase tracking-[0.2em] text-gray-400">내 활동</h2>
 
-                        {/* ?멸렇癒쇳듃 而⑦듃濡?*/}
+                        {/* 세그먼트 컨트롤 */}
                         <div className="mb-5 flex rounded-2xl bg-gray-100 p-1">
                             <button
                                 onClick={() => setActiveTab("posts")}
                                 className={`flex-1 rounded-xl py-2 text-xs font-bold transition-all ${
                                     activeTab === "posts"
-                                        ? "bg-white text-[#007E68] shadow-sm" // ?뮕 ?됱긽 蹂寃?
+                                        ? "bg-white text-[#007E68] shadow-sm"
                                         : "text-gray-400 hover:text-gray-600"
                                 }`}
                             >
@@ -749,7 +749,7 @@ export default function Projects() {
                                 onClick={() => setActiveTab("applications")}
                                 className={`flex-1 rounded-xl py-2 text-xs font-bold transition-all ${
                                     activeTab === "applications"
-                                        ? "bg-white text-[#007E68] shadow-sm" // ?뮕 ?됱긽 蹂寃?
+                                        ? "bg-white text-[#007E68] shadow-sm"
                                         : "text-gray-400 hover:text-gray-600"
                                 }`}
                             >
@@ -757,7 +757,7 @@ export default function Projects() {
                             </button>
                         </div>
 
-                        {/* 由ъ뒪???곸뿭 */}
+                        {/* 리스트 영역 */}
                         <div className="space-y-3">
                             {isActivityLoading ? (
                                 <p className="py-10 text-center text-xs text-gray-400">불러오는 중...</p>
@@ -773,22 +773,22 @@ export default function Projects() {
                                         className="group relative cursor-pointer rounded-2xl border border-gray-50 bg-gray-50/50 p-4 transition hover:border-[#BDEFD8] hover:bg-white"
                                     >
                                         <div className="flex items-center justify-between gap-2">
-                                            {/* projectState ?쒖떆 */}
+                                            {/* projectState 표시 */}
                                             <span className={`text-[10px] font-bold ${item.projectState === 'OPEN' ? 'text-[#00C9A7]' : 'text-gray-400'}`}>
                                 {item.projectState === 'OPEN' ? '모집중' : '마감'}
                             </span>
                                             <span className="text-[10px] text-gray-400">{item.deadline?.split('T')[0]}</span>
                                         </div>
-                                        {/* title (二쇰맂 而⑦뀗痢?1) */}
+                                        {/* title */}
                                         <p className="mt-1 line-clamp-1 text-sm font-black text-[#0F0F0F] group-hover:text-[#00A88C]">
                                             {item.title}
                                         </p>
-                                        {/* overview (二쇰맂 而⑦뀗痢?2) */}
+                                        {/* overview */}
                                         <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-gray-500">
                                             {item.overview}
                                         </p>
                                         <div className="mt-3 flex items-center justify-between">
-                                            {/* ?섎떒 ?뺣낫: jobState 諛?category */}
+                                            {/* 하단 정보: jobState / category */}
                                             <div className="flex gap-1.5">
                                 <span className="rounded-md bg-[#F1F1EE] px-1.5 py-0.5 text-[10px] font-semibold text-gray-600">
                                     {item.jobState}
@@ -846,7 +846,7 @@ export default function Projects() {
                         </button>
                     </div>
 
-                    {/* ?섎떒 ?띾낫 諛곕꼫 */}
+                    {/* 하단 홍보 배너 */}
                     <div className="rounded-3xl bg-gradient-to-br from-[#0F0F0F] to-[#1a1a1a] p-6 text-white shadow-lg">
                         <div className="flex items-center gap-2 text-[#00C9A7]">
                             <BadgeCheck className="size-4" />
