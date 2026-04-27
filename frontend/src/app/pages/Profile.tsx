@@ -3540,7 +3540,11 @@ export default function Profile() {
           onClick={closeFeedEditor}
         >
           <motion.div
-            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/[0.06]"
+            className={`max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl p-6 shadow-2xl ${
+              isNight
+                ? "bg-[#141d30] ring-1 ring-white/10"
+                : "bg-white ring-1 ring-black/[0.06]"
+            }`}
             initial={{ opacity: 0, scale: 0.96, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={modalSpring}
@@ -3548,30 +3552,44 @@ export default function Profile() {
           >
             <div className="mb-6 flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-bold text-[#00A88C]">작업물</p>
-                <h2 className="mt-1 text-2xl font-bold text-[#0F0F0F]">피드 수정</h2>
+                <p className={`text-sm font-bold ${isNight ? "text-[#7EE8D4]" : "text-[#00A88C]"}`}>작업물</p>
+                <h2 className={`mt-1 text-2xl font-bold ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>피드 수정</h2>
               </div>
               <button
                 type="button"
                 onClick={closeFeedEditor}
-                className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-black"
+                className={`rounded-lg p-2 transition-colors ${
+                  isNight
+                    ? "text-white/45 hover:bg-white/10 hover:text-white"
+                    : "text-gray-500 hover:bg-gray-100 hover:text-black"
+                }`}
               >
                 <X className="size-5" />
               </button>
             </div>
 
             {feedEditError && (
-              <div className="mb-4 rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-4 py-3 text-sm font-semibold text-[#B13A21]">
+              <div
+                className={`mb-4 rounded-lg border px-4 py-3 text-sm font-semibold ${
+                  isNight
+                    ? "border-[#FF5C3A]/30 bg-[#FF5C3A]/10 text-[#FFB199]"
+                    : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
+                }`}
+              >
                 {feedEditError}
               </div>
             )}
 
             <div className="grid gap-4">
-              <div className="rounded-lg border border-gray-200 bg-[#FAFBF8] p-4">
+              <div
+                className={`rounded-lg border p-4 ${
+                  isNight ? "border-white/10 bg-[#0e1524]" : "border-gray-200 bg-[#FAFBF8]"
+                }`}
+              >
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-bold text-gray-800">사진 수정</p>
-                    <p className="mt-1 text-xs text-gray-500">
+                    <p className={`text-sm font-bold ${isNight ? "text-white" : "text-gray-800"}`}>사진 수정</p>
+                    <p className={`mt-1 text-xs ${isNight ? "text-white/45" : "text-gray-500"}`}>
                       기존 사진은 유지하거나 삭제할 수 있고, 사진은 최대 {MAX_FEED_IMAGES}장까지 추가할 수 있습니다.
                     </p>
                   </div>
@@ -3579,7 +3597,11 @@ export default function Profile() {
                     type="button"
                     onClick={() => editFeedImageInputRef.current?.click()}
                     disabled={!canAddEditFeedImages}
-                    className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-700 transition-colors hover:border-[#00C9A7] hover:text-[#007E68] disabled:cursor-not-allowed disabled:opacity-50"
+                    className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      isNight
+                        ? "border-white/15 bg-[#1a1f2e] text-white/80 hover:border-[#00C9A7]/50 hover:text-[#7EE8D4]"
+                        : "border-gray-200 bg-white text-gray-700 hover:border-[#00C9A7] hover:text-[#007E68]"
+                    }`}
                   >
                     <ImagePlus className="size-4" />
                     사진 추가
@@ -3600,7 +3622,9 @@ export default function Profile() {
                     {editFeedPreviewImages.map((image, imageIndex) => (
                       <div
                         key={image.key}
-                        className="group relative aspect-square overflow-hidden rounded-lg bg-gray-100"
+                        className={`group relative aspect-square overflow-hidden rounded-lg ${
+                          isNight ? "bg-[#1a2035]" : "bg-gray-100"
+                        }`}
                       >
                         <ImageWithFallback
                           src={image.src}
@@ -3631,7 +3655,11 @@ export default function Profile() {
                   <button
                     type="button"
                     onClick={() => editFeedImageInputRef.current?.click()}
-                    className="flex min-h-32 w-full flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white text-sm font-semibold text-gray-500 transition-colors hover:border-[#00C9A7] hover:text-[#007E68]"
+                    className={`flex min-h-32 w-full flex-col items-center justify-center rounded-lg border border-dashed text-sm font-semibold transition-colors ${
+                      isNight
+                        ? "border-white/15 bg-[#1a1f2e] text-white/45 hover:border-[#00C9A7]/45 hover:text-[#7EE8D4]"
+                        : "border-gray-300 bg-white text-gray-500 hover:border-[#00C9A7] hover:text-[#007E68]"
+                    }`}
                   >
                     <ImagePlus className="mb-2 size-8" />
                     사진을 추가해주세요
@@ -3640,31 +3668,44 @@ export default function Profile() {
               </div>
 
               <label className="grid gap-2">
-                <span className="text-sm font-bold text-gray-700">제목</span>
+                <span className={`text-sm font-bold ${isNight ? "text-white/85" : "text-gray-700"}`}>제목</span>
                 <input
                   value={editFeedTitle}
                   onChange={(event) => setEditFeedTitle(event.target.value)}
                   maxLength={100}
-                  className="h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                  className={`h-11 rounded-lg border px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 ${
+                    isNight
+                      ? "border-white/15 bg-[#0e1524] text-white placeholder:text-white/35 focus:ring-[#00C9A7]/25"
+                      : "border-gray-200 focus:ring-[#BDEFD8]"
+                  }`}
                 />
               </label>
 
               <label className="grid gap-2">
-                <span className="text-sm font-bold text-gray-700">설명</span>
+                <span className={`text-sm font-bold ${isNight ? "text-white/85" : "text-gray-700"}`}>설명</span>
                 <textarea
                   value={editFeedDescription}
                   onChange={(event) => setEditFeedDescription(event.target.value)}
                   rows={4}
-                  className="resize-none rounded-lg border border-gray-200 px-3 py-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                  className={`resize-none rounded-lg border px-3 py-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 ${
+                    isNight
+                      ? "border-white/15 bg-[#0e1524] text-white placeholder:text-white/35 focus:ring-[#00C9A7]/25"
+                      : "border-gray-200 focus:ring-[#BDEFD8]"
+                  }`}
                 />
               </label>
 
               <label className="grid gap-2">
-                <span className="text-sm font-bold text-gray-700">카테고리</span>
+                <span className={`text-sm font-bold ${isNight ? "text-white/85" : "text-gray-700"}`}>카테고리</span>
                 <select
                   value={editFeedCategory}
                   onChange={(event) => setEditFeedCategory(event.target.value)}
-                  className="h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                  style={isNight ? { colorScheme: "dark" } : undefined}
+                  className={`h-11 rounded-lg border px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 ${
+                    isNight
+                      ? "border-white/15 bg-[#0e1524] text-white focus:ring-[#00C9A7]/25"
+                      : "border-gray-200 bg-white focus:ring-[#BDEFD8]"
+                  }`}
                 >
                   <option value="">카테고리 선택</option>
                   {matchingCategories.map((category) => (
@@ -3676,20 +3717,28 @@ export default function Profile() {
               </label>
 
               <label className="grid gap-2">
-                <span className="text-sm font-bold text-gray-700">포트폴리오 URL</span>
+                <span className={`text-sm font-bold ${isNight ? "text-white/85" : "text-gray-700"}`}>포트폴리오 URL</span>
                 <div className="grid gap-3">
                   <input
                     value={editFeedFigmaUrl}
                     onChange={(event) => setEditFeedFigmaUrl(event.target.value)}
                     maxLength={200}
-                    className="h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                    className={`h-11 rounded-lg border px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 ${
+                      isNight
+                        ? "border-white/15 bg-[#0e1524] text-white placeholder:text-white/35 focus:ring-[#00C9A7]/25"
+                        : "border-gray-200 focus:ring-[#BDEFD8]"
+                    }`}
                     placeholder="Figma 링크 https://www.figma.com/..."
                   />
                   <input
                     value={editFeedAdobeUrl}
                     onChange={(event) => setEditFeedAdobeUrl(event.target.value)}
                     maxLength={200}
-                    className="h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                    className={`h-11 rounded-lg border px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 ${
+                      isNight
+                        ? "border-white/15 bg-[#0e1524] text-white placeholder:text-white/35 focus:ring-[#00C9A7]/25"
+                        : "border-gray-200 focus:ring-[#BDEFD8]"
+                    }`}
                     placeholder="Photoshop/Adobe 링크 https://portfolio.example.com/adobe"
                   />
                 </div>
@@ -3700,7 +3749,11 @@ export default function Profile() {
               <button
                 type="button"
                 onClick={closeFeedEditor}
-                className="h-11 rounded-lg border border-gray-200 px-5 text-sm font-bold text-gray-600 transition-colors hover:bg-gray-50"
+                className={`h-11 rounded-lg border px-5 text-sm font-bold transition-colors ${
+                  isNight
+                    ? "border-white/15 text-white/70 hover:bg-white/10"
+                    : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                }`}
               >
                 취소
               </button>
@@ -3788,18 +3841,24 @@ export default function Profile() {
           onClick={() => setIsDeleteModalOpen(false)}
         >
           <motion.div
-            className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/[0.06]"
+            className={`w-full max-w-sm overflow-hidden rounded-2xl shadow-2xl ${
+              isNight ? "bg-[#141d30] ring-1 ring-white/10" : "bg-white ring-1 ring-black/[0.06]"
+            }`}
             initial={{ opacity: 0, scale: 0.94, y: 14 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={modalSpring}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 text-center">
-              <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-[#FFF1ED] text-[#FF5C3A]">
+              <div
+                className={`mx-auto mb-4 flex size-14 items-center justify-center rounded-full ${
+                  isNight ? "bg-[#FF5C3A]/15 text-[#FFB199]" : "bg-[#FFF1ED] text-[#FF5C3A]"
+                }`}
+              >
                 <AlertTriangle className="size-8" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900">정말 삭제하시겠습니까?</h3>
-              <p className="mt-2 text-sm text-gray-500">
+              <h3 className={`text-xl font-bold ${isNight ? "text-white" : "text-gray-900"}`}>정말 삭제하시겠습니까?</h3>
+              <p className={`mt-2 text-sm ${isNight ? "text-white/55" : "text-gray-500"}`}>
                 삭제된 작업물은 복구할 수 없습니다.<br />
                 신중하게 결정해 주세요.
               </p>
@@ -3807,7 +3866,11 @@ export default function Profile() {
                 <button
                   type="button"
                   onClick={() => setIsDeleteModalOpen(false)}
-                  className="flex-1 rounded-xl border border-gray-200 bg-white py-3 text-sm font-bold text-gray-600 transition-all hover:bg-gray-50"
+                  className={`flex-1 rounded-xl border py-3 text-sm font-bold transition-all ${
+                    isNight
+                      ? "border-white/15 bg-transparent text-white/75 hover:bg-white/10"
+                      : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                  }`}
                 >
                   취소
                 </button>
