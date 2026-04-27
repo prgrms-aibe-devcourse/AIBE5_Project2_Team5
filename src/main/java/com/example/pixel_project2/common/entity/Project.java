@@ -16,6 +16,7 @@ import jakarta.persistence.Lob;
 import jakarta.persistence.MapsId;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -65,9 +66,8 @@ public class Project {
     @Builder.Default
     private List<String> responsibilities = new ArrayList<>();
 
-    @Lob
-    @Column(name = "CATEGORIES", columnDefinition = "CLOB")
-    @Convert(converter = StringListConverter.class)
+    // Oracle production schema currently has no CATEGORIES column.
+    @Transient
     @Builder.Default
     private List<String> categories = new ArrayList<>();
 
