@@ -27,41 +27,71 @@
 
 ## 🛠 기술 스택
 
-| **프론트엔드**  | **백엔드**         | **DataBase**       | **Build Tool** |
-|------------|-----------------|--------------------|----------------|
-| TypeScript | Java 21         | Oracle DataBase    | Gradle         |
-| React      | Spring Boot     | H2 DataBase (테스트용) |                |
-| Tailwind   | Spring Data JPA |                    |                |
-| CSS        | Spring Security |                    |                |
-| figma      |                 |                    |                |
+| **구분** | **기술** |
+|---|---|
+| **Frontend** | React, TypeScript, Vite, Tailwind CSS, CSS, React Router |
+| **UI / UX** | Radix UI, Lucide React, MUI, Figma |
+| **Backend** | Java 21, Spring Boot, Spring Data JPA, Spring Security, Spring Validation, Spring WebSocket |
+| **Auth** | JWT, OAuth2, Google Login, Kakao Login |
+| **AI** | Google Gemini API, RAG (Retrieval-Augmented Generation) |
+| **Database** | Oracle Database, H2 Database (테스트용) |
+| **Storage** | Cloudflare R2 |
+| **Infra / SDK** | AWS SDK S3 (Cloudflare R2 연동) |
+| **Build Tool** | Gradle |
+| **Test** | JUnit 5, Spring Boot Test, Spring Security Test |
+| **Collaboration** | Figma, Notion |
 
 #### ♣️ Backend
-
 - Java 21
 - Spring Boot
 - Spring Data JPA
 - Spring Security
+- Spring Validation
+- Spring WebSocket
 
 #### ♠️ DataBase
-
 - Oracle Database
 - H2 Database (테스트용)
 
 #### ♥️ Build Tool
-
 - Gradle
 
-#### ♦️️ Frontend
-- TypeScript
+#### ♦️ Frontend
 - React
+- TypeScript
+- Vite
+- Tailwind CSS
 - CSS
-- Tailwind
-- Figma
+- React Router
 
-#### 🧩 기타
-- Lombok (코드 간결화)
-- DevTools (개발 편의성 향상)
-- Validation (데이터 검증)
+#### 🧩 Auth
+- JWT
+- OAuth2
+- Google Login
+- Kakao Login
+
+#### 🤖 AI
+- Google Gemini API
+- RAG (Retrieval-Augmented Generation)
+
+#### ☁️ Storage
+- Cloudflare R2
+- AWS SDK S3 (R2 연동)
+
+#### 🧪 Test
+- JUnit 5
+- Spring Boot Test
+- Spring Security Test
+
+#### 🛠 기타
+- Lombok
+- DevTools
+- Validation
+- Radix UI
+- Lucide React
+- MUI
+- Figma
+- Notion
 
 ## 👥 팀원 소개
 

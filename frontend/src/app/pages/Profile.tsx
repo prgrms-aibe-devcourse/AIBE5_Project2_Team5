@@ -37,6 +37,12 @@ import {
   type CollectionFolderResponse,
 } from "../api/collectionApi";
 import { createMessageConversationApi } from "../api/messageApi";
+import {
+  getFeedIntegrationLabel,
+  parseFeedIntegrations,
+  serializeFeedIntegrations,
+  type FeedIntegration,
+} from "../utils/feedIntegrations";
 
 type FeedProjectAuthor = {
   name: string;
@@ -61,12 +67,6 @@ type FeedProject = {
   integrations?: FeedIntegration[];
   createdAt?: string;
   persisted?: boolean;
-};
-
-type FeedIntegration = {
-  provider: "figma" | "adobe";
-  label: string;
-  url: string;
 };
 
 type ProfileTab = "feed" | "collection" | "reviews";
@@ -160,15 +160,10 @@ const mapProfileFeedToProject = (
   },
   imageUrl: feed.imageUrls.length <= 1 ? feed.thumbnailImageUrl ?? undefined : undefined,
   images: feed.imageUrls.length > 1 ? feed.imageUrls : undefined,
-  integrations: feed.portfolioUrl
-    ? [
-        {
-          provider: "figma",
-          label: "Portfolio",
-          url: feed.portfolioUrl,
-        },
-      ]
-    : undefined,
+  integrations: parseFeedIntegrations(feed.portfolioUrl).map((integration) => ({
+    ...integration,
+    label: getFeedIntegrationLabel(integration.provider),
+  })),
   createdAt: feed.createdAt ?? undefined,
   persisted: true,
 });
@@ -389,7 +384,8 @@ export default function Profile() {
   const [editFeedTitle, setEditFeedTitle] = useState("");
   const [editFeedDescription, setEditFeedDescription] = useState("");
   const [editFeedCategory, setEditFeedCategory] = useState("");
-  const [editFeedPortfolioUrl, setEditFeedPortfolioUrl] = useState("");
+  const [editFeedFigmaUrl, setEditFeedFigmaUrl] = useState("");
+  const [editFeedAdobeUrl, setEditFeedAdobeUrl] = useState("");
   const [editFeedExistingImages, setEditFeedExistingImages] = useState<string[]>([]);
   const [editFeedNewImageFiles, setEditFeedNewImageFiles] = useState<File[]>([]);
   const [editFeedNewImagePreviews, setEditFeedNewImagePreviews] = useState<string[]>([]);
@@ -1332,8 +1328,10 @@ export default function Profile() {
     setEditFeedImagesTouched(true);
   };
 
-  const getProjectPortfolioUrl = (project: FeedProject) =>
-    project.integrations?.find((integration) => integration.url)?.url ?? "";
+  const getProjectIntegrationUrl = (
+    project: FeedProject,
+    provider: FeedIntegration["provider"],
+  ) => project.integrations?.find((integration) => integration.provider === provider)?.url ?? "";
 
   const openFeedEditor = (project: FeedProject) => {
     const sourceProject =
@@ -1346,7 +1344,8 @@ export default function Profile() {
     setEditFeedTitle(sourceProject.title);
     setEditFeedDescription(sourceProject.description);
     setEditFeedCategory(sourceProject.category ?? "");
-    setEditFeedPortfolioUrl(getProjectPortfolioUrl(sourceProject));
+    setEditFeedFigmaUrl(getProjectIntegrationUrl(sourceProject, "figma"));
+    setEditFeedAdobeUrl(getProjectIntegrationUrl(sourceProject, "adobe"));
     setEditFeedExistingImages(getProjectImageUrls(sourceProject));
     setEditFeedNewImageFiles([]);
     setEditFeedNewImagePreviews([]);
@@ -1357,6 +1356,8 @@ export default function Profile() {
     if (isSavingFeedEdit) return;
     setEditingFeed(null);
     setFeedEditError("");
+    setEditFeedFigmaUrl("");
+    setEditFeedAdobeUrl("");
     setEditFeedExistingImages([]);
     setEditFeedNewImageFiles([]);
     setEditFeedNewImagePreviews([]);
@@ -1384,6 +1385,15 @@ export default function Profile() {
       return;
     }
 
+    const editFeedPortfolioUrl = serializeFeedIntegrations([
+      { provider: "figma", url: normalizeExternalUrl(editFeedFigmaUrl) },
+      { provider: "adobe", url: normalizeExternalUrl(editFeedAdobeUrl) },
+    ]);
+    if (editFeedPortfolioUrl.length > 200) {
+      setFeedEditError("Figma/Adobe 링크 길이가 너무 길어요. 링크를 줄이거나 하나만 넣어주세요.");
+      return;
+    }
+
     setIsSavingFeedEdit(true);
     setFeedEditError("");
 
@@ -1392,21 +1402,16 @@ export default function Profile() {
         title: editFeedTitle.trim(),
         description: editFeedDescription.trim(),
         category: editFeedCategory,
-        portfolioUrl: editFeedPortfolioUrl.trim(),
+        portfolioUrl: editFeedPortfolioUrl,
       });
       const imageUpdate = editFeedImagesTouched
         ? await replaceFeedImagesApi(editingFeed.id, editFeedExistingImages, editFeedNewImageFiles)
         : null;
       const imageUrls = imageUpdate?.imageUrls ?? getProjectImageUrls(editingFeed);
-      const integrations = updatedFeed.portfolioUrl
-        ? [
-            {
-              provider: "figma" as const,
-              label: "Portfolio",
-              url: updatedFeed.portfolioUrl,
-            },
-          ]
-        : undefined;
+      const integrations = parseFeedIntegrations(updatedFeed.portfolioUrl).map((integration) => ({
+        ...integration,
+        label: getFeedIntegrationLabel(integration.provider),
+      }));
       const updatedProject: FeedProject = {
         ...editingFeed,
         title: updatedFeed.title,
@@ -1415,7 +1420,7 @@ export default function Profile() {
         comments: updatedFeed.commentCount ?? editingFeed.comments,
         category: updatedFeed.category,
         tags: [`#${updatedFeed.category}`],
-        integrations,
+        integrations: integrations.length > 0 ? integrations : undefined,
         imageUrl: imageUrls.length === 1 ? imageUrls[0] : undefined,
         images: imageUrls.length > 1 ? imageUrls : undefined,
         createdAt: updatedFeed.createdAt ?? editingFeed.createdAt,
@@ -1424,6 +1429,8 @@ export default function Profile() {
 
       applyUpdatedFeedProject(updatedProject);
       setEditingFeed(null);
+      setEditFeedFigmaUrl("");
+      setEditFeedAdobeUrl("");
       setEditFeedExistingImages([]);
       setEditFeedNewImageFiles([]);
       setEditFeedNewImagePreviews([]);
@@ -1481,19 +1488,25 @@ export default function Profile() {
     }
 
     const tags = getWorkTagList(`${workTags} ${workTagInput}`);
-    const integrations = [
+    const rawIntegrations = [
       {
         provider: "figma" as const,
-        label: "Figma",
         url: normalizeExternalUrl(figmaUrl),
       },
       {
         provider: "adobe" as const,
-        label: "Adobe",
         url: normalizeExternalUrl(adobeUrl),
       },
     ].filter((integration) => integration.url);
-    const portfolioUrl = integrations[0]?.url ?? "";
+    const portfolioUrl = serializeFeedIntegrations(rawIntegrations);
+    const integrations = rawIntegrations.map((integration) => ({
+      ...integration,
+      label: getFeedIntegrationLabel(integration.provider),
+    }));
+    if (portfolioUrl.length > 200) {
+      setWorkComposerError("Figma/Adobe 링크 길이가 너무 길어요. 링크를 줄이거나 하나만 넣어주세요.");
+      return;
+    }
 
     try {
       setIsCreatingFeed(true);
@@ -3371,13 +3384,22 @@ export default function Profile() {
 
               <label className="grid gap-2">
                 <span className="text-sm font-bold text-gray-700">포트폴리오 URL</span>
-                <input
-                  value={editFeedPortfolioUrl}
-                  onChange={(event) => setEditFeedPortfolioUrl(event.target.value)}
-                  maxLength={200}
-                  className="h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
-                  placeholder="https://portfolio.example.com/work"
-                />
+                <div className="grid gap-3">
+                  <input
+                    value={editFeedFigmaUrl}
+                    onChange={(event) => setEditFeedFigmaUrl(event.target.value)}
+                    maxLength={200}
+                    className="h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                    placeholder="Figma 링크 https://www.figma.com/..."
+                  />
+                  <input
+                    value={editFeedAdobeUrl}
+                    onChange={(event) => setEditFeedAdobeUrl(event.target.value)}
+                    maxLength={200}
+                    className="h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                    placeholder="Photoshop/Adobe 링크 https://portfolio.example.com/adobe"
+                  />
+                </div>
               </label>
             </div>
 

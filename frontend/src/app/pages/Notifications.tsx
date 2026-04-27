@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+﻿import { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router";
 import {
   Heart,
@@ -23,6 +23,12 @@ import {
   type ExplorePostResponseDto,
   type ExploreFeedDetailResponseDto
 } from "../api/exploreApi";
+import {
+  getProjectApplicationsApi,
+  getProjectDetailApi,
+  type ProjectApplicationItemResponse,
+} from "../api/projectApi";
+import { createMessageConversationApi } from "../api/messageApi";
 import { getCurrentUser } from "../utils/auth";
 import { getUserAvatar } from "../utils/avatar";
 import type { FeedCardItem } from "../types/feed";
@@ -33,22 +39,16 @@ import {
   fetchUnreadCount,
   markAllNotificationsRead,
   markNotificationRead,
+  subscribeNotificationState,
 } from "../utils/notificationState";
 
 type NotificationTab = "all" | NotificationCategory;
 
-type ProjectProposal = {
-  id: number;
+type ProposalModalData = {
+  postId: number;
   projectTitle: string;
   projectMeta: string;
-  designerName: string;
-  designerRole: string;
-  designerAvatar: string;
-  summary: string;
-  budget: string;
-  startDate: string;
-  skills: string[];
-  portfolioLabel: string;
+  applications: ProjectApplicationItemResponse[];
 };
 
 const tabs: Array<{ key: NotificationTab; label: string }> = [
@@ -58,36 +58,7 @@ const tabs: Array<{ key: NotificationTab; label: string }> = [
   { key: "system", label: "시스템" },
 ];
 
-const proposalInbox: ProjectProposal[] = [
-  {
-    id: 1,
-    projectTitle: "브랜드 리뉴얼 프로젝트",
-    projectMeta: "브랜딩 · 모집중 · 지원 3명",
-    designerName: "김지은",
-    designerRole: "브랜드 디자이너",
-    designerAvatar: "https://i.pravatar.cc/80?img=1",
-    summary: "기존 브랜드의 강점을 유지하면서 디지털 접점을 강화하는 방향으로 리브랜딩 제안을 드립니다.",
-    budget: "900만원",
-    startDate: "즉시 가능",
-    skills: ["Brand Identity", "Figma", "Illustrator"],
-    portfolioLabel: "F&B 브랜딩 리뉴얼 4건",
-  },
-  {
-    id: 2,
-    projectTitle: "브랜드 리뉴얼 프로젝트",
-    projectMeta: "브랜딩 · 모집중 · 지원 3명",
-    designerName: "박서준",
-    designerRole: "그래픽 디자이너",
-    designerAvatar: "https://i.pravatar.cc/80?img=2",
-    summary: "브랜드 시스템과 디지털 콘텐츠 운영을 함께 고려한 제안이 가능합니다.",
-    budget: "1,050만원",
-    startDate: "1주 이내 가능",
-    skills: ["Visual System", "Typography", "Guide Document"],
-    portfolioLabel: "SaaS 브랜드 시스템 구축 경험",
-  },
-];
-
-// 알림 타입별 색상·아이콘 설정 (라이트 테마 기준)
+// ?뚮┝ ??낅퀎 ?됱긽쨌?꾩씠肄??ㅼ젙 (?쇱씠???뚮쭏 湲곗?)
 const getTypeConfig = (notification: NotificationItem) => {
   switch (notification.type) {
     case "like":
@@ -143,6 +114,41 @@ const getInitials = (name?: string) => {
   return name.slice(0, 1).toUpperCase();
 };
 
+const formatProposalBudget = (budget?: number | null) => {
+  if (budget == null) return "협의 가능";
+  return `${budget}만원`;
+};
+
+const formatProposalStartDate = (startDate?: string | null) => {
+  return startDate || "협의 가능";
+};
+
+const getPortfolioLabel = (portfolioUrl?: string | null) => {
+  if (!portfolioUrl) return "포트폴리오 미첨부";
+
+  try {
+    const host = new URL(portfolioUrl).hostname.replace(/^www\./, "");
+    return `${host} 포트폴리오`;
+  } catch {
+    return "포트폴리오 링크 첨부";
+  }
+};
+
+const buildProposalProjectMeta = (
+  detail: { category?: string; categories?: string[]; jobState?: string },
+  applicationsCount: number,
+) => {
+  const categories = detail.categories?.length
+    ? detail.categories
+    : detail.category
+      ? [detail.category]
+      : [];
+
+  return [...categories.slice(0, 2), detail.jobState, `${applicationsCount}명 지원`]
+    .filter(Boolean)
+    .join(" · ");
+};
+
 export default function Notifications() {
   const navigate = useNavigate();
   const currentUser = getCurrentUser();
@@ -150,9 +156,12 @@ export default function Notifications() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [hasUnread, setHasUnread] = useState(false);
   const [selectedProposalNotification, setSelectedProposalNotification] = useState<NotificationItem | null>(null);
+  const [proposalModalData, setProposalModalData] = useState<ProposalModalData | null>(null);
+  const [isProposalLoading, setIsProposalLoading] = useState(false);
+  const [proposalLoadError, setProposalLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 피드 모달 관련 상태
+  // ?쇰뱶 紐⑤떖 愿???곹깭
   const [selectedFeedForModal, setSelectedFeedForModal] = useState<number | null>(null);
   const [selectedExploreFeed, setSelectedExploreFeed] = useState<FeedCardItem | null>(null);
   const [selectedProjectDetail, setSelectedProjectDetail] = useState<ExploreFeedDetailResponseDto | null>(null);
@@ -167,7 +176,7 @@ export default function Notifications() {
     currentUser?.userId,
     currentUser?.nickname,
   );
-  const currentUserName = currentUser?.nickname || currentUser?.name || "내 프로필";
+  const currentUserName = currentUser?.nickname || currentUser?.name || "프로필";
 
   function toCommentAuthorRole(role: string) {
     if (role === "CLIENT") return "프로젝트 클라이언트";
@@ -204,7 +213,7 @@ export default function Notifications() {
     toFeedCommentRole: toCommentAuthorRole,
   });
 
-  // 피드 상세 로딩
+  // ?쇰뱶 ?곸꽭 濡쒕뵫
   useEffect(() => {
     if (!selectedFeedForModal) {
       setSelectedProjectDetail(null);
@@ -220,7 +229,7 @@ export default function Notifications() {
         const detail = await getExploreFeedDetailApi(selectedFeedForModal!);
         setSelectedProjectDetail(detail);
 
-        // FeedCardItem으로 매핑
+        // FeedCardItem?쇰줈 留ㅽ븨
         const imageUrls = detail.imageUrls?.filter(Boolean) || [];
         const mapped: FeedCardItem = {
           id: detail.postId,
@@ -274,6 +283,12 @@ export default function Notifications() {
     loadNotifications();
   }, []);
 
+  useEffect(() => {
+    return subscribeNotificationState(() => {
+      void loadNotifications();
+    });
+  }, []);
+
   const visibleNotifications = useMemo(() => {
     const filtered =
       activeTab === "all"
@@ -286,6 +301,8 @@ export default function Notifications() {
 
   const handleMarkAllRead = async () => {
     await markAllNotificationsRead();
+    setNotifications((prev) => prev.map((notification) => ({ ...notification, isRead: true })));
+    setHasUnread(false);
     await loadNotifications();
   };
 
@@ -293,16 +310,64 @@ export default function Notifications() {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
   };
 
+  const closeProposalModal = () => {
+    setSelectedProposalNotification(null);
+    setProposalModalData(null);
+    setProposalLoadError(null);
+    setIsProposalLoading(false);
+  };
+
+  const openProposalModal = async (notification: NotificationItem) => {
+    if (!notification.referenceId) {
+      navigate("/projects");
+      return;
+    }
+
+    const postId = Number(notification.referenceId);
+    setSelectedProposalNotification(notification);
+    setProposalModalData(null);
+    setProposalLoadError(null);
+    setIsProposalLoading(true);
+
+    try {
+      const [detail, applications] = await Promise.all([
+        getProjectDetailApi(postId),
+        getProjectApplicationsApi(postId),
+      ]);
+
+      setProposalModalData({
+        postId,
+        projectTitle: detail.title,
+        projectMeta: buildProposalProjectMeta(detail, applications.length),
+        applications,
+      });
+    } catch (error) {
+      setProposalLoadError(error instanceof Error ? error.message : "제안 내역을 불러오지 못했어요.");
+    } finally {
+      setIsProposalLoading(false);
+    }
+  };
+
+  const handleProposalMessage = async (designerId: number) => {
+    try {
+      const conversation = await createMessageConversationApi(designerId);
+      closeProposalModal();
+      navigate(`/messages?conversationId=${conversation.id}`);
+    } catch (error) {
+      console.error("Failed to create conversation from proposal modal", error);
+    }
+  };
+
   const handlePrimaryAction = async (notification: NotificationItem) => {
     await markNotificationRead(notification.id);
 
     if (notification.actionType === "proposal") {
-      setSelectedProposalNotification(notification);
+      await openProposalModal(notification);
       await loadNotifications();
       return;
     }
 
-    // 피드 관련 알림인 경우 모달 오픈
+    // ?쇰뱶 愿???뚮┝??寃쎌슦 紐⑤떖 ?ㅽ뵂
     if (notification.actionType === "feed" && notification.referenceId) {
       setSelectedFeedForModal(Number(notification.referenceId));
       await loadNotifications();
@@ -339,7 +404,7 @@ export default function Notifications() {
       <main className="flex-1">
         <div className="max-w-[860px] mx-auto px-6 py-10">
 
-          {/* 헤더 */}
+          {/* ?ㅻ뜑 */}
           <motion.div
             initial={{ opacity: 0, y: -12 }}
             animate={{ opacity: 1, y: 0 }}
@@ -356,7 +421,7 @@ export default function Notifications() {
                 )}
               </div>
               <p className="text-sm text-[#5F5E5A]">
-                프로젝트 제안, 활동 소식, 시스템 알림을 분류해서 확인하세요.
+                프로젝트 제안, 활동 소식, 시스템 알림을 분류해서 확인해보세요.
               </p>
             </div>
             <button
@@ -368,7 +433,7 @@ export default function Notifications() {
             </button>
           </motion.div>
 
-          {/* 탭 */}
+          {/* ??*/}
           <motion.div
             initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
@@ -390,7 +455,7 @@ export default function Notifications() {
             ))}
           </motion.div>
 
-          {/* 알림 목록 */}
+          {/* ?뚮┝ 紐⑸줉 */}
           {isLoading ? (
             <div className="flex flex-col gap-3">
               {[1, 2, 3].map((i) => (
@@ -428,13 +493,13 @@ export default function Notifications() {
                             : "border-[#EAEAE8]"
                         }`}
                       >
-                        {/* 미읽음 좌측 강조선 */}
+                        {/* 誘몄씫??醫뚯륫 媛뺤“??*/}
                         {!notification.isRead && (
                           <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-[#00C9A7]" />
                         )}
 
                         <div className="flex items-start gap-4 px-6 py-5">
-                          {/* 아바타 */}
+                          {/* ?꾨컮? */}
                           <div className="flex-shrink-0 relative">
                             {notification.senderProfileImage ? (
                               <img
@@ -447,13 +512,13 @@ export default function Notifications() {
                                 {getInitials(notification.subtitle)}
                               </div>
                             )}
-                            {/* 타입 미니 아이콘 */}
+                            {/* ???誘몃땲 ?꾩씠肄?*/}
                             <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full ${config.iconBg} border-2 border-white flex items-center justify-center`}>
                               <span className="[&>svg]:size-2.5">{config.icon}</span>
                             </div>
                           </div>
 
-                          {/* 내용 */}
+                          {/* ?댁슜 */}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-3 mb-1">
                               <div className="flex items-center gap-2 flex-wrap">
@@ -482,7 +547,7 @@ export default function Notifications() {
                               <p className="text-xs text-[#8B8A84]">@{notification.subtitle}</p>
                             )}
 
-                            {/* 액션 버튼 */}
+                            {/* ?≪뀡 踰꾪듉 */}
                             {notification.action && (
                               <div className="mt-3">
                                 <button
@@ -508,7 +573,7 @@ export default function Notifications() {
 
       <Footer />
 
-      {/* 제안 확인 모달 */}
+      {/* 지원 제안 모달 */}
       <AnimatePresence>
         {selectedProposalNotification && (
           <motion.div
@@ -516,7 +581,7 @@ export default function Notifications() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/55"
-            onClick={() => setSelectedProposalNotification(null)}
+            onClick={closeProposalModal}
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.96, y: 12 }}
@@ -526,96 +591,135 @@ export default function Notifications() {
               className="w-full max-w-3xl rounded-3xl bg-white shadow-2xl overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* 모달 헤더 */}
               <div className="flex items-start justify-between border-b border-gray-100 px-7 py-5">
                 <div>
                   <p className="text-sm font-semibold text-[#00A88C]">제안 확인하기</p>
-                  <h2 className="mt-1 text-2xl font-bold text-[#0F0F0F]">{proposalInbox[0].projectTitle}</h2>
-                  <p className="mt-1 text-sm text-gray-500">{proposalInbox[0].projectMeta}</p>
+                  <h2 className="mt-1 text-2xl font-bold text-[#0F0F0F]">
+                    {proposalModalData?.projectTitle ?? "프로젝트 제안"}
+                  </h2>
+                  <p className="mt-1 text-sm text-gray-500">
+                    {proposalModalData?.projectMeta ?? "지원한 디자이너 제안을 확인하세요."}
+                  </p>
                 </div>
                 <button
-                  onClick={() => setSelectedProposalNotification(null)}
+                  onClick={closeProposalModal}
                   className="rounded-full border border-gray-200 p-2 text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-700"
                 >
                   <X className="size-5" />
                 </button>
               </div>
 
-              {/* 모달 본문 */}
               <div className="max-h-[65vh] overflow-y-auto px-7 py-5">
                 <div className="mb-5 rounded-xl bg-[#F7F9FB] border border-gray-100 px-4 py-3 text-sm text-[#5F5E5A]">
-                  내가 작성한 프로젝트 공고에 지원한 디자이너 목록입니다. 제안 내용을 검토하고 메시지로 이어갈 수 있습니다.
+                  내가 작성한 프로젝트 공고에 지원한 디자이너 목록입니다. 제안 내용을 검토하고 메시지로 바로 이어갈 수 있어요.
                 </div>
 
-                <div className="flex flex-col gap-4">
-                  {proposalInbox.map((proposal) => (
-                    <div
-                      key={proposal.id}
-                      className="rounded-2xl border border-gray-200 p-5 hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-center gap-4">
-                          <img
-                            src={proposal.designerAvatar}
-                            alt={proposal.designerName}
-                            className="w-12 h-12 rounded-xl object-cover"
-                          />
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h3 className="font-bold text-[#0F0F0F]">{proposal.designerName}</h3>
-                              <span className="rounded-full bg-[#EEF9F6] border border-[#CDEFE6] px-2 py-0.5 text-xs font-semibold text-[#00A88C]">
-                                {proposal.designerRole}
-                              </span>
+                {isProposalLoading ? (
+                  <div className="flex flex-col gap-4">
+                    {[1, 2].map((item) => (
+                      <div key={item} className="rounded-2xl border border-gray-200 p-5">
+                        <div className="h-5 w-40 rounded bg-gray-100 animate-pulse" />
+                        <div className="mt-4 h-16 rounded bg-gray-100 animate-pulse" />
+                        <div className="mt-4 h-12 rounded bg-gray-100 animate-pulse" />
+                      </div>
+                    ))}
+                  </div>
+                ) : proposalLoadError ? (
+                  <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-4 text-sm text-red-600">
+                    {proposalLoadError}
+                  </div>
+                ) : !proposalModalData || proposalModalData.applications.length === 0 ? (
+                  <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
+                    아직 확인할 지원 제안이 없어요.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    {proposalModalData.applications.map((proposal) => (
+                      <div
+                        key={proposal.applicationId}
+                        className="rounded-2xl border border-gray-200 p-5 hover:shadow-md transition-shadow"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-center gap-4">
+                            <ImageWithFallback
+                              src={getUserAvatar(
+                                proposal.designerProfileImage,
+                                proposal.designerId,
+                                proposal.designerNickname ?? proposal.designerName,
+                              )}
+                              alt={proposal.designerName}
+                              className="w-12 h-12 rounded-xl object-cover"
+                            />
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-bold text-[#0F0F0F]">{proposal.designerName}</h3>
+                                <span className="rounded-full bg-[#EEF9F6] border border-[#CDEFE6] px-2 py-0.5 text-xs font-semibold text-[#00A88C]">
+                                  디자이너
+                                </span>
+                              </div>
+                              <p className="mt-0.5 text-xs text-gray-500">
+                                @{proposal.designerNickname ?? proposal.designerName}
+                              </p>
                             </div>
-                            <p className="mt-0.5 text-xs text-gray-500">{proposal.portfolioLabel}</p>
+                          </div>
+                          <button
+                            onClick={() => handleProposalMessage(proposal.designerId)}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-[#00C9A7] px-4 py-2 text-sm font-semibold text-black hover:bg-[#00A88C] transition-colors"
+                          >
+                            <MessageCircle className="size-3.5" />
+                            메시지 보내기
+                          </button>
+                        </div>
+
+                        {proposal.summary && (
+                          <p className="mt-4 text-sm leading-relaxed text-[#5F5E5A]">{proposal.summary}</p>
+                        )}
+
+                        {proposal.coverLetter && (
+                          <div className="mt-3 rounded-xl bg-[#FAFBFC] border border-gray-100 px-4 py-3 text-sm text-gray-600">
+                            {proposal.coverLetter}
+                          </div>
+                        )}
+
+                        <div className="mt-4 grid grid-cols-1 gap-3 rounded-xl bg-[#FAFBFC] border border-gray-100 p-3 md:grid-cols-3">
+                          <div className="flex items-center gap-2 text-xs text-gray-600">
+                            <Briefcase className="size-3.5 text-[#00A88C]" />
+                            희망 예산 {formatProposalBudget(proposal.expectedBudget)}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-gray-600">
+                            <Calendar className="size-3.5 text-[#00A88C]" />
+                            시작 가능일 {formatProposalStartDate(proposal.startDate)}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-gray-600">
+                            <UserRound className="size-3.5 text-[#00A88C]" />
+                            {getPortfolioLabel(proposal.portfolioUrl)}
                           </div>
                         </div>
-                        <button
-                          onClick={() => navigate("/messages")}
-                          className="inline-flex items-center gap-1.5 rounded-xl bg-[#00C9A7] px-4 py-2 text-sm font-semibold text-black hover:bg-[#00A88C] transition-colors"
-                        >
-                          <MessageCircle className="size-3.5" />
-                          메시지 보기
-                        </button>
-                      </div>
 
-                      <p className="mt-4 text-sm leading-relaxed text-[#5F5E5A]">{proposal.summary}</p>
-
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {proposal.skills.map((skill) => (
-                          <span
-                            key={skill}
-                            className="rounded-full border border-[#CDEFE6] bg-[#F3FCF8] px-2.5 py-0.5 text-xs font-medium text-[#008F78]"
-                          >
-                            {skill}
-                          </span>
-                        ))}
+                        {proposal.portfolioUrl && (
+                          <div className="mt-3">
+                            <a
+                              href={proposal.portfolioUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#00A88C] hover:text-[#007E68]"
+                            >
+                              포트폴리오 보기
+                              <ArrowRight className="size-3" />
+                            </a>
+                          </div>
+                        )}
                       </div>
-
-                      <div className="mt-4 grid grid-cols-3 gap-3 rounded-xl bg-[#FAFBFC] border border-gray-100 p-3">
-                        <div className="flex items-center gap-2 text-xs text-gray-600">
-                          <Briefcase className="size-3.5 text-[#00A88C]" />
-                          제안 예산 {proposal.budget}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-gray-600">
-                          <Calendar className="size-3.5 text-[#00A88C]" />
-                          시작 가능 {proposal.startDate}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-gray-600">
-                          <UserRound className="size-3.5 text-[#00A88C]" />
-                          적합도 높음
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* 피드 상세 모달 */}
+      {/* ?쇰뱶 ?곸꽭 紐⑤떖 */}
       <AnimatePresence>
         {selectedExploreFeed && (
           <FeedDetailModal
@@ -664,3 +768,4 @@ export default function Notifications() {
     </div>
   );
 }
+

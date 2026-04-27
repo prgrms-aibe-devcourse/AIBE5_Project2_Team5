@@ -45,7 +45,7 @@ public class Application {
     @Column(name = "expected_budget")
     private Integer expectedBudget; // 희망하는 착수금
 
-    @Column(name = "portfolio_url", length = 100)
+    @Column(name = "portfolio_url", length = 500)
     private String portfolioUrl;
 
     @Column(name = "start_date")
