@@ -1,4 +1,5 @@
-﻿import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { toast } from "sonner";
 import { useNavigate } from "react-router";
 import {
   Heart,
@@ -161,7 +162,7 @@ export default function Notifications() {
   const [proposalLoadError, setProposalLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ?쇰뱶 紐⑤떖 愿???곹깭
+  // 피드 모달 관련 상태
   const [selectedFeedForModal, setSelectedFeedForModal] = useState<number | null>(null);
   const [selectedExploreFeed, setSelectedExploreFeed] = useState<FeedCardItem | null>(null);
   const [selectedProjectDetail, setSelectedProjectDetail] = useState<ExploreFeedDetailResponseDto | null>(null);
@@ -213,7 +214,7 @@ export default function Notifications() {
     toFeedCommentRole: toCommentAuthorRole,
   });
 
-  // ?쇰뱶 ?곸꽭 濡쒕뵫
+  // 피드 상세 로딩
   useEffect(() => {
     if (!selectedFeedForModal) {
       setSelectedProjectDetail(null);
@@ -229,7 +230,7 @@ export default function Notifications() {
         const detail = await getExploreFeedDetailApi(selectedFeedForModal!);
         setSelectedProjectDetail(detail);
 
-        // FeedCardItem?쇰줈 留ㅽ븨
+        // FeedCardItem으로 매핑
         const imageUrls = detail.imageUrls?.filter(Boolean) || [];
         const mapped: FeedCardItem = {
           id: detail.postId,
@@ -367,7 +368,7 @@ export default function Notifications() {
       return;
     }
 
-    // ?쇰뱶 愿???뚮┝??寃쎌슦 紐⑤떖 ?ㅽ뵂
+    // 피드 관련 알림인 경우 모달 오픈
     if (notification.actionType === "feed" && notification.referenceId) {
       setSelectedFeedForModal(Number(notification.referenceId));
       await loadNotifications();
@@ -404,7 +405,7 @@ export default function Notifications() {
       <main className="flex-1">
         <div className="max-w-[860px] mx-auto px-6 py-10">
 
-          {/* ?ㅻ뜑 */}
+          {/* 헤더 */}
           <motion.div
             initial={{ opacity: 0, y: -12 }}
             animate={{ opacity: 1, y: 0 }}
@@ -421,7 +422,7 @@ export default function Notifications() {
                 )}
               </div>
               <p className="text-sm text-[#5F5E5A]">
-                프로젝트 제안, 활동 소식, 시스템 알림을 분류해서 확인해보세요.
+                프로젝트 제안, 활동 소식, 시스템 알림을 분류해서 확인하세요.
               </p>
             </div>
             <button
@@ -433,7 +434,7 @@ export default function Notifications() {
             </button>
           </motion.div>
 
-          {/* ??*/}
+          {/* 탭 */}
           <motion.div
             initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
@@ -455,7 +456,7 @@ export default function Notifications() {
             ))}
           </motion.div>
 
-          {/* ?뚮┝ 紐⑸줉 */}
+          {/* 알림 목록 */}
           {isLoading ? (
             <div className="flex flex-col gap-3">
               {[1, 2, 3].map((i) => (
@@ -493,13 +494,13 @@ export default function Notifications() {
                             : "border-[#EAEAE8]"
                         }`}
                       >
-                        {/* 誘몄씫??醫뚯륫 媛뺤“??*/}
+                        {/* 미읽음 좌측 강조선 */}
                         {!notification.isRead && (
                           <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-[#00C9A7]" />
                         )}
 
                         <div className="flex items-start gap-4 px-6 py-5">
-                          {/* ?꾨컮? */}
+                          {/* 아바타 */}
                           <div className="flex-shrink-0 relative">
                             {notification.senderProfileImage ? (
                               <img
@@ -512,13 +513,13 @@ export default function Notifications() {
                                 {getInitials(notification.subtitle)}
                               </div>
                             )}
-                            {/* ???誘몃땲 ?꾩씠肄?*/}
+                            {/* 타입 미니 아이콘 */}
                             <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full ${config.iconBg} border-2 border-white flex items-center justify-center`}>
                               <span className="[&>svg]:size-2.5">{config.icon}</span>
                             </div>
                           </div>
 
-                          {/* ?댁슜 */}
+                          {/* 내용 */}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-3 mb-1">
                               <div className="flex items-center gap-2 flex-wrap">
@@ -547,7 +548,7 @@ export default function Notifications() {
                               <p className="text-xs text-[#8B8A84]">@{notification.subtitle}</p>
                             )}
 
-                            {/* ?≪뀡 踰꾪듉 */}
+                            {/* 액션 버튼 */}
                             {notification.action && (
                               <div className="mt-3">
                                 <button
@@ -591,6 +592,7 @@ export default function Notifications() {
               className="w-full max-w-3xl rounded-3xl bg-white shadow-2xl overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
+              {/* 모달 헤더 */}
               <div className="flex items-start justify-between border-b border-gray-100 px-7 py-5">
                 <div>
                   <p className="text-sm font-semibold text-[#00A88C]">제안 확인하기</p>
@@ -719,7 +721,7 @@ export default function Notifications() {
         )}
       </AnimatePresence>
 
-      {/* ?쇰뱶 ?곸꽭 紐⑤떖 */}
+      {/* 피드 상세 모달 */}
       <AnimatePresence>
         {selectedExploreFeed && (
           <FeedDetailModal
@@ -751,8 +753,13 @@ export default function Notifications() {
             onMoveModalCarousel={moveModalCarousel}
             onSetModalImageIndex={(idx) => setModalImageIndex(idx)}
             onToggleLike={handleToggleLike}
-            onOpenCollectionModal={() => alert("컬렉션 기능은 준비 중입니다.")}
-            onShare={() => alert("링크가 복사되었습니다.")}
+            onOpenCollectionModal={() => toast.info("컬렉션 기능은 준비 중입니다.")}
+            onShare={() => {
+              navigator.clipboard
+                .writeText(window.location.href)
+                .then(() => toast.success("링크가 복사되었습니다."))
+                .catch(() => toast.error("링크 복사에 실패했습니다."));
+            }}
             onProposalClick={() => navigate("/messages")}
             onStartEditingComment={startEditingComment}
             onEditingCommentTextChange={setEditingCommentText}
