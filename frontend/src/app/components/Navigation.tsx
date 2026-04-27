@@ -5,6 +5,7 @@ import { motion, LayoutGroup } from "motion/react";
 import { fetchUnreadCount } from "../utils/notificationState";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { clearAuthenticated, getCurrentUser, subscribeCurrentUser } from "../utils/auth";
+import { DEFAULT_AVATAR } from "../utils/avatar";
 import { logoutApi } from "../api/authApi";
 
 export default function Navigation() {
@@ -144,15 +145,11 @@ export default function Navigation() {
               to={profilePath}
               className="size-9 overflow-hidden rounded-full bg-gradient-to-br from-[#00C9A7] to-[#009E88] flex items-center justify-center text-white text-xs font-bold shadow-sm shadow-[#00C9A7]/20 hover:shadow-md hover:shadow-[#00C9A7]/30 transition-shadow"
             >
-              {currentUser?.profileImage ? (
-                <ImageWithFallback
-                  src={currentUser.profileImage}
-                  alt={currentUser.nickname || currentUser.name || "프로필"}
-                  className="size-full object-cover"
-                />
-              ) : (
-                profileInitial
-              )}
+              <ImageWithFallback
+                src={currentUser?.profileImage || DEFAULT_AVATAR}
+                alt={currentUser?.nickname || currentUser?.name || "프로필"}
+                className="size-full object-cover"
+              />
             </Link>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import Navigation from "../components/Navigation";
+import { apiRequest } from "../api/apiClient";
 import {
   Search, Sparkles, Heart, Users, UserSearch, ImageOff,
   Palette, Camera, Box, Monitor,
@@ -116,69 +117,6 @@ const creatorProfiles = [
   },
 ];
 
-const projects = [
-  {
-    id: 1,
-    title: "Fluid Geometry Study",
-    author: "Alex Rivera",
-    badge: "NEW",
-    category: "그래픽",
-    likes: 1420,
-    views: 9800,
-    tags: ["3D", "추상", "브랜딩"],
-    imageUrl: "https://images.unsplash.com/photo-1595411425732-e69c1abe2763?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGdlb21ldHJpYyUyMHNoYXBlc3xlbnwxfHx8fDE3NzU2MzMzODZ8MA&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 2,
-    title: "Glassmorphism UI Kit",
-    author: "Elena Choi",
-    category: "UI/UX",
-    likes: 2310,
-    views: 14500,
-    tags: ["UI", "모바일", "프로토타입"],
-    imageUrl: "https://images.unsplash.com/photo-1772272935464-2e90d8218987?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx1aSUyMHV4JTIwZGVzaWduJTIwaW50ZXJmYWNlfGVufDF8fHx8MTc3NTU0MTE1MXww&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 3,
-    title: "Vibrant Patterns",
-    author: "Marc Chen",
-    category: "일러스트",
-    likes: 980,
-    views: 7600,
-    tags: ["패턴", "컬러", "텍스처"],
-    imageUrl: "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkaWdpdGFsJTIwYXJ0JTIwaWxsdXN0cmF0aW9ufGVufDF8fHx8MTc3NTU1ODM1OHww&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 4,
-    title: "Organic Flow Series",
-    author: "Sarah Jenkins",
-    category: "아트",
-    likes: 1240,
-    views: 8900,
-    tags: ["유기적", "페인팅", "실험"],
-    imageUrl: "https://images.unsplash.com/photo-1633533451997-8b6079082e3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxicmFuZCUyMGlkZW50aXR5JTIwZGVzaWdufGVufDF8fHx8MTc3NTU2NDQ1MXww&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 5,
-    title: "Monochrome Branding",
-    author: "David Park",
-    category: "브랜딩",
-    likes: 1680,
-    views: 11200,
-    tags: ["브랜딩", "타이포", "미니멀"],
-    imageUrl: "https://images.unsplash.com/photo-1718220216044-006f43e3a9b1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBvZmZpY2UlMjB3b3Jrc3BhY2V8ZW58MXx8fHwxNzc1NTU1MzcxfDA&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 6,
-    title: "Neon Flora Study",
-    author: "Ji-won Lee",
-    category: "포토그래피",
-    likes: 2050,
-    views: 13000,
-    tags: ["네온", "플로라", "매크로"],
-    imageUrl: "https://images.unsplash.com/photo-1623932078839-44eb01fbee63?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcmVhdGl2ZSUyMGRlc2lnbiUyMHdvcmt8ZW58MXx8fHwxNzc1NjAzODU5fDA&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-];
 
 // 카테고리 카드 버튼용 배경 이미지 (Unsplash CDN, 작은 사이즈로 최적화)
 const CATEGORY_IMAGES: Record<string, string> = {
@@ -344,7 +282,6 @@ export default function Explore() {
     cancelEditingComment,
     handleUpdateComment,
     handleDeleteComment,
-    toggleCommentLike,
   } = useFeedComments<FeedCardItem, FeedCardItem>({
     selectedFeed: selectedExploreFeed,
     currentUser,
@@ -405,10 +342,18 @@ export default function Explore() {
 
   const handleShare = (item: FeedCardItem, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    const copyToClipboard = () => {
+      navigator.clipboard
+        .writeText(window.location.href)
+        .then(() => alert("공유 링크가 클립보드에 복사되었습니다."))
+        .catch(() => alert("링크 복사에 실패했습니다."));
+    };
     if (navigator.share) {
-      navigator.share({ title: item.title, text: item.description || "", url: window.location.href });
+      navigator
+        .share({ title: item.title, text: item.description || "", url: window.location.href })
+        .catch(() => copyToClipboard());
     } else {
-      alert("공유 링크가 클립보드에 복사되었습니다.");
+      copyToClipboard();
     }
   };
 

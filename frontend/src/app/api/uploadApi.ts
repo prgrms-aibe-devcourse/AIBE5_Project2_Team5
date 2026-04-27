@@ -1,5 +1,21 @@
 import { apiRequest } from "./apiClient";
 
+const EXT_MIME_MAP: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+};
+
+function normalizeFileType(file: File): File {
+  if (file.type) return file;
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  const mimeType = EXT_MIME_MAP[ext];
+  if (!mimeType) return file;
+  return new File([file], file.name, { type: mimeType });
+}
+
 export type ProfileImageUploadResponse = {
   imageUrl: string;
 };
@@ -25,7 +41,7 @@ export type MessageAttachmentsUploadResponse = {
 
 export async function uploadProfileImageApi(file: File) {
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", normalizeFileType(file));
 
   return apiRequest<ProfileImageUploadResponse>(
     "/api/uploads/profile-image",
@@ -40,7 +56,7 @@ export async function uploadProfileImageApi(file: File) {
 export async function uploadFeedImagesApi(postId: number, files: File[]) {
   const formData = new FormData();
   formData.append("postId", String(postId));
-  files.forEach((file) => formData.append("files", file));
+  files.forEach((file) => formData.append("files", normalizeFileType(file)));
 
   return apiRequest<FeedImagesUploadResponse>(
     "/api/uploads/feed-images",
@@ -60,7 +76,7 @@ export async function replaceFeedImagesApi(
   const formData = new FormData();
   formData.append("postId", String(postId));
   existingImageUrls.forEach((imageUrl) => formData.append("existingImageUrls", imageUrl));
-  files.forEach((file) => formData.append("files", file));
+  files.forEach((file) => formData.append("files", normalizeFileType(file)));
 
   return apiRequest<FeedImagesUploadResponse>(
     "/api/uploads/feed-images/replace",
@@ -75,7 +91,7 @@ export async function replaceFeedImagesApi(
 export async function uploadMessageAttachmentsApi(conversationId: number, files: File[]) {
   const formData = new FormData();
   formData.append("conversationId", String(conversationId));
-  files.forEach((file) => formData.append("files", file));
+  files.forEach((file) => formData.append("files", normalizeFileType(file)));
 
   return apiRequest<MessageAttachmentsUploadResponse>(
     "/api/uploads/message-attachments",

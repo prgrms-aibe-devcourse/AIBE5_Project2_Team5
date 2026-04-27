@@ -48,7 +48,7 @@ type MyActivityTab = "posts" | "applications";
 const API_BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "").replace(/\/$/, "");
 const PROJECTS_API_URL = `${API_BASE_URL}/api/projects`;
 const SORT_OPTIONS = ["최신순", "예산순", "마감임박순"] as const;
-const DEFAULT_AVATAR = "https://i.pravatar.cc/40?img=12";
+const DEFAULT_AVATAR = "/default-avatar.svg";
 
 function parseBudgetToManwon(value: string | number | null | undefined): number {
     if (typeof value === "number") {

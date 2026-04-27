@@ -307,7 +307,12 @@ const normalizeExternalUrl = (url: string) => {
   return /^https?:\/\//i.test(trimmedUrl) ? trimmedUrl : `https://${trimmedUrl}`;
 };
 
-const isSupportedImageFile = (file: File) => SUPPORTED_IMAGE_TYPES.includes(file.type);
+const SUPPORTED_IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif"];
+const isSupportedImageFile = (file: File) => {
+  if (SUPPORTED_IMAGE_TYPES.includes(file.type)) return true;
+  const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  return SUPPORTED_IMAGE_EXTENSIONS.includes(ext);
+};
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -1532,6 +1537,9 @@ export default function Profile() {
     ].filter((integration) => integration.url);
     const portfolioUrl = integrations[0]?.url ?? "";
 
+    let createdFeedId: number | null = null;
+    let shouldRollbackCreatedFeed = false;
+
     try {
       setIsCreatingFeed(true);
       setWorkComposerError("");
@@ -2307,7 +2315,7 @@ export default function Profile() {
                 <div key={review.reviewId ?? `${review.projectId}-${review.reviewerId}-${review.createdAt}`} className="bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-lg transition-shadow">
                   <div className="flex items-start gap-4 mb-4">
                     <ImageWithFallback
-                      src={review.reviewerProfileImage ?? `https://i.pravatar.cc/160?u=${review.reviewerId ?? review.reviewerNickname}`}
+                      src={getUserAvatar(review.reviewerProfileImage)}
                       alt={review.reviewerNickname || review.reviewerName || "reviewer"}
                       className="size-14 flex-shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm"
                     />

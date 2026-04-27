@@ -60,7 +60,7 @@ public class UploadServiceImpl implements UploadService {
             throw new IllegalArgumentException("At least one image file is required.");
         }
 
-        Post post = getOwnedPortfolioPost(currentUser, postId);
+        Post post = getOwnedPostWithImagesPermission(currentUser, postId);
 
         List<PostImage> existingImages = postImageRepository.findByPost_IdOrderBySortOrderAsc(post.getId());
         if (existingImages.size() + imageFiles.size() > MAX_FEED_IMAGES) {
@@ -108,7 +108,7 @@ public class UploadServiceImpl implements UploadService {
             throw new IllegalArgumentException("Feed id is required.");
         }
 
-        Post post = getOwnedPortfolioPost(currentUser, postId);
+        Post post = getOwnedPostWithImagesPermission(currentUser, postId);
         List<PostImage> existingImages = postImageRepository.findByPost_IdOrderBySortOrderAsc(post.getId());
         List<String> keptImageUrls = normalizeExistingImageUrls(existingImageUrls, existingImages);
         List<MultipartFile> imageFiles = normalizeImageFiles(files);
@@ -199,11 +199,11 @@ public class UploadServiceImpl implements UploadService {
         return new MessageAttachmentsUploadResponse(conversationId, attachments);
     }
 
-    private Post getOwnedPortfolioPost(AuthenticatedUser currentUser, Long postId) {
+    private Post getOwnedPostWithImagesPermission(AuthenticatedUser currentUser, Long postId) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new IllegalArgumentException("Feed not found."));
-        if (post.getPostType() != PostType.PORTFOLIO) {
-            throw new IllegalArgumentException("Only portfolio feeds can have feed images.");
+        if (post.getPostType() != PostType.PORTFOLIO && post.getPostType() != PostType.JOB_POST) {
+            throw new IllegalArgumentException("Only portfolio feeds and job posts can have images.");
         }
         if (!post.getUser().getId().equals(currentUser.id())) {
             throw new IllegalArgumentException("You can only upload images to your own feeds.");

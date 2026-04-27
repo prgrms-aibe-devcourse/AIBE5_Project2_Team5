@@ -195,6 +195,7 @@ public class FeedServiceImpl implements FeedService {
     }
 
     @Override
+    @Transactional
     public CreateCommentResponse createComment(Long postId, Long userId, CreateCommentRequest request) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new IllegalArgumentException("게시글을 찾을 수 없습니다."));
@@ -395,10 +396,14 @@ public class FeedServiceImpl implements FeedService {
                 .findFirst()
                 .orElse(post.getImages().isEmpty() ? null : post.getImages().get(0).getImageUrl());
 
+        String description = post.getFeed() != null && post.getFeed().getDescription() != null
+                ? post.getFeed().getDescription() : "";
+
         return new FeedItemResponse(
                 post.getId(),
                 post.getUser().getId(),
                 post.getTitle(),
+                description,
                 post.getUser().getNickname(),
                 resolveProfileKey(post.getUser()),
                 post.getUser().getProfileImage(),

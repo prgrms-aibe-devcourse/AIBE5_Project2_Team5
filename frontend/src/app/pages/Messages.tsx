@@ -474,9 +474,7 @@ const mapConversationResponse = (
     unreadCount: conversation.unreadCount,
     online: conversation.partnerAvailable,
     statusText: conversation.partnerAvailable ? "메시지 가능" : "자리비움",
-    avatar:
-      conversation.partnerProfileImage ||
-      `https://i.pravatar.cc/150?u=message-${conversation.partnerUserId}`,
+    avatar: conversation.partnerProfileImage || DEFAULT_AVATAR,
     bio: conversation.partnerIntroduction || "프로젝트 대화를 진행 중입니다.",
     sharedMedia: [],
   };
