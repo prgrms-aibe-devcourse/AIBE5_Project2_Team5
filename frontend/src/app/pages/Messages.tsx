@@ -1,4 +1,5 @@
 import Navigation from "../components/Navigation";
+import { toast } from "sonner";
 import { Edit, Search, Info, Send, Image, Smile, AtSign, Sparkles, Calendar, FileText, CheckCircle, Circle, ChevronDown, ChevronUp, ThumbsUp, XCircle, Paperclip, Figma, ExternalLink, Plus, Clock, Check, CheckCheck, Trash2, GripVertical, Eye, ArrowLeft, Bookmark } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
@@ -2697,9 +2698,7 @@ export default function Messages() {
     try {
       await deleteMessageConversationApi(conversationId);
     } catch (error) {
-      window.alert(
-        error instanceof Error ? error.message : "채팅창을 삭제하지 못했습니다."
-      );
+      toast.error(error instanceof Error ? error.message : "채팅창을 삭제하지 못했습니다.");
       return;
     }
 
@@ -3002,7 +3001,7 @@ export default function Messages() {
     if (!trimmedMessage && pendingAttachments.length === 0) return;
     if (hasUploadingAttachments || hasFailedAttachments) return;
     if (trimmedMessage.length > MAX_CHAT_MESSAGE_LENGTH) {
-      window.alert("메시지는 4000자 이하로 전송할 수 있어요.");
+      toast.error("메시지는 4000자 이하로 전송할 수 있어요.");
       return;
     }
 
@@ -3576,7 +3575,7 @@ export default function Messages() {
   const handleEndWork = () => {
     if (confirm("작업을 종료하시겠습니까? 진행 중인 작업이 있는 경우 저장되지 않을 수 있습니다.")) {
       // 작업 종료 처리
-      alert("작업이 종료되었습니다.");
+      toast.success("작업이 종료되었습니다.");
     }
   };
 

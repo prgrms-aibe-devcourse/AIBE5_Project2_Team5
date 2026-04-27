@@ -1,5 +1,6 @@
 import Navigation from "../components/Navigation";
 import Footer from "../components/Footer";
+import { toast } from "sonner";
 import { Heart, MessageCircle, Bookmark, Calendar, MapPin, Star, ImagePlus, Upload, X, Figma, Sparkles, ExternalLink, CheckCircle, Pencil, Trash2, FolderPlus, FolderOpen, AlertTriangle } from "lucide-react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useParams, useNavigate, useSearchParams } from "react-router";
@@ -403,10 +404,7 @@ export default function Profile() {
   const profileImageInputRef = useRef<HTMLInputElement>(null);
   const workImageInputRef = useRef<HTMLInputElement>(null);
   const editFeedImageInputRef = useRef<HTMLInputElement>(null);
-  const isKimMinjae = username.includes("김민재");
-  const isLeeSoyeon = username.includes("이소연");
-  const isMetaverseTeam = username.includes("메타버스");
-  const defaultProfile =
+  const fallbackProfile =
     currentUserRole === "client"
       ? {
           ...profileData,
@@ -415,7 +413,6 @@ export default function Profile() {
           roleType: "client",
           title: "클라이언트 · 프로젝트 의뢰자",
           badges: ["#클라이언트", "#프로젝트의뢰", "#브랜드협업", "#크리에이티브"],
-          recentProject: "디자이너 매칭을 준비 중",
           responseTime: "평균 응답 2시간 이내",
         }
       : {
@@ -424,53 +421,6 @@ export default function Profile() {
           realName: currentUser?.name,
           roleType: "designer",
         };
-  const fallbackProfile = isKimMinjae
-    ? {
-        ...profileData,
-        name: "김민재",
-        roleType: "designer",
-        rating: 4.9,
-        title: "UX 전략 디렉터 @ StudioX",
-        followers: "2.4k",
-        following: "318",
-        badges: ["#UX전략", "#브랜딩", "#디자인시스템", "#가이드라인"],
-        location: "서울, 대한민국",
-        recentProject: "브랜드 아이덴티티 프로젝트 진행 중",
-        responseTime: "평균 응답 1시간 이내",
-        avatar: "https://i.pravatar.cc/300?img=12",
-      }
-    : isLeeSoyeon
-      ? {
-          ...profileData,
-          name: "이소연",
-          roleType: "designer",
-          rating: 4.8,
-          title: "일러스트레이터 · 캐릭터 아트",
-          followers: "1.7k",
-          following: "426",
-          badges: ["#일러스트", "#캐릭터", "#브랜드아트", "#에디토리얼"],
-          location: "서울, 대한민국",
-          recentProject: "캐릭터 일러스트 의뢰 상담 중",
-          responseTime: "평균 응답 3시간 이내",
-          avatar: "https://i.pravatar.cc/300?img=47",
-        }
-      : isMetaverseTeam
-        ? {
-            ...profileData,
-            name: "메타버스 프로젝트 팀",
-            roleType: "designer",
-            rating: 4.7,
-            title: "XR 콘텐츠 제작 팀",
-            followers: "3.8k",
-            following: "152",
-            badges: ["#메타버스", "#XR", "#3D공간", "#인터랙션"],
-            location: "서울, 대한민국",
-            recentProject: "메타버스 월드 콘셉트 제작 중",
-            responseTime: "평균 응답 1일 이내",
-            avatar:
-              "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=300",
-          }
-    : defaultProfile;
   const displayProfile = apiProfile
     ? {
         ...fallbackProfile,
@@ -516,7 +466,7 @@ export default function Profile() {
     { label: "Adobe", url: apiProfile?.adobeUrl, icon: ExternalLink },
   ].filter((link): link is { label: string; url: string; icon: typeof Figma } => Boolean(link.url));
   const canCreateFeed = canEditProfile && apiProfile?.role === "DESIGNER";
-  const isCollectionUiReady = false;
+  const isCollectionUiReady = true;
   const profileFeedAuthorKey = apiProfile
     ? [
         apiProfile.userId,
@@ -1453,13 +1403,12 @@ export default function Profile() {
       setProfileError("");
       setIsDeleteModalOpen(false);
       setProjectToDelete(null);
-      // alert은 UI 업데이트가 완전히 끝난 뒤에 띄우는 것이 좋습니다.
-      setTimeout(() => alert("삭제가 완료되었습니다."), 100);
+      toast.success("삭제가 완료되었습니다.");
     } catch (error) {
       console.error("삭제 실패:", error);
       const errorMessage = error instanceof Error ? error.message : "피드 삭제에 실패했습니다.";
       setProfileError(errorMessage);
-      alert(`삭제 실패: ${errorMessage}`);
+      toast.error(`삭제 실패: ${errorMessage}`);
     }
   };
 
@@ -2019,13 +1968,7 @@ export default function Profile() {
           <div className="space-y-8 mb-12">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="mb-2 inline-flex rounded-lg border border-[#BDEFD8] bg-[#F5FFFB] px-3 py-1 text-xs font-bold text-[#007E68]">
-                  데이터 연동 준비 중
-                </div>
                 <h2 className="text-2xl font-bold">컬렉션</h2>
-                <p className="mt-1 text-sm text-gray-500">
-                  아직 화면 기능은 잠시 닫아두고, 목록/상세 데이터를 받아올 준비만 해뒀어요.
-                </p>
               </div>
               {isCollectionUiReady && canEditProfile && (
                 <div className="flex min-w-[280px] max-w-md flex-1 gap-2">
@@ -2117,7 +2060,6 @@ export default function Profile() {
                         <div>
                           <h3 className="font-bold">{folder.folderName}</h3>
                           <p className="mt-1 text-sm text-gray-500">{folder.itemCount}개 피드</p>
-                          <p className="mt-2 text-xs font-semibold text-[#007E68]">클릭하면 상세 데이터 요청</p>
                         </div>
                         {isCollectionUiReady && canEditProfile && (
                           <div className="flex gap-1">

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from "react";
+import { toast } from "sonner";
 import { useNavigate } from "react-router";
 import {
   Heart,
@@ -647,8 +648,13 @@ export default function Notifications() {
             onMoveModalCarousel={moveModalCarousel}
             onSetModalImageIndex={(idx) => setModalImageIndex(idx)}
             onToggleLike={handleToggleLike}
-            onOpenCollectionModal={() => alert("컬렉션 기능은 준비 중입니다.")}
-            onShare={() => alert("링크가 복사되었습니다.")}
+            onOpenCollectionModal={() => toast.info("컬렉션 기능은 준비 중입니다.")}
+            onShare={() => {
+              navigator.clipboard
+                .writeText(window.location.href)
+                .then(() => toast.success("링크가 복사되었습니다."))
+                .catch(() => toast.error("링크 복사에 실패했습니다."));
+            }}
             onProposalClick={() => navigate("/messages")}
             onStartEditingComment={startEditingComment}
             onEditingCommentTextChange={setEditingCommentText}

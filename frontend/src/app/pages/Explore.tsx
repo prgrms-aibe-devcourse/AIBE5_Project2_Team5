@@ -1,4 +1,5 @@
 import Navigation from "../components/Navigation";
+import { toast } from "sonner";
 import { apiRequest } from "../api/apiClient";
 import {
   Search, Sparkles, Heart, Users, UserSearch, ImageOff,
@@ -327,7 +328,7 @@ export default function Explore() {
       }
     } catch (error) {
       console.error("좋아요 처리 중 오류 발생:", error);
-      alert("좋아요 처리에 실패했습니다. 다시 시도해주세요.");
+      toast.error("좋아요 처리에 실패했습니다. 다시 시도해주세요.");
     }
   };
 
@@ -336,8 +337,8 @@ export default function Explore() {
     const copyToClipboard = () => {
       navigator.clipboard
         .writeText(window.location.href)
-        .then(() => alert("공유 링크가 클립보드에 복사되었습니다."))
-        .catch(() => alert("링크 복사에 실패했습니다."));
+        .then(() => toast.success("공유 링크가 클립보드에 복사되었습니다."))
+        .catch(() => toast.error("링크 복사에 실패했습니다."));
     };
     if (navigator.share) {
       navigator
@@ -361,12 +362,12 @@ export default function Explore() {
     e?.stopPropagation();
 
     if (!item.author?.userId) {
-      alert("상대방 정보를 찾을 수 없습니다.");
+      toast.error("상대방 정보를 찾을 수 없습니다.");
       return;
     }
 
     if (currentUser?.userId === item.author.userId) {
-      alert("내 피드에는 제안을 보낼 수 없습니다.");
+      toast.error("내 피드에는 제안을 보낼 수 없습니다.");
       return;
     }
 
@@ -394,7 +395,7 @@ export default function Explore() {
 
       navigate(`/messages?conversationId=${conversation.id}`);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "대화를 시작하지 못했습니다.");
+      toast.error(error instanceof Error ? error.message : "대화를 시작하지 못했습니다.");
     } finally {
       setStartingProposalPostId(null);
     }
