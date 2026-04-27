@@ -194,11 +194,11 @@ export default function Notifications() {
     cancelEditingComment,
     handleUpdateComment,
     handleDeleteComment,
-    toggleCommentLike,
   } = useFeedComments<FeedCardItem, FeedCardItem>({
     selectedFeed: selectedExploreFeed,
     currentUser,
     currentUserId: currentUser?.userId ?? null,
+    apiFeedItems: commentFeedItems,
     setApiFeedItems: setCommentFeedItems,
     setSelectedFeed: setSelectedExploreFeed,
     toFeedCommentRole: toCommentAuthorRole,
@@ -620,8 +620,8 @@ export default function Notifications() {
         {selectedExploreFeed && (
           <FeedDetailModal
             selectedFeed={selectedExploreFeed}
-            activeModalImage={selectedExploreFeed.images[modalImageIndex] || selectedExploreFeed.image}
-            selectedFeedImages={selectedExploreFeed.images}
+            activeModalImage={(selectedExploreFeed.images || [])[modalImageIndex] || selectedExploreFeed.image}
+            selectedFeedImages={selectedExploreFeed.images || []}
             modalImageIndex={modalImageIndex}
             savedItemIds={new Set()}
             selectedFeedComments={selectedFeedComments}
@@ -650,7 +650,6 @@ export default function Notifications() {
             onOpenCollectionModal={() => alert("컬렉션 기능은 준비 중입니다.")}
             onShare={() => alert("링크가 복사되었습니다.")}
             onProposalClick={() => navigate("/messages")}
-            onToggleCommentLike={toggleCommentLike}
             onStartEditingComment={startEditingComment}
             onEditingCommentTextChange={setEditingCommentText}
             onUpdateComment={handleUpdateComment}

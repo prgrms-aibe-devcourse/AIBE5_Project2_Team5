@@ -1,6 +1,6 @@
 import Navigation from "../components/Navigation";
 import Footer from "../components/Footer";
-import { Heart, MessageCircle, Bookmark, Calendar, MapPin, Star, ImagePlus, Upload, X, Figma, Sparkles, ExternalLink, CheckCircle, Pencil, Trash2, FolderPlus, FolderOpen } from "lucide-react";
+import { Heart, MessageCircle, Bookmark, Calendar, MapPin, Star, ImagePlus, Upload, X, Figma, Sparkles, ExternalLink, CheckCircle, Pencil, Trash2, FolderPlus, FolderOpen, AlertTriangle } from "lucide-react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useParams, useNavigate, useSearchParams } from "react-router";
 import { useState, useEffect, useRef, type ChangeEvent, type KeyboardEvent } from "react";
@@ -398,6 +398,8 @@ export default function Profile() {
   const [workComposerError, setWorkComposerError] = useState("");
   const [isSavingFeedEdit, setIsSavingFeedEdit] = useState(false);
   const [feedEditError, setFeedEditError] = useState("");
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<FeedProject | null>(null);
   const profileImageInputRef = useRef<HTMLInputElement>(null);
   const workImageInputRef = useRef<HTMLInputElement>(null);
   const editFeedImageInputRef = useRef<HTMLInputElement>(null);
@@ -791,8 +793,6 @@ export default function Profile() {
       setCheckedProfileNickname(result.nickname);
       setProfileNicknameCheckMessage("사용 가능한 닉네임입니다.");
     } catch (error) {
-      setApiProfile(previousProfile);
-      setEditWorkStatus(previousWorkStatus);
       setProfileEditError(error instanceof Error ? error.message : "닉네임 중복 확인에 실패했습니다.");
     } finally {
       setIsCheckingProfileNickname(false);
@@ -1435,19 +1435,41 @@ export default function Profile() {
     }
   };
 
-  const handleDeleteFeed = async (project: FeedProject) => {
-    if (!window.confirm("이 작업물을 삭제할까요?")) return;
+  const handleDeleteFeed = (project: FeedProject) => {
+    setProjectToDelete(project);
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDeleteFeed = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!projectToDelete) return;
 
     try {
+      await deleteFeedApi(projectToDelete.id);
+      removeDeletedFeedProject(projectToDelete.id);
+      removeSavedFeedTags(projectToDelete.id);
       await deleteFeedApi(project.id);
       removeDeletedFeedProject(project.id);
       setProfileError("");
+      setIsDeleteModalOpen(false);
+      setProjectToDelete(null);
+      // alert은 UI 업데이트가 완전히 끝난 뒤에 띄우는 것이 좋습니다.
+      setTimeout(() => alert("삭제가 완료되었습니다."), 100);
     } catch (error) {
-      setProfileError(error instanceof Error ? error.message : "피드 삭제에 실패했습니다.");
+      console.error("삭제 실패:", error);
+      const errorMessage = error instanceof Error ? error.message : "피드 삭제에 실패했습니다.";
+      setProfileError(errorMessage);
+      alert(`삭제 실패: ${errorMessage}`);
     }
   };
 
   const handleUploadWork = async () => {
+    let createdFeedId: number | null = null;
+    let shouldRollbackCreatedFeed = false;
+
     const trimmedTitle = workTitle.trim();
     const trimmedDescription = workDescription.trim();
     const selectedWorkCategories = workCategories.length > 0 ? workCategories : workCategory ? [workCategory] : [];
@@ -1475,9 +1497,6 @@ export default function Profile() {
       },
     ].filter((integration) => integration.url);
     const portfolioUrl = integrations[0]?.url ?? "";
-
-    let createdFeedId: number | null = null;
-    let shouldRollbackCreatedFeed = false;
 
     try {
       setIsCreatingFeed(true);
@@ -1680,10 +1699,9 @@ export default function Profile() {
                     )
                   )}
                 </div>
-                {"realName" in displayProfile &&
-                  displayProfile.realName &&
-                  displayProfile.realName !== displayProfile.name && (
-                    <p className="mb-2 text-sm font-medium text-gray-500">{displayProfile.realName}</p>
+                {(displayProfile as any).realName &&
+                  (displayProfile as any).realName !== displayProfile.name && (
+                    <p className="mb-2 text-sm font-medium text-gray-500">{(displayProfile as any).realName}</p>
                   )}
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-yellow-500">★ {displayProfile.rating}</span>
@@ -1886,7 +1904,7 @@ export default function Profile() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleDeleteFeed(project)}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteFeed(project); }}
                             className="rounded-lg border border-gray-200 p-2 text-gray-500 transition-colors hover:border-[#FFB9AA] hover:text-[#B13A21]"
                             aria-label="피드 삭제"
                           >
@@ -3426,6 +3444,45 @@ export default function Profile() {
                   className="h-11 rounded-lg bg-[#00C9A7] px-4 text-sm font-bold text-[#0F0F0F] transition-colors hover:bg-[#00A88C]"
                 >
                   피드 보기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isDeleteModalOpen && (
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+          onClick={() => setIsDeleteModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 text-center">
+              <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-[#FFF1ED] text-[#FF5C3A]">
+                <AlertTriangle className="size-8" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900">정말 삭제하시겠습니까?</h3>
+              <p className="mt-2 text-sm text-gray-500">
+                삭제된 작업물은 복구할 수 없습니다.<br />
+                신중하게 결정해 주세요.
+              </p>
+              <div className="mt-8 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteModalOpen(false)}
+                  className="flex-1 rounded-xl border border-gray-200 bg-white py-3 text-sm font-bold text-gray-600 transition-all hover:bg-gray-50"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => confirmDeleteFeed(e)}
+                  className="flex-1 rounded-xl bg-[#FF5C3A] py-3 text-sm font-bold text-white transition-all hover:bg-[#E54D2E] shadow-[0_8px_20px_rgba(255,92,58,0.25)]"
+                >
+                  삭제하기
                 </button>
               </div>
             </div>

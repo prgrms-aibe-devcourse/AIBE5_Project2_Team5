@@ -18,6 +18,7 @@ public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
+    private final com.example.pixel_project2.message.repository.ChatMessageRepository chatMessageRepository;
 
     @Override
     @Transactional
@@ -51,7 +52,20 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional(readOnly = true)
     public Page<NotificationResponseDto> getNotifications(Long userId, Pageable pageable) {
         Page<Notification> notifications = notificationRepository.findByReceiverIdOrderByCreatedAtDesc(userId, pageable);
-        return notifications.map(NotificationResponseDto::from);
+        return notifications.map(n -> {
+            NotificationResponseDto dto = NotificationResponseDto.from(n);
+            
+            // 기존에 메시지 ID로 저장된 알림들을 대화방 ID로 변환 (하위 호환성)
+            if (n.getType() == NotificationType.MESSAGE && n.getReferenceId() != null) {
+                // 이 ID가 실제로 대화방 ID인지 메시지 ID인지 확인이 필요할 수 있으나,
+                // 메시지 ID인 경우 대화방 ID로 교체해줌
+                chatMessageRepository.findById(n.getReferenceId()).ifPresent(messageEntity -> {
+                    dto.setReferenceId(messageEntity.getConversation().getId());
+                });
+            }
+            
+            return dto;
+        });
     }
 
     @Override
