@@ -1,5 +1,7 @@
 package com.example.pixel_project2.feed.dto;
 
+import java.util.List;
+
 public record FeedItemResponse(
         Long postId,
         Long userId,
@@ -15,6 +17,7 @@ public record FeedItemResponse(
         Integer commentCount,
         String postType,
         String category,
-        boolean picked
+        boolean picked,
+        List<String> tags
 ) {
 }

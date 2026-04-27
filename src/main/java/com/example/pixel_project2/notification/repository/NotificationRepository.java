@@ -25,4 +25,8 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     @Modifying
     @Query("UPDATE Notification n SET n.isRead = true WHERE n.receiver.id = :receiverId AND n.isRead = false")
     void markAllAsRead(@Param("receiverId") Long receiverId);
+
+    @Modifying
+    @Query("delete from Notification n where n.referenceId = :referenceId and n.type = :type")
+    void deleteByReferenceIdAndType(@Param("referenceId") Long referenceId, @Param("type") com.example.pixel_project2.common.entity.enums.NotificationType type);
 }

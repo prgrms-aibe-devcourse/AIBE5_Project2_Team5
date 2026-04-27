@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(xargs grep *)",
+      "Bash(git -C \"C:/Users/USER/AIBE5_Project2_Team5\" status --short)"
+    ]
+  }
+}

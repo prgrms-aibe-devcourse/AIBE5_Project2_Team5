@@ -156,10 +156,9 @@ export default function Feed() {
       image: feedItem.thumbnailUrl ?? "",
       likes: feedItem.pickCount,
       comments: feedItem.commentCount,
-      tags: [
-        normalizeCategoryLabel(feedItem.category),
-        normalizePostTypeLabel(feedItem.postType),
-      ].filter(Boolean),
+      tags: feedItem.tags?.length
+        ? feedItem.tags
+        : [normalizeCategoryLabel(feedItem.category)].filter(Boolean),
       category: normalizeCategoryLabel(feedItem.category),
       likedByMe: feedItem.picked,
       isApiFeed: true,
@@ -424,7 +423,7 @@ export default function Feed() {
           {/* Main Feed */}
           <div className="flex-1">
             {isFeedLoading && (
-              <div className="mb-6 rounded-xl border border-dashed border-[#A8F0E4] bg-white px-6 py-10 text-center text-sm font-medium text-gray-500">
+              <div className="mb-6 rounded-xl border border-dashed border-[#BDEFD8] bg-white px-6 py-10 text-center text-sm font-medium text-gray-500">
                 피드 목록을 불러오는 중입니다.
               </div>
             )}
@@ -436,7 +435,7 @@ export default function Feed() {
             )}
 
             {!isFeedLoading && !feedError && visibleFeedItems.length === 0 && (
-              <div className="mb-6 rounded-xl border border-dashed border-[#A8F0E4] bg-white px-6 py-10 text-center text-sm font-medium text-gray-500">
+              <div className="mb-6 rounded-xl border border-dashed border-[#BDEFD8] bg-white px-6 py-10 text-center text-sm font-medium text-gray-500">
                 아직 표시할 피드가 없습니다.
               </div>
             )}
@@ -480,7 +479,7 @@ export default function Feed() {
 
             {!isFeedLoading && !hasNext && visibleFeedItems.length > 0 && (
               <div className="py-6 text-center text-sm text-gray-400">
-                모든 피드를 불러왔습니다.
+                모든 피드를 확인했습니다 ✨
               </div>
             )}
 

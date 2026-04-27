@@ -21,13 +21,17 @@ public interface MatchingService {
 
     String applyProject(Long postId, ApplyProjectRequest request);
 
+    String updateProjectApplication(Long postId, ApplyProjectRequest request);
+
+    String deleteProjectApplication(Long postId);
+
     List<MyApplicationItemResponse> getMyApplications();
 
     List<MyPostItemResponse> getMyPosts();
 
     String closeProject(Long postId);
 
-    String updateProject(Long postId, UpdateProjectRequest request);
+    ProjectDetailResponse updateProject(Long postId, UpdateProjectRequest request);
 
     String deleteProject(Long postId);
 

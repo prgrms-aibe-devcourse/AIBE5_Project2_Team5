@@ -21,6 +21,7 @@ public record FeedDetailResponse(
         LocalDateTime createdAt,
         List<String> imageUrls,
         boolean picked,
-        boolean mine
+        boolean mine,
+        List<String> tags
 ) {
 }

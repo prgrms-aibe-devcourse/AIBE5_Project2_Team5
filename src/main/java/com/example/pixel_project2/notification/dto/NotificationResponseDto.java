@@ -4,10 +4,12 @@ import com.example.pixel_project2.common.entity.Notification;
 import com.example.pixel_project2.common.entity.enums.NotificationType;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.time.LocalDateTime;
 
 @Getter
+@Setter
 @Builder
 public class NotificationResponseDto {
     private Long id;

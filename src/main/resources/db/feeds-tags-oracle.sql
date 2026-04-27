@@ -1,0 +1,1 @@
+ALTER TABLE feeds ADD tags VARCHAR2(500);

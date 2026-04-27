@@ -17,6 +17,7 @@ export async function createFeedApi(params: {
   description: string;
   category: string;
   portfolioUrl?: string;
+  tags?: string[];
 }) {
   return apiRequest<CreateFeedResponse>(
     "/api/feeds/new",
@@ -35,6 +36,7 @@ export async function updateFeedApi(
     description: string;
     category: string;
     portfolioUrl?: string;
+    tags?: string[];
   },
 ) {
   return apiRequest<CreateFeedResponse>(
@@ -54,5 +56,14 @@ export async function deleteFeedApi(postId: number) {
       method: "DELETE",
     },
     "Failed to delete feed.",
+  );
+}
+export async function toggleFeedPickApi(feedId: number) {
+  return apiRequest<{ postId: number; picked: boolean; pickCount: number }>(
+    `/api/feeds/${feedId}/like`,
+    {
+      method: "POST",
+    },
+    "좋아요 상태를 변경하는 데 실패했습니다.",
   );
 }

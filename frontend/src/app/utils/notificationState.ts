@@ -35,6 +35,11 @@ const emitNotificationStateChange = () => {
   window.dispatchEvent(new Event(NOTIFICATION_STATE_CHANGE_EVENT));
 };
 
+const setUnreadNotificationFlag = (hasUnread: boolean) => {
+  if (!canUseStorage()) return;
+  window.localStorage.setItem(UNREAD_NOTIFICATIONS_KEY, String(hasUnread));
+};
+
 // 백엔드의 Date를 파싱하여 n시간 전 등으로 변환하는 유틸
 const timeAgo = (dateString: string) => {
   const date = new Date(dateString);
@@ -63,6 +68,8 @@ const buildNotificationTitle = (item: NotificationResponse): string => {
       return `${name}님에게서 새 메시지가 도착했습니다.`;
     case "COLLECTION":
       return `${name}님이 회원님의 게시물을 컬렉션에 저장했습니다.`;
+    case "COMMENT":
+      return `${name}님이 회원님의 게시물에 댓글을 남겼습니다.`;
     default:
       return "새 알림이 있습니다.";
   }
@@ -73,10 +80,11 @@ const buildNavigatePath = (item: NotificationResponse): string | undefined => {
   switch (item.type) {
     case "LIKE":
     case "COLLECTION":
+    case "COMMENT":
       // 피드 게시물로 이동 (해당 포스트 앵커)
       return item.referenceId ? `/feed` : "/feed";
     case "MESSAGE":
-      return "/messages";
+      return item.referenceId ? `/messages?conversationId=${item.referenceId}` : "/messages";
     case "PROJECT_APPLY":
     case "PROJECT_ACCEPT":
       return item.referenceId ? `/projects/${item.referenceId}` : "/projects";
@@ -126,9 +134,16 @@ const mapBackendNotification = (item: NotificationResponse): NotificationItem =>
       break;
     case "COLLECTION":
       category = "activity";
-      type = "like";
-      action = "피드 보기";
+      type = "announcement";
+      break;
+    case "COMMENT":
+      category = "activity";
+      type = "message";
       actionType = "feed";
+      action = "댓글 보기";
+      break;
+    default:
+      category = "system";
       break;
   }
 
@@ -144,8 +159,8 @@ const mapBackendNotification = (item: NotificationResponse): NotificationItem =>
     isSnoozed: false,
     actionType,
     action,
-    senderProfileImage: item.senderProfileImage,
-    referenceId: item.referenceId,
+    senderProfileImage: item.senderProfileImage ?? undefined,
+    referenceId: item.referenceId ?? undefined,
     avatar: !!item.senderProfileImage,
     navigatePath: buildNavigatePath(item),
   };
@@ -166,10 +181,25 @@ export const fetchUnreadCount = async (): Promise<boolean> => {
 
 export const markNotificationRead = async (notificationId: number) => {
   await notificationApi.markAsRead(notificationId);
+  const hasUnread = await fetchUnreadCount();
+  setUnreadNotificationFlag(hasUnread);
+  emitNotificationStateChange();
 };
 
 export const markAllNotificationsRead = async () => {
   await notificationApi.markAllAsRead();
+  setUnreadNotificationFlag(false);
+  emitNotificationStateChange();
+};
+
+export const applyLiveNotificationCreated = (
+  notification: NotificationResponse,
+  unreadCount: number,
+) => {
+  if (!notification) return;
+
+  setUnreadNotificationFlag(unreadCount > 0);
+  emitNotificationStateChange();
 };
 
 // --- 아래 함수들은 기존 Messages.tsx 에서 의존하고 있는 함수들입니다 (하얀 화면 방지용) ---

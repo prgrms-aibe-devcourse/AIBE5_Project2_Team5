@@ -129,7 +129,8 @@ public class FeedServiceImpl implements FeedService {
                 post.getCreatedAt(),
                 imageUrls,
                 pickCountRepository.existsByUserIdAndPostId(userId, post.getId()),
-                post.getUser().getId().equals(userId)
+                post.getUser().getId().equals(userId),
+                resolveTagsOrCategory(feed != null ? feed.getTags() : null, post.getCategory())
         );
     }
 
@@ -151,8 +152,8 @@ public class FeedServiceImpl implements FeedService {
             picked = false;
         } else {
             pickCountRepository.save(PickCount.builder()
-                    .user_id(user)
-                    .post_id(post)
+                    .user(user)
+                    .post(post)
                     .build());
             post.setPickCount(currentPickCount + 1);
             picked = true;
@@ -277,6 +278,7 @@ public class FeedServiceImpl implements FeedService {
                 .post(savedPost)
                 .description(request.description().trim())
                 .portfolioUrl(normalizePortfolioUrl(request.portfolioUrl()))
+                .tags(joinTags(request.tags()))
                 .build();
         Feed savedFeed = feedRepository.save(feed);
 
@@ -308,6 +310,7 @@ public class FeedServiceImpl implements FeedService {
                         .build());
         feed.setDescription(request.description().trim());
         feed.setPortfolioUrl(normalizePortfolioUrl(request.portfolioUrl()));
+        feed.setTags(joinTags(request.tags()));
 
         Post savedPost = postRepository.save(post);
         Feed savedFeed = feedRepository.save(feed);
@@ -414,7 +417,8 @@ public class FeedServiceImpl implements FeedService {
                 Math.toIntExact(commentRepository.countByPostId(post.getId())),
                 post.getPostType().name(),
                 post.getCategory().name(),
-                pickCountRepository.existsByUserIdAndPostId(userId, post.getId())
+                pickCountRepository.existsByUserIdAndPostId(userId, post.getId()),
+                resolveTagsOrCategory(post.getFeed() != null ? post.getFeed().getTags() : null, post.getCategory())
         );
     }
 
@@ -426,6 +430,28 @@ public class FeedServiceImpl implements FeedService {
             }
         }
         return post.getUser().getRole().name();
+    }
+
+    private String joinTags(List<String> tags) {
+        if (tags == null || tags.isEmpty()) return null;
+        return tags.stream()
+                .map(String::trim)
+                .filter(t -> !t.isEmpty())
+                .collect(java.util.stream.Collectors.joining(","));
+    }
+
+    private List<String> parseTags(String tags) {
+        if (tags == null || tags.isBlank()) return List.of();
+        return java.util.Arrays.stream(tags.split(","))
+                .map(String::trim)
+                .filter(t -> !t.isEmpty())
+                .toList();
+    }
+
+    private List<String> resolveTagsOrCategory(String storedTags, Category category) {
+        List<String> parsed = parseTags(storedTags);
+        if (!parsed.isEmpty()) return parsed;
+        return category != null ? List.of("#" + category.getLabel()) : List.of();
     }
 
     private String resolveProfileKey(User user) {

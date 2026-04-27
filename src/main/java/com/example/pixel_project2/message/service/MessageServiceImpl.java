@@ -252,6 +252,7 @@ public class MessageServiceImpl implements MessageService {
                 NotificationType.MESSAGE,
                 savedMessage.getId(),
                 createNotificationPreview(message, attachments)
+
         );
 
         return toChatMessageResponse(savedMessage, currentUser.id(), conversation.getPartnerLastReadMessageId(currentUser.id()));
@@ -908,8 +909,13 @@ public class MessageServiceImpl implements MessageService {
         prompt.append("- Keep each suggestion to 1 or 2 short sentences.\n");
         prompt.append("- No markdown, no bullet points, no emoji.\n");
         prompt.append("- Make the next action clear and practical.\n");
-        prompt.append("- Ground every suggestion in the partner's latest message, not just the general project context.\n");
-        prompt.append("- The first suggestion should respond most directly to the partner's latest message.\n");
+        prompt.append("- Ground every suggestion in the latest meaningful partner context, not just the general project context.\n");
+        prompt.append("- The first suggestion should respond most directly to the latest meaningful partner context.\n");
+        prompt.append("- Reuse concrete details from the retrieved context when available, such as time, date, deck, draft, link, revision, or task name.\n");
+        prompt.append("- If the latest partner message is short or referential, use the previous thread message to infer what it refers to.\n");
+        prompt.append("- If the latest partner message is unclear, playful, or low-signal, do not treat it as a concrete task by itself.\n");
+        prompt.append("- In that case, rely on the previous thread message and current process, then ask a short clarification question if needed.\n");
+        prompt.append("- Do not invent schedules, files, links, or commitments that are not present in the retrieved context.\n");
 
         switch (goal) {
             case "schedule_meeting" -> prompt.append("- Focus on proposing or confirming a meeting time.\n");
@@ -935,8 +941,22 @@ public class MessageServiceImpl implements MessageService {
         }
 
         if (!retrievedContext.latestPartnerMessage().isBlank()) {
-            prompt.append("\nLatest partner message to respond to:\n");
+            if (retrievedContext.latestPartnerMessageLowSignal()) {
+                prompt.append("\nLatest partner message (unclear or low-signal; do not treat it as a concrete task on its own):\n");
+            } else {
+                prompt.append("\nLatest partner message to respond to:\n");
+            }
             prompt.append(retrievedContext.latestPartnerMessage()).append('\n');
+        }
+        if (!retrievedContext.previousThreadMessage().isBlank()) {
+            prompt.append("\nPrevious thread message for context:\n");
+            prompt.append(retrievedContext.previousThreadMessage()).append('\n');
+        }
+        if (!retrievedContext.referenceMessage().isBlank()
+                && !retrievedContext.referenceMessage().equals(retrievedContext.latestPartnerMessage())
+                && !retrievedContext.referenceMessage().equals(retrievedContext.previousThreadMessage())) {
+            prompt.append("\nReference message for grounding:\n");
+            prompt.append(retrievedContext.referenceMessage()).append('\n');
         }
 
         prompt.append("\nAssistant focus:\n");
@@ -945,6 +965,7 @@ public class MessageServiceImpl implements MessageService {
         prompt.append("- Current active process: ").append(retrievedContext.activeProcessTitle()).append('\n');
         prompt.append("- Next recommended task: ").append(retrievedContext.nextTask()).append('\n');
         prompt.append("- Partner asked question: ").append(retrievedContext.partnerAskedQuestion()).append('\n');
+        prompt.append("- Latest message low signal: ").append(retrievedContext.latestPartnerMessageLowSignal()).append('\n');
 
         prompt.append("\nRetrieved conversation context:\n");
         if (retrievedContext.messageFacts().isEmpty()) {
@@ -986,12 +1007,19 @@ public class MessageServiceImpl implements MessageService {
                 draft
         );
         String partnerName = displayUserName(partner.getName(), partner.getNickname());
-        String nextTask = retrievedContext.nextTask();
-        String activeProcess = retrievedContext.activeProcessTitle();
+        String nextTask = buildTaskLabel(
+                retrievedContext.nextTask(),
+                retrievedContext.referenceMessage(),
+                retrievedContext.latestPartnerMessage()
+        );
+        String activeProcess = retrievedContext.activeProcessTitle().isBlank()
+                ? "current work"
+                : retrievedContext.activeProcessTitle();
         String lastPartnerMessage = retrievedContext.latestPartnerMessage();
-        String partnerContext = buildPartnerContextPrefix(lastPartnerMessage);
+        String partnerContext = buildPartnerContextPrefix(retrievedContext.referenceMessage());
         String partnerTopic = retrievedContext.partnerTopic();
         boolean partnerAskedQuestion = retrievedContext.partnerAskedQuestion();
+        boolean latestPartnerMessageLowSignal = retrievedContext.latestPartnerMessageLowSignal();
 
         List<String> suggestions = new ArrayList<>();
 
@@ -1013,7 +1041,13 @@ public class MessageServiceImpl implements MessageService {
             }
             default -> {
                 if (!lastPartnerMessage.isBlank()) {
-                    suggestions.add(buildReplySuggestionForLatestMessage(partnerContext, partnerTopic, partnerAskedQuestion, nextTask));
+                    suggestions.add(buildReplySuggestionForLatestMessage(
+                            partnerContext,
+                            partnerTopic,
+                            partnerAskedQuestion,
+                            nextTask,
+                            latestPartnerMessageLowSignal
+                    ));
                     suggestions.add(partnerContext + "우선 " + nextTask + "부터 정리해서 바로 공유드릴게요. 진행하면서 필요한 부분은 바로 반영하겠습니다.");
                     suggestions.add(partnerContext + "말씀 주신 방향 기준으로 " + activeProcess + " 진행 준비해둘게요. 추가로 원하시는 점 있으면 편하게 말씀해주세요.");
                 } else {
@@ -1036,14 +1070,43 @@ public class MessageServiceImpl implements MessageService {
             String draft
     ) {
         User partner = conversation.getOtherParticipant(currentUser.id());
-        String latestPartnerMessage = findLastPartnerMessage(messages, currentUser.id());
-        String partnerTopic = detectPartnerTopic(latestPartnerMessage);
-        boolean partnerAskedQuestion = isQuestionMessage(latestPartnerMessage);
+        int latestPartnerMessageIndex = findLastPartnerMessageIndex(messages, currentUser.id());
+        String latestPartnerMessage = latestPartnerMessageIndex < 0
+                ? ""
+                : decodeMessageText(messages.get(latestPartnerMessageIndex));
+        boolean latestPartnerMessageReferential = isReferentialAcknowledgement(latestPartnerMessage);
+        boolean latestPartnerMessageLowSignal = isLowSignalMessage(latestPartnerMessage);
+        String previousThreadMessage = findPreviousThreadMessage(messages, latestPartnerMessageIndex);
+        String referenceMessage = resolveReferenceMessage(
+                latestPartnerMessage,
+                previousThreadMessage,
+                latestPartnerMessageReferential,
+                latestPartnerMessageLowSignal
+        );
+        String partnerTopic = detectPartnerTopic(referenceMessage);
+        boolean partnerAskedQuestion = isQuestionMessage(latestPartnerMessage)
+                || ((latestPartnerMessageReferential || latestPartnerMessageLowSignal) && isQuestionMessage(previousThreadMessage));
         String nextTask = findNextPendingTask(processes);
         String activeProcessTitle = findActiveProcessTitle(processes);
-        Set<String> queryKeywords = buildAssistantQueryKeywords(goal, draft, latestPartnerMessage, nextTask, activeProcessTitle);
-        String responseFocus = buildAssistantResponseFocus(goal, partnerTopic, partnerAskedQuestion, nextTask, activeProcessTitle);
+        Set<String> queryKeywords = buildAssistantQueryKeywords(
+                goal,
+                draft,
+                latestPartnerMessage,
+                referenceMessage,
+                nextTask,
+                activeProcessTitle,
+                latestPartnerMessageLowSignal
+        );
+        String responseFocus = buildAssistantResponseFocus(
+                goal,
+                partnerTopic,
+                partnerAskedQuestion,
+                nextTask,
+                activeProcessTitle,
+                latestPartnerMessageLowSignal
+        );
 
+        List<String> latestThreadFacts = buildLatestThreadFacts(messages, currentUser, partner, latestPartnerMessageIndex);
         List<String> recentExchangeFacts = buildLatestExchangeFacts(messages, currentUser, partner, 4);
         List<String> scoredMessageFacts = buildRetrievedMessageFacts(
                 messages,
@@ -1052,11 +1115,19 @@ public class MessageServiceImpl implements MessageService {
                 latestPartnerMessage,
                 queryKeywords
         );
-        List<String> messageFacts = mergeRetrievedFacts(recentExchangeFacts, scoredMessageFacts, 6);
+        List<String> messageFacts = mergeRetrievedFacts(
+                latestThreadFacts,
+                mergeRetrievedFacts(recentExchangeFacts, scoredMessageFacts, 8),
+                8
+        );
         List<String> processFacts = buildRetrievedProcessFacts(processes, queryKeywords, nextTask, activeProcessTitle);
 
         return new RetrievedAssistantContext(
                 latestPartnerMessage,
+                previousThreadMessage,
+                referenceMessage,
+                latestPartnerMessageLowSignal,
+                latestPartnerMessageReferential,
                 partnerTopic,
                 partnerAskedQuestion,
                 nextTask,
@@ -1071,11 +1142,16 @@ public class MessageServiceImpl implements MessageService {
             String goal,
             String draft,
             String latestPartnerMessage,
+            String referenceMessage,
             String nextTask,
-            String activeProcessTitle
+            String activeProcessTitle,
+            boolean latestPartnerMessageLowSignal
     ) {
         Set<String> keywords = new LinkedHashSet<>();
-        keywords.addAll(tokenizeForRetrieval(latestPartnerMessage));
+        if (!latestPartnerMessageLowSignal) {
+            keywords.addAll(tokenizeForRetrieval(latestPartnerMessage));
+        }
+        keywords.addAll(tokenizeForRetrieval(referenceMessage));
         keywords.addAll(tokenizeForRetrieval(draft));
         keywords.addAll(tokenizeForRetrieval(nextTask));
         keywords.addAll(tokenizeForRetrieval(activeProcessTitle));
@@ -1201,6 +1277,36 @@ public class MessageServiceImpl implements MessageService {
         return facts;
     }
 
+    private List<String> buildLatestThreadFacts(
+            List<ChatMessage> messages,
+            AuthenticatedUser currentUser,
+            User partner,
+            int latestPartnerMessageIndex
+    ) {
+        if (messages.isEmpty() || latestPartnerMessageIndex < 0) {
+            return List.of();
+        }
+
+        String currentUserName = displayUserName(currentUser.name(), currentUser.nickname());
+        String partnerName = displayUserName(partner.getName(), partner.getNickname());
+        List<String> facts = new ArrayList<>();
+
+        for (int index = Math.max(0, latestPartnerMessageIndex - 2); index <= latestPartnerMessageIndex; index++) {
+            ChatMessage message = messages.get(index);
+            String normalizedText = summarizeMessageForPrompt(message);
+            if (normalizedText.isBlank()) {
+                continue;
+            }
+
+            String speaker = message.getSender().getId().equals(currentUser.id())
+                    ? currentUserName
+                    : partnerName;
+            facts.add("Recent thread - " + speaker + ": " + truncateForPrompt(normalizedText, 180));
+        }
+
+        return facts;
+    }
+
     private int scoreMessageForRetrieval(
             String messageText,
             int index,
@@ -1319,23 +1425,27 @@ public class MessageServiceImpl implements MessageService {
             String partnerTopic,
             boolean partnerAskedQuestion,
             String nextTask,
-            String activeProcessTitle
+            String activeProcessTitle,
+            boolean latestPartnerMessageLowSignal
     ) {
         String questionHint = partnerAskedQuestion
                 ? "Answer the partner's question clearly first. "
                 : "";
+        String lowSignalHint = latestPartnerMessageLowSignal
+                ? "The latest partner message is unclear or non-actionable, so ask for a short clarification while staying aligned with the current thread context. "
+                : "";
 
         return switch (goal) {
-            case "schedule_meeting" -> questionHint + "Propose concrete meeting times and confirm availability before moving to " + nextTask + ".";
-            case "share_document" -> questionHint + "Share or request the right document, then connect it to the current process " + activeProcessTitle + ".";
-            case "next_step" -> questionHint + "Guide the conversation toward the next concrete task: " + nextTask + ".";
+            case "schedule_meeting" -> questionHint + lowSignalHint + "Propose concrete meeting times and confirm availability before moving to " + nextTask + ".";
+            case "share_document" -> questionHint + lowSignalHint + "Share or request the right document, then connect it to the current process " + activeProcessTitle + ".";
+            case "next_step" -> questionHint + lowSignalHint + "Guide the conversation toward the next concrete task: " + nextTask + ".";
             default -> switch (partnerTopic) {
-                case "schedule" -> questionHint + "Reply to the schedule request first, then suggest the next practical coordination step.";
-                case "document" -> questionHint + "Reply with the document or material context first, then explain the next action.";
-                case "feedback" -> questionHint + "Acknowledge the feedback and explain how it will be reflected in " + nextTask + ".";
-                case "next_step" -> questionHint + "Confirm the direction and move the chat toward " + nextTask + ".";
-                case "confirmation" -> questionHint + "Give a clear confirmation, then state the next action.";
-                default -> questionHint + "Reply naturally to the latest partner message and make the next action explicit.";
+                case "schedule" -> questionHint + lowSignalHint + "Reply to the schedule request first, then suggest the next practical coordination step.";
+                case "document" -> questionHint + lowSignalHint + "Reply with the document or material context first, then explain the next action.";
+                case "feedback" -> questionHint + lowSignalHint + "Acknowledge the feedback and explain how it will be reflected in " + nextTask + ".";
+                case "next_step" -> questionHint + lowSignalHint + "Confirm the direction and move the chat toward " + nextTask + ".";
+                case "confirmation" -> questionHint + lowSignalHint + "Give a clear confirmation, then state the next action.";
+                default -> questionHint + lowSignalHint + "Reply naturally to the latest meaningful partner context and make the next action explicit.";
             };
         };
     }
@@ -1353,6 +1463,25 @@ public class MessageServiceImpl implements MessageService {
             }
         }
         return score;
+    }
+
+    private String decodeMessageText(ChatMessage message) {
+        String text = MessageTextCodec.decode(message.getMessage());
+        return text == null ? "" : text.trim();
+    }
+
+    private String summarizeMessageForPrompt(ChatMessage message) {
+        String text = decodeMessageText(message);
+        int attachmentCount = readAttachments(message.getAttachmentsJson()).size();
+        if (text.isBlank() && attachmentCount == 0) {
+            return "";
+        }
+
+        String normalizedText = text.isBlank() ? "Attachment shared" : text;
+        if (attachmentCount > 0) {
+            normalizedText = normalizedText + " (attachments: " + attachmentCount + ")";
+        }
+        return normalizedText;
     }
 
     private Set<String> tokenizeForRetrieval(String text) {
@@ -1499,6 +1628,49 @@ public class MessageServiceImpl implements MessageService {
         return "";
     }
 
+    private int findLastPartnerMessageIndex(List<ChatMessage> messages, Long currentUserId) {
+        for (int index = messages.size() - 1; index >= 0; index--) {
+            ChatMessage message = messages.get(index);
+            if (message.getSender().getId().equals(currentUserId)) {
+                continue;
+            }
+
+            String text = decodeMessageText(message);
+            if (!text.isBlank()) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    private String findPreviousThreadMessage(List<ChatMessage> messages, int latestPartnerMessageIndex) {
+        if (latestPartnerMessageIndex <= 0) {
+            return "";
+        }
+
+        for (int index = latestPartnerMessageIndex - 1; index >= 0; index--) {
+            String text = decodeMessageText(messages.get(index));
+            if (!text.isBlank()) {
+                return text;
+            }
+        }
+        return "";
+    }
+
+    private String resolveReferenceMessage(
+            String latestPartnerMessage,
+            String previousThreadMessage,
+            boolean latestPartnerMessageReferential,
+            boolean latestPartnerMessageLowSignal
+    ) {
+        if ((latestPartnerMessageReferential || latestPartnerMessageLowSignal)
+                && previousThreadMessage != null
+                && !previousThreadMessage.isBlank()) {
+            return previousThreadMessage;
+        }
+        return latestPartnerMessage == null ? "" : latestPartnerMessage;
+    }
+
     private String buildPartnerContextPrefix(String lastPartnerMessage) {
         if (lastPartnerMessage.isBlank()) {
             return "";
@@ -1510,6 +1682,81 @@ public class MessageServiceImpl implements MessageService {
         }
 
         return "\"" + summary + "\" 말씀 주신 내용 기준으로 ";
+    }
+
+    private boolean isReferentialAcknowledgement(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+
+        String normalized = message.trim().toLowerCase(Locale.ROOT);
+        return normalized.length() <= 30
+                && containsAny(normalized, "좋아요", "좋습니다", "그렇게", "그때", "그걸로", "확인", "부탁", "네", "넵", "ok", "sounds good");
+    }
+
+    private boolean isLowSignalMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+
+        String normalized = message.trim().toLowerCase(Locale.ROOT);
+        if (isReferentialAcknowledgement(message)) {
+            return false;
+        }
+        if (normalized.matches("^[\\p{Punct}\\s~]+$")) {
+            return true;
+        }
+        if (normalized.matches("^[ㅋㅎㅠㅜ]+$")) {
+            return true;
+        }
+        if (isQuestionMessage(message)
+                || normalized.matches(".*\\d.*")
+                || normalized.contains("http")
+                || normalized.contains("@")
+                || hasMeaningfulSignalKeyword(normalized)
+                || normalized.contains(" ")) {
+            return false;
+        }
+        if (normalized.matches(".*(요|다|죠|까|네|나요|입니다|합니다|할게요|드릴게요|보낼게요)$")) {
+            return false;
+        }
+        return normalized.length() <= 8;
+    }
+
+    private boolean hasMeaningfulSignalKeyword(String normalized) {
+        return containsAny(
+                normalized,
+                "가능",
+                "확인",
+                "링크",
+                "link",
+                "zoom",
+                "줌",
+                "자료",
+                "문서",
+                "파일",
+                "file",
+                "draft",
+                "초안",
+                "시안",
+                "수정",
+                "피드백",
+                "리뷰",
+                "review",
+                "deck",
+                "일정",
+                "meeting",
+                "미팅",
+                "내일",
+                "오늘",
+                "오후",
+                "오전",
+                "공유",
+                "보내",
+                "반영",
+                "진행",
+                "작업"
+        );
     }
 
     private boolean isQuestionMessage(String message) {
@@ -1560,12 +1807,51 @@ public class MessageServiceImpl implements MessageService {
         return false;
     }
 
+    private String buildTaskLabel(String nextTask, String... contextMessages) {
+        String normalizedTask = nextTask == null ? "" : nextTask.trim();
+        StringBuilder combined = new StringBuilder(normalizedTask);
+        for (String contextMessage : contextMessages) {
+            if (contextMessage == null || contextMessage.isBlank()) {
+                continue;
+            }
+            combined.append(' ').append(contextMessage);
+        }
+
+        String normalized = combined.toString().toLowerCase(Locale.ROOT);
+        if (containsAny(normalized, "zoom", "줌") && containsAny(normalized, "link", "링크")) {
+            return "줌 링크";
+        }
+        if (normalizedTask.matches(".*[가-힣].*")) {
+            return normalizedTask;
+        }
+        if (containsAny(normalized, "draft", "시안")) {
+            return "시안";
+        }
+        if (containsAny(normalized, "revision note", "revision notes", "수정사항", "피드백")) {
+            return "수정 사항";
+        }
+        if (containsAny(normalized, "document", "문서", "자료", "file", "파일")) {
+            return "자료";
+        }
+        if (normalizedTask.isBlank()) {
+            return "다음 작업";
+        }
+        return normalizedTask;
+    }
+
     private String buildReplySuggestionForLatestMessage(
             String partnerContext,
             String partnerTopic,
             boolean partnerAskedQuestion,
-            String nextTask
+            String nextTask,
+            boolean latestPartnerMessageLowSignal
     ) {
+        if (latestPartnerMessageLowSignal) {
+            return partnerContext + "방금 보내주신 내용이 어느 부분을 말씀하신 건지 한 번만 더 알려주시면 바로 맞춰서 진행할게요. 일단은 "
+                    + nextTask
+                    + " 기준으로 준비해둘게요.";
+        }
+
         return switch (partnerTopic) {
             case "schedule" -> partnerContext + "일정 관련해서는 바로 맞춰볼 수 있어요. 가능하신 시간대 주시면 " + nextTask + "까지 이어서 정리하겠습니다.";
             case "document" -> partnerContext + "자료 기준으로 바로 정리해볼게요. 문서 확인 후 " + nextTask + "까지 이어서 진행하겠습니다.";
@@ -1653,6 +1939,10 @@ public class MessageServiceImpl implements MessageService {
 
     private record RetrievedAssistantContext(
             String latestPartnerMessage,
+            String previousThreadMessage,
+            String referenceMessage,
+            boolean latestPartnerMessageLowSignal,
+            boolean latestPartnerMessageReferential,
             String partnerTopic,
             boolean partnerAskedQuestion,
             String nextTask,

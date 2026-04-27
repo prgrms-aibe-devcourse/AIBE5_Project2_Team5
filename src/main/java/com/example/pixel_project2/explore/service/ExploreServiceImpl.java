@@ -4,6 +4,8 @@ import com.example.pixel_project2.common.entity.Post;
 import com.example.pixel_project2.common.entity.PostImage;
 import com.example.pixel_project2.common.entity.enums.Category;
 import com.example.pixel_project2.common.entity.enums.PostType;
+import com.example.pixel_project2.common.repository.CommentRepository;
+import com.example.pixel_project2.common.repository.PickCountRepository;
 import com.example.pixel_project2.common.repository.PostRepository;
 import com.example.pixel_project2.explore.dto.ExploreDesignerResponseDto;
 import com.example.pixel_project2.explore.dto.ExplorePostResponseDto;
@@ -26,9 +28,11 @@ public class ExploreServiceImpl implements ExploreService {
 
     private final PostRepository postRepository;
     private final ExplorerRepository explorerRepository;
+    private final PickCountRepository pickCountRepository;
+    private final CommentRepository commentRepository;
 
     @Override
-    public List<ExplorePostResponseDto> getExploreFeeds(String categoryName, int page, int size, String keyword) {
+    public List<ExplorePostResponseDto> getExploreFeeds(String categoryName, int page, int size, String keyword, Long userId) {
         Pageable pageable = PageRequest.of(page, size);
         
         Category category = null;
@@ -42,7 +46,7 @@ public class ExploreServiceImpl implements ExploreService {
         List<Post> posts = postRepository.findExploreFeeds(PostType.PORTFOLIO, category, keyword, pageable);
 
         return posts.stream()
-                .map(this::convertToDto)
+                .map(post -> convertToDto(post, userId))
                 .collect(Collectors.toList());
     }
 
@@ -67,7 +71,7 @@ public class ExploreServiceImpl implements ExploreService {
         return designers;
     }
 
-    private ExplorePostResponseDto convertToDto(Post post) {
+    private ExplorePostResponseDto convertToDto(Post post, Long userId) {
         String firstImageUrl = post.getImages().stream()
                 .filter(img -> img.getSortOrder() != null && img.getSortOrder() == 1)
                 .map(PostImage::getImageUrl)
@@ -83,11 +87,13 @@ public class ExploreServiceImpl implements ExploreService {
                 .title(post.getTitle())
                 .nickname(post.getUser().getNickname())
                 .pickCount(post.getPickCount())
+                .commentCount((int) commentRepository.countByPostId(post.getId()))
                 .imageUrl(firstImageUrl)
                 .profileImage(post.getUser().getProfileImage())
                 .category(post.getCategory() != null ? post.getCategory().getLabel() : null)
                 .job(job)
                 .description(description)
+                .picked(userId != null && pickCountRepository.existsByUserIdAndPostId(userId, post.getId()))
                 .build();
     }
 }

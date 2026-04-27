@@ -1,6 +1,6 @@
 import Navigation from "../components/Navigation";
 import Footer from "../components/Footer";
-import { Heart, MessageCircle, Bookmark, Calendar, MapPin, Star, ImagePlus, Upload, X, Figma, Sparkles, ExternalLink, CheckCircle, Pencil, Trash2, FolderPlus, FolderOpen } from "lucide-react";
+import { Heart, MessageCircle, Bookmark, Calendar, MapPin, Star, ImagePlus, Upload, X, Figma, Sparkles, ExternalLink, CheckCircle, Pencil, Trash2, FolderPlus, FolderOpen, AlertTriangle } from "lucide-react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { useParams, useNavigate, useSearchParams } from "react-router";
 import { useState, useEffect, useRef, type ChangeEvent, type KeyboardEvent } from "react";
@@ -37,6 +37,12 @@ import {
   type CollectionFolderResponse,
 } from "../api/collectionApi";
 import { createMessageConversationApi } from "../api/messageApi";
+import {
+  getFeedIntegrationLabel,
+  parseFeedIntegrations,
+  serializeFeedIntegrations,
+  type FeedIntegration,
+} from "../utils/feedIntegrations";
 
 type FeedProjectAuthor = {
   name: string;
@@ -61,12 +67,6 @@ type FeedProject = {
   integrations?: FeedIntegration[];
   createdAt?: string;
   persisted?: boolean;
-};
-
-type FeedIntegration = {
-  provider: "figma" | "adobe";
-  label: string;
-  url: string;
 };
 
 type ProfileTab = "feed" | "collection" | "reviews";
@@ -160,15 +160,10 @@ const mapProfileFeedToProject = (
   },
   imageUrl: feed.imageUrls.length <= 1 ? feed.thumbnailImageUrl ?? undefined : undefined,
   images: feed.imageUrls.length > 1 ? feed.imageUrls : undefined,
-  integrations: feed.portfolioUrl
-    ? [
-        {
-          provider: "figma",
-          label: "Portfolio",
-          url: feed.portfolioUrl,
-        },
-      ]
-    : undefined,
+  integrations: parseFeedIntegrations(feed.portfolioUrl).map((integration) => ({
+    ...integration,
+    label: getFeedIntegrationLabel(integration.provider),
+  })),
   createdAt: feed.createdAt ?? undefined,
   persisted: true,
 });
@@ -334,7 +329,6 @@ export default function Profile() {
     isSameProfileKey(currentUser?.email, profileLookupKey);
   const currentUserRole = getCurrentUserRole("designer");
   const profileFeedStorageKey = `pickxel:profile-feed:${username}`;
-  const profileFeedTagStorageKey = `${profileFeedStorageKey}:tags`;
   const [apiProfile, setApiProfile] = useState<ProfileResponse | null>(null);
   const [apiFeedProjects, setApiFeedProjects] = useState<FeedProject[]>([]);
   const [isProfileLoading, setIsProfileLoading] = useState(true);
@@ -372,7 +366,6 @@ export default function Profile() {
   const [editingCollectionName, setEditingCollectionName] = useState("");
   const [savingProjectIdToCollection, setSavingProjectIdToCollection] = useState<number | null>(null);
   const [uploadedProjects, setUploadedProjects] = useState<FeedProject[]>([]);
-  const [feedTagMap, setFeedTagMap] = useState<Record<string, string[]>>({});
   const [isWorkComposerOpen, setIsWorkComposerOpen] = useState(false);
   const [isFeedSuccessOpen, setIsFeedSuccessOpen] = useState(false);
   const [createdFeedTitle, setCreatedFeedTitle] = useState("");
@@ -391,7 +384,8 @@ export default function Profile() {
   const [editFeedTitle, setEditFeedTitle] = useState("");
   const [editFeedDescription, setEditFeedDescription] = useState("");
   const [editFeedCategory, setEditFeedCategory] = useState("");
-  const [editFeedPortfolioUrl, setEditFeedPortfolioUrl] = useState("");
+  const [editFeedFigmaUrl, setEditFeedFigmaUrl] = useState("");
+  const [editFeedAdobeUrl, setEditFeedAdobeUrl] = useState("");
   const [editFeedExistingImages, setEditFeedExistingImages] = useState<string[]>([]);
   const [editFeedNewImageFiles, setEditFeedNewImageFiles] = useState<File[]>([]);
   const [editFeedNewImagePreviews, setEditFeedNewImagePreviews] = useState<string[]>([]);
@@ -400,6 +394,8 @@ export default function Profile() {
   const [workComposerError, setWorkComposerError] = useState("");
   const [isSavingFeedEdit, setIsSavingFeedEdit] = useState(false);
   const [feedEditError, setFeedEditError] = useState("");
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<FeedProject | null>(null);
   const profileImageInputRef = useRef<HTMLInputElement>(null);
   const workImageInputRef = useRef<HTMLInputElement>(null);
   const editFeedImageInputRef = useRef<HTMLInputElement>(null);
@@ -493,7 +489,7 @@ export default function Profile() {
     : "";
   const profileRoleLabel = isClientProfile ? "클라이언트" : "디자이너";
   const profileRoleBadgeClass = isClientProfile
-    ? "border-[#FFB9AA] bg-[#FFF1ED] text-[#B13A21]"
+    ? "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
     : "border-[#BDEFD8] bg-[#DDF8EC] text-[#007E68]";
   const canEditProfile = Boolean(apiProfile?.owner || isOwnProfileLookup);
   const canQuickEditWorkStatus = canEditProfile && apiProfile?.role === "DESIGNER";
@@ -642,11 +638,7 @@ export default function Profile() {
       .then((feeds) => {
         if (ignore) return;
         setApiFeedProjects(
-          feeds.map((feed) => {
-            const project = mapProfileFeedToProject(feed, apiProfile);
-            const savedTags = feedTagMap[String(feed.postId)];
-            return savedTags?.length ? { ...project, tags: savedTags } : project;
-          })
+          feeds.map((feed) => mapProfileFeedToProject(feed, apiProfile))
         );
         setHasLoadedProfileFeeds(true);
       })
@@ -659,7 +651,7 @@ export default function Profile() {
     return () => {
       ignore = true;
     };
-  }, [apiProfile?.userId, feedTagMap, isOwnProfileLookup, profileFeedAuthorKey, profileLookupKey]);
+  }, [apiProfile?.userId, isOwnProfileLookup, profileFeedAuthorKey, profileLookupKey]);
 
   useEffect(() => {
     if (!apiProfile || activeTab !== "collection") return;
@@ -797,8 +789,6 @@ export default function Profile() {
       setCheckedProfileNickname(result.nickname);
       setProfileNicknameCheckMessage("사용 가능한 닉네임입니다.");
     } catch (error) {
-      setApiProfile(previousProfile);
-      setEditWorkStatus(previousWorkStatus);
       setProfileEditError(error instanceof Error ? error.message : "닉네임 중복 확인에 실패했습니다.");
     } finally {
       setIsCheckingProfileNickname(false);
@@ -1051,26 +1041,6 @@ export default function Profile() {
     }
   };
 
-  const saveFeedTags = (postId: number, tags: string[]) => {
-    setFeedTagMap((current) => {
-      const next = {
-        ...current,
-        [String(postId)]: tags,
-      };
-      localStorage.setItem(profileFeedTagStorageKey, JSON.stringify(next));
-      return next;
-    });
-  };
-
-  const removeSavedFeedTags = (postId: number) => {
-    setFeedTagMap((current) => {
-      const next = { ...current };
-      delete next[String(postId)];
-      localStorage.setItem(profileFeedTagStorageKey, JSON.stringify(next));
-      return next;
-    });
-  };
-
   useEffect(() => {
     // localStorage에서 새로운 후기 가져오기
     if (!apiProfile || activeTab !== "reviews") return;
@@ -1122,21 +1092,6 @@ export default function Profile() {
       setUploadedProjects([]);
     }
   }, [profileFeedStorageKey]);
-
-  useEffect(() => {
-    const savedTagMap = localStorage.getItem(profileFeedTagStorageKey);
-    if (!savedTagMap) {
-      setFeedTagMap({});
-      return;
-    }
-
-    try {
-      const parsedTagMap = JSON.parse(savedTagMap);
-      setFeedTagMap(parsedTagMap && typeof parsedTagMap === "object" ? parsedTagMap : {});
-    } catch {
-      setFeedTagMap({});
-    }
-  }, [profileFeedTagStorageKey]);
 
   const handleToggleWorkCategory = (category: string) => {
     const nextCategories = workCategories.includes(category)
@@ -1373,8 +1328,10 @@ export default function Profile() {
     setEditFeedImagesTouched(true);
   };
 
-  const getProjectPortfolioUrl = (project: FeedProject) =>
-    project.integrations?.find((integration) => integration.url)?.url ?? "";
+  const getProjectIntegrationUrl = (
+    project: FeedProject,
+    provider: FeedIntegration["provider"],
+  ) => project.integrations?.find((integration) => integration.provider === provider)?.url ?? "";
 
   const openFeedEditor = (project: FeedProject) => {
     const sourceProject =
@@ -1387,7 +1344,8 @@ export default function Profile() {
     setEditFeedTitle(sourceProject.title);
     setEditFeedDescription(sourceProject.description);
     setEditFeedCategory(sourceProject.category ?? "");
-    setEditFeedPortfolioUrl(getProjectPortfolioUrl(sourceProject));
+    setEditFeedFigmaUrl(getProjectIntegrationUrl(sourceProject, "figma"));
+    setEditFeedAdobeUrl(getProjectIntegrationUrl(sourceProject, "adobe"));
     setEditFeedExistingImages(getProjectImageUrls(sourceProject));
     setEditFeedNewImageFiles([]);
     setEditFeedNewImagePreviews([]);
@@ -1398,6 +1356,8 @@ export default function Profile() {
     if (isSavingFeedEdit) return;
     setEditingFeed(null);
     setFeedEditError("");
+    setEditFeedFigmaUrl("");
+    setEditFeedAdobeUrl("");
     setEditFeedExistingImages([]);
     setEditFeedNewImageFiles([]);
     setEditFeedNewImagePreviews([]);
@@ -1425,6 +1385,15 @@ export default function Profile() {
       return;
     }
 
+    const editFeedPortfolioUrl = serializeFeedIntegrations([
+      { provider: "figma", url: normalizeExternalUrl(editFeedFigmaUrl) },
+      { provider: "adobe", url: normalizeExternalUrl(editFeedAdobeUrl) },
+    ]);
+    if (editFeedPortfolioUrl.length > 200) {
+      setFeedEditError("Figma/Adobe 링크 길이가 너무 길어요. 링크를 줄이거나 하나만 넣어주세요.");
+      return;
+    }
+
     setIsSavingFeedEdit(true);
     setFeedEditError("");
 
@@ -1433,21 +1402,16 @@ export default function Profile() {
         title: editFeedTitle.trim(),
         description: editFeedDescription.trim(),
         category: editFeedCategory,
-        portfolioUrl: editFeedPortfolioUrl.trim(),
+        portfolioUrl: editFeedPortfolioUrl,
       });
       const imageUpdate = editFeedImagesTouched
         ? await replaceFeedImagesApi(editingFeed.id, editFeedExistingImages, editFeedNewImageFiles)
         : null;
       const imageUrls = imageUpdate?.imageUrls ?? getProjectImageUrls(editingFeed);
-      const integrations = updatedFeed.portfolioUrl
-        ? [
-            {
-              provider: "figma" as const,
-              label: "Portfolio",
-              url: updatedFeed.portfolioUrl,
-            },
-          ]
-        : undefined;
+      const integrations = parseFeedIntegrations(updatedFeed.portfolioUrl).map((integration) => ({
+        ...integration,
+        label: getFeedIntegrationLabel(integration.provider),
+      }));
       const updatedProject: FeedProject = {
         ...editingFeed,
         title: updatedFeed.title,
@@ -1456,7 +1420,7 @@ export default function Profile() {
         comments: updatedFeed.commentCount ?? editingFeed.comments,
         category: updatedFeed.category,
         tags: [`#${updatedFeed.category}`],
-        integrations,
+        integrations: integrations.length > 0 ? integrations : undefined,
         imageUrl: imageUrls.length === 1 ? imageUrls[0] : undefined,
         images: imageUrls.length > 1 ? imageUrls : undefined,
         createdAt: updatedFeed.createdAt ?? editingFeed.createdAt,
@@ -1465,6 +1429,8 @@ export default function Profile() {
 
       applyUpdatedFeedProject(updatedProject);
       setEditingFeed(null);
+      setEditFeedFigmaUrl("");
+      setEditFeedAdobeUrl("");
       setEditFeedExistingImages([]);
       setEditFeedNewImageFiles([]);
       setEditFeedNewImagePreviews([]);
@@ -1476,20 +1442,38 @@ export default function Profile() {
     }
   };
 
-  const handleDeleteFeed = async (project: FeedProject) => {
-    if (!window.confirm("이 작업물을 삭제할까요?")) return;
+  const handleDeleteFeed = (project: FeedProject) => {
+    setProjectToDelete(project);
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDeleteFeed = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!projectToDelete) return;
 
     try {
-      await deleteFeedApi(project.id);
-      removeDeletedFeedProject(project.id);
-      removeSavedFeedTags(project.id);
+      await deleteFeedApi(projectToDelete.id);
+      removeDeletedFeedProject(projectToDelete.id);
       setProfileError("");
+      setIsDeleteModalOpen(false);
+      setProjectToDelete(null);
+      // alert은 UI 업데이트가 완전히 끝난 뒤에 띄우는 것이 좋습니다.
+      setTimeout(() => alert("삭제가 완료되었습니다."), 100);
     } catch (error) {
-      setProfileError(error instanceof Error ? error.message : "피드 삭제에 실패했습니다.");
+      console.error("삭제 실패:", error);
+      const errorMessage = error instanceof Error ? error.message : "피드 삭제에 실패했습니다.";
+      setProfileError(errorMessage);
+      alert(`삭제 실패: ${errorMessage}`);
     }
   };
 
   const handleUploadWork = async () => {
+    let createdFeedId: number | null = null;
+    let shouldRollbackCreatedFeed = false;
+
     const trimmedTitle = workTitle.trim();
     const trimmedDescription = workDescription.trim();
     const selectedWorkCategories = workCategories.length > 0 ? workCategories : workCategory ? [workCategory] : [];
@@ -1504,22 +1488,25 @@ export default function Profile() {
     }
 
     const tags = getWorkTagList(`${workTags} ${workTagInput}`);
-    const integrations = [
+    const rawIntegrations = [
       {
         provider: "figma" as const,
-        label: "Figma",
         url: normalizeExternalUrl(figmaUrl),
       },
       {
         provider: "adobe" as const,
-        label: "Adobe",
         url: normalizeExternalUrl(adobeUrl),
       },
     ].filter((integration) => integration.url);
-    const portfolioUrl = integrations[0]?.url ?? "";
-
-    let createdFeedId: number | null = null;
-    let shouldRollbackCreatedFeed = false;
+    const portfolioUrl = serializeFeedIntegrations(rawIntegrations);
+    const integrations = rawIntegrations.map((integration) => ({
+      ...integration,
+      label: getFeedIntegrationLabel(integration.provider),
+    }));
+    if (portfolioUrl.length > 200) {
+      setWorkComposerError("Figma/Adobe 링크 길이가 너무 길어요. 링크를 줄이거나 하나만 넣어주세요.");
+      return;
+    }
 
     try {
       setIsCreatingFeed(true);
@@ -1529,6 +1516,7 @@ export default function Profile() {
         description: trimmedDescription,
         category: primaryWorkCategory,
         portfolioUrl,
+        tags,
       });
       createdFeedId = createdFeed.postId;
       const orderedImageFiles = [...workImageFiles];
@@ -1550,7 +1538,7 @@ export default function Profile() {
         description: createdFeed.description ?? trimmedDescription,
         likes: createdFeed.pickCount ?? 0,
         comments: createdFeed.commentCount ?? 0,
-        tags,
+        tags: tags.length ? tags : [`#${createdFeed.category ?? primaryWorkCategory}`],
         category: createdFeed.category ?? primaryWorkCategory,
         categories: selectedWorkCategories,
         author: {
@@ -1568,7 +1556,6 @@ export default function Profile() {
       };
 
       setApiFeedProjects((current) => [newProject, ...current]);
-      saveFeedTags(createdFeed.postId, tags);
       setHasLoadedProfileFeeds(true);
       setCreatedFeedTitle(createdFeed.title);
       resetWorkComposer();
@@ -1673,7 +1660,7 @@ export default function Profile() {
                       title={unavailable ? "작업 불가" : "작업 가능"}
                       disabled={isSavingWorkStatus}
                       onClick={() => handleQuickWorkStatusChange(option.value)}
-                      className={`size-7 rounded-full border-2 border-white shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-[#9EE7D0] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
+                      className={`size-7 rounded-full border-2 border-white shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-[#BDEFD8] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
                         unavailable ? "bg-[#FF5C3A]" : "bg-[#00C9A7]"
                       } ${active ? "scale-110 ring-2 ring-[#0F0F0F]/15" : "opacity-45 hover:scale-105 hover:opacity-100"}`}
                     />
@@ -1722,10 +1709,9 @@ export default function Profile() {
                     )
                   )}
                 </div>
-                {"realName" in displayProfile &&
-                  displayProfile.realName &&
-                  displayProfile.realName !== displayProfile.name && (
-                    <p className="mb-2 text-sm font-medium text-gray-500">{displayProfile.realName}</p>
+                {(displayProfile as any).realName &&
+                  (displayProfile as any).realName !== displayProfile.name && (
+                    <p className="mb-2 text-sm font-medium text-gray-500">{(displayProfile as any).realName}</p>
                   )}
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-yellow-500">★ {displayProfile.rating}</span>
@@ -1737,7 +1723,7 @@ export default function Profile() {
                   <button
                     type="button"
                     onClick={handleOpenProfileEditor}
-                    className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-bold text-gray-700 transition-all hover:-translate-y-0.5 hover:border-[#00C9A7] hover:text-[#007E68] focus:outline-none focus:ring-2 focus:ring-[#9EE7D0] focus:ring-offset-2"
+                    className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-bold text-gray-700 transition-all hover:-translate-y-0.5 hover:border-[#00C9A7] hover:text-[#007E68] focus:outline-none focus:ring-2 focus:ring-[#BDEFD8] focus:ring-offset-2"
                   >
                     프로필 수정
                   </button>
@@ -1747,9 +1733,9 @@ export default function Profile() {
                     type="button"
                     onClick={handleToggleFollow}
                     disabled={isFollowSaving}
-                    className={`inline-flex items-center gap-2 rounded-lg border px-5 py-2.5 text-sm font-bold transition-all focus:outline-none focus:ring-2 focus:ring-[#9EE7D0] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
+                    className={`inline-flex items-center gap-2 rounded-lg border px-5 py-2.5 text-sm font-bold transition-all focus:outline-none focus:ring-2 focus:ring-[#BDEFD8] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
                       apiProfile.following
-                        ? "border-[#9EE7D0] bg-white text-[#007E68] hover:border-[#00C9A7]"
+                        ? "border-[#BDEFD8] bg-white text-[#007E68] hover:border-[#00C9A7]"
                         : "border-[#00C9A7] bg-[#00C9A7] text-white shadow-[0_8px_18px_rgba(0,201,167,0.22)] hover:-translate-y-0.5 hover:bg-[#00A88C]"
                     }`}
                   >
@@ -1761,7 +1747,7 @@ export default function Profile() {
                     type="button"
                     onClick={handleStartConversation}
                     disabled={isStartingConversation}
-                    className="inline-flex items-center gap-2 rounded-lg border border-[#9EE7D0] bg-[#16A673] px-5 py-2.5 text-sm font-bold text-white shadow-[0_8px_18px_rgba(22,166,115,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#0E8F61] hover:shadow-[0_10px_22px_rgba(22,166,115,0.28)] focus:outline-none focus:ring-2 focus:ring-[#9EE7D0] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-lg border border-[#BDEFD8] bg-[#00C9A7] px-5 py-2.5 text-sm font-bold text-white shadow-[0_8px_18px_rgba(0,201,167,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#00A88C] hover:shadow-[0_10px_22px_rgba(0,201,167,0.28)] focus:outline-none focus:ring-2 focus:ring-[#BDEFD8] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <MessageCircle className="size-4" />
                     <span>{isStartingConversation ? "연결 중..." : "메시지 보내기"}</span>
@@ -1785,7 +1771,7 @@ export default function Profile() {
               {displayProfile.badges.map((badge, index) => (
                 <span
                   key={index}
-                  className="bg-[#4DD4AC] text-black px-3 py-1 rounded-full text-xs font-medium"
+                  className="bg-[#00C9A7] text-black px-3 py-1 rounded-full text-xs font-medium"
                 >
                   {badge}
                 </span>
@@ -1928,7 +1914,7 @@ export default function Profile() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleDeleteFeed(project)}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteFeed(project); }}
                             className="rounded-lg border border-gray-200 p-2 text-gray-500 transition-colors hover:border-[#FFB9AA] hover:text-[#B13A21]"
                             aria-label="피드 삭제"
                           >
@@ -1976,8 +1962,8 @@ export default function Profile() {
                           rel="noreferrer"
                           className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
                             integration.provider === "figma"
-                              ? "border-[#BDEFD8] bg-[#F5FFFB] text-[#007E68] hover:bg-[#E8FFF7]"
-                              : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21] hover:bg-[#FFF1ED]"
+                              ? "border-[#BDEFD8] bg-[#F5FFFB] text-[#007E68] hover:bg-[#F5FFFB]"
+                              : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21] hover:bg-[#FFF7F4]"
                           }`}
                         >
                           {integration.provider === "figma" ? (
@@ -2012,7 +1998,7 @@ export default function Profile() {
                       {project.tags.map((tag, idx) => (
                         <span
                           key={idx}
-                          className="bg-[#4DD4AC] text-black px-3 py-1 rounded-full text-xs"
+                          className="bg-[#00C9A7] text-black px-3 py-1 rounded-full text-xs"
                         >
                           {tag}
                         </span>
@@ -2066,7 +2052,7 @@ export default function Profile() {
                       }
                     }}
                     placeholder="새 컬렉션 이름"
-                    className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#9EE7D0]"
+                    className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
                   />
                   <button
                     type="button"
@@ -2255,7 +2241,7 @@ export default function Profile() {
                               type="button"
                               onClick={() => handleSaveProjectToCollection(project, folder.folderId)}
                               disabled={savingProjectIdToCollection === project.id}
-                              className="rounded-lg border border-[#9EE7D0] px-3 py-1.5 text-xs font-bold text-[#007E68] hover:bg-[#E8FFF7] disabled:cursor-not-allowed disabled:opacity-60"
+                              className="rounded-lg border border-[#BDEFD8] px-3 py-1.5 text-xs font-bold text-[#007E68] hover:bg-[#F5FFFB] disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               {savingProjectIdToCollection === project.id ? "저장 중" : folder.folderName}
                             </button>
@@ -2380,7 +2366,7 @@ export default function Profile() {
                           {review.complimentTags.map((tag) => (
                             <span
                               key={tag}
-                              className="inline-flex items-center rounded-lg border border-[#FFB6A6] bg-[#FFF3EF] px-3 py-1.5 text-xs font-bold text-[#D84325] shadow-sm"
+                              className="inline-flex items-center rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-1.5 text-xs font-bold text-[#B13A21] shadow-sm"
                             >
                               {tag}
                             </span>
@@ -2597,7 +2583,7 @@ export default function Profile() {
                           key={tag}
                           type="button"
                           onClick={() => removeWorkTag(tag)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-[#EFFFFC] px-3 py-1.5 text-xs font-bold text-[#007E68] transition-colors hover:bg-[#DDF8EC]"
+                          className="inline-flex items-center gap-1 rounded-lg bg-[#F5FFFB] px-3 py-1.5 text-xs font-bold text-[#007E68] transition-colors hover:bg-[#DDF8EC]"
                           aria-label={`${tag} 태그 제거`}
                         >
                           {tag}
@@ -2638,7 +2624,7 @@ export default function Profile() {
                           onClick={() => handleToggleWorkCategory(category)}
                           className={`rounded-lg border px-3 py-2 text-xs font-bold transition-all ${
                             isSelected
-                              ? "border-[#FF5C3A] bg-[#FFF1ED] text-[#B13A21] shadow-sm"
+                              ? "border-[#FF5C3A] bg-[#FFF7F4] text-[#B13A21] shadow-sm"
                               : "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:border-[#FF5C3A] hover:bg-white"
                           }`}
                           aria-pressed={isSelected}
@@ -2665,7 +2651,7 @@ export default function Profile() {
                               disabled={isAdded}
                               className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-all ${
                                 isAdded
-                                  ? "cursor-default border-[#00C9A7]/30 bg-[#EFFFFC] text-[#007E68]"
+                                  ? "cursor-default border-[#00C9A7]/30 bg-[#F5FFFB] text-[#007E68]"
                                   : "border-white bg-white text-gray-700 shadow-sm hover:-translate-y-0.5 hover:border-[#00C9A7] hover:text-[#007E68]"
                               }`}
                             >
@@ -2811,7 +2797,7 @@ export default function Profile() {
                         {workCategories.map((category) => (
                           <span
                             key={category}
-                            className="inline-flex rounded-lg bg-[#FFF1ED] px-2.5 py-1 text-xs font-bold text-[#D84325]"
+                            className="inline-flex rounded-lg bg-[#FFF7F4] px-2.5 py-1 text-xs font-bold text-[#B13A21]"
                           >
                             {category}
                           </span>
@@ -2844,13 +2830,13 @@ export default function Profile() {
                     {(figmaUrl.trim() || adobeUrl.trim()) && (
                       <div className="flex flex-wrap gap-2 border-t border-gray-100 pt-3">
                         {figmaUrl.trim() && (
-                          <span className="inline-flex items-center gap-1 rounded-lg bg-[#E8FBF7] px-2.5 py-1 text-xs font-bold text-[#007E68]">
+                          <span className="inline-flex items-center gap-1 rounded-lg bg-[#F5FFFB] px-2.5 py-1 text-xs font-bold text-[#007E68]">
                             <Figma className="size-3.5" />
                             Figma
                           </span>
                         )}
                         {adobeUrl.trim() && (
-                          <span className="inline-flex items-center gap-1 rounded-lg bg-[#FFF1ED] px-2.5 py-1 text-xs font-bold text-[#D84325]">
+                          <span className="inline-flex items-center gap-1 rounded-lg bg-[#FFF7F4] px-2.5 py-1 text-xs font-bold text-[#B13A21]">
                             <Sparkles className="size-3.5" />
                             Adobe
                           </span>
@@ -3398,13 +3384,22 @@ export default function Profile() {
 
               <label className="grid gap-2">
                 <span className="text-sm font-bold text-gray-700">포트폴리오 URL</span>
-                <input
-                  value={editFeedPortfolioUrl}
-                  onChange={(event) => setEditFeedPortfolioUrl(event.target.value)}
-                  maxLength={200}
-                  className="h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
-                  placeholder="https://portfolio.example.com/work"
-                />
+                <div className="grid gap-3">
+                  <input
+                    value={editFeedFigmaUrl}
+                    onChange={(event) => setEditFeedFigmaUrl(event.target.value)}
+                    maxLength={200}
+                    className="h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                    placeholder="Figma 링크 https://www.figma.com/..."
+                  />
+                  <input
+                    value={editFeedAdobeUrl}
+                    onChange={(event) => setEditFeedAdobeUrl(event.target.value)}
+                    maxLength={200}
+                    className="h-11 rounded-lg border border-gray-200 px-3 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
+                    placeholder="Photoshop/Adobe 링크 https://portfolio.example.com/adobe"
+                  />
+                </div>
               </label>
             </div>
 
@@ -3468,6 +3463,45 @@ export default function Profile() {
                   className="h-11 rounded-lg bg-[#00C9A7] px-4 text-sm font-bold text-[#0F0F0F] transition-colors hover:bg-[#00A88C]"
                 >
                   피드 보기
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isDeleteModalOpen && (
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+          onClick={() => setIsDeleteModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 text-center">
+              <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-[#FFF1ED] text-[#FF5C3A]">
+                <AlertTriangle className="size-8" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900">정말 삭제하시겠습니까?</h3>
+              <p className="mt-2 text-sm text-gray-500">
+                삭제된 작업물은 복구할 수 없습니다.<br />
+                신중하게 결정해 주세요.
+              </p>
+              <div className="mt-8 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteModalOpen(false)}
+                  className="flex-1 rounded-xl border border-gray-200 bg-white py-3 text-sm font-bold text-gray-600 transition-all hover:bg-gray-50"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => confirmDeleteFeed(e)}
+                  className="flex-1 rounded-xl bg-[#FF5C3A] py-3 text-sm font-bold text-white transition-all hover:bg-[#E54D2E] shadow-[0_8px_20px_rgba(255,92,58,0.25)]"
+                >
+                  삭제하기
                 </button>
               </div>
             </div>

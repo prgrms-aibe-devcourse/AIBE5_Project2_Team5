@@ -9,13 +9,13 @@ import org.springframework.data.repository.query.Param;
 import java.util.Optional;
 
 public interface PickCountRepository extends JpaRepository<PickCount, Long> {
-    @Query("select p from PickCount p where p.user_id.id = :userId and p.post_id.id = :postId")
+    @Query("select p from PickCount p where p.user.id = :userId and p.post.id = :postId")
     Optional<PickCount> findByUserIdAndPostId(@Param("userId") Long userId, @Param("postId") Long postId);
 
-    @Query("select count(p) > 0 from PickCount p where p.user_id.id = :userId and p.post_id.id = :postId")
+    @Query("select count(p) > 0 from PickCount p where p.user.id = :userId and p.post.id = :postId")
     boolean existsByUserIdAndPostId(@Param("userId") Long userId, @Param("postId") Long postId);
 
     @Modifying
-    @Query("delete from PickCount p where p.post_id.id = :postId")
+    @Query("delete from PickCount p where p.post.id = :postId")
     void deleteByPostId(@Param("postId") Long postId);
 }
