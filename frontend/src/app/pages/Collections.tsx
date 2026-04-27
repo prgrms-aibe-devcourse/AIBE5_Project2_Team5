@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import Footer from "../components/Footer";
 import {
   Funnel,
@@ -110,7 +111,7 @@ export default function Collections() {
       setShowCreateModal(false);
       void loadCollections();
     } catch (err) {
-      alert("컬렉션 생성에 실패했습니다.");
+      toast.error("컬렉션 생성에 실패했습니다.");
     }
   };
 
@@ -143,7 +144,7 @@ export default function Collections() {
       void loadCollections();
     } catch (err) {
       console.error("Delete API failed:", err);
-      alert("컬렉션 삭제에 실패했습니다.");
+      toast.error("컬렉션 삭제에 실패했습니다.");
     }
   };
 
@@ -176,7 +177,7 @@ export default function Collections() {
       void loadCollections(); // 서버의 정렬된 최신 데이터 다시 불러오기
     } catch (err) {
       console.error("Reorder failed:", err);
-      alert("순서 저장에 실패했습니다.");
+      toast.error("순서 저장에 실패했습니다.");
       void loadCollections(); // 실패 시 원래 순서로 복구
     }
   };
@@ -201,7 +202,7 @@ export default function Collections() {
       const detail = await getCollectionFolderApi(collectionId);
       setSelectedCollection(detail);
     } catch (err) {
-      alert("컬렉션 상세 정보를 불러오지 못했습니다.");
+      toast.error("컬렉션 상세 정보를 불러오지 못했습니다.");
     }
   };
 
@@ -218,7 +219,7 @@ export default function Collections() {
       }
     } catch (err) {
       console.error("Rename failed:", err);
-      alert("이름 수정에 실패했습니다.");
+      toast.error("이름 수정에 실패했습니다.");
     }
   };
 
@@ -231,7 +232,7 @@ export default function Collections() {
       setSelectedCollection(detail);
       void loadCollections();
     } catch (err) {
-      alert("피드 제거에 실패했습니다.");
+      toast.error("피드 제거에 실패했습니다.");
     }
   };
 
