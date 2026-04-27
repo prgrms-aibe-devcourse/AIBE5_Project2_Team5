@@ -1537,9 +1537,6 @@ export default function Profile() {
     ].filter((integration) => integration.url);
     const portfolioUrl = integrations[0]?.url ?? "";
 
-    let createdFeedId: number | null = null;
-    let shouldRollbackCreatedFeed = false;
-
     try {
       setIsCreatingFeed(true);
       setWorkComposerError("");

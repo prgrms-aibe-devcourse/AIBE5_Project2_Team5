@@ -1163,7 +1163,6 @@ export default function Explore() {
           onOpenCollectionModal={(_, e) => openCollectionModal(selectedExploreFeed, e)}
           onShare={(_, e) => handleShare(selectedExploreFeed, e)}
           onProposalClick={(_, e) => handleProposalClick(selectedExploreFeed, e)}
-          onToggleCommentLike={(feedId, commentId) => toggleCommentLike(feedId, commentId)}
           onStartEditingComment={startEditingComment}
           onEditingCommentTextChange={setEditingCommentText}
           onUpdateComment={handleUpdateComment}

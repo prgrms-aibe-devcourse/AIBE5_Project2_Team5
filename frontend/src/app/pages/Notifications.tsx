@@ -194,7 +194,6 @@ export default function Notifications() {
     cancelEditingComment,
     handleUpdateComment,
     handleDeleteComment,
-    toggleCommentLike,
   } = useFeedComments<FeedCardItem, FeedCardItem>({
     selectedFeed: selectedExploreFeed,
     currentUser,
@@ -651,7 +650,6 @@ export default function Notifications() {
             onOpenCollectionModal={() => alert("컬렉션 기능은 준비 중입니다.")}
             onShare={() => alert("링크가 복사되었습니다.")}
             onProposalClick={() => navigate("/messages")}
-            onToggleCommentLike={toggleCommentLike}
             onStartEditingComment={startEditingComment}
             onEditingCommentTextChange={setEditingCommentText}
             onUpdateComment={handleUpdateComment}
