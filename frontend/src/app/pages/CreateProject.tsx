@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { Check, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import Navigation from "../components/Navigation";
 import { createProjectApi, getProjectFilterOptionsApi, type FilteringResponse } from "../api/projectApi";
+import { uploadFeedImagesApi } from "../api/uploadApi";
 
 const SKILL_PRESETS = ["Figma", "Illustrator", "Photoshop", "After Effects", "Cinema 4D", "Blender", "Webflow"];
 // 예산과 일정이 Step 1으로 이동했으므로 Step을 3개로 압축합니다.
@@ -13,6 +14,21 @@ const DEFAULT_FILTERS: FilteringResponse = {
   experienceLevels: [],
   jobStates: [],
 };
+const MAX_PROJECT_IMAGES = 4;
+
+const readImageFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Failed to preview image."));
+    };
+    reader.onerror = () => reject(new Error("Failed to preview image."));
+    reader.readAsDataURL(file);
+  });
 
 function TagInput({
                     tags,
@@ -141,6 +157,8 @@ export default function CreateProject() {
   const [skills, setSkills] = useState<string[]>([]);
   const [responsibilities, setResponsibilities] = useState<string[]>([""]);
   const [qualifications, setQualifications] = useState<string[]>([""]);
+  const [projectImageFiles, setProjectImageFiles] = useState<File[]>([]);
+  const [projectImagePreviews, setProjectImagePreviews] = useState<string[]>([]);
   const [deadline, setDeadline] = useState("");
   const minDeadline = new Date().toISOString().split("T")[0];
 
@@ -185,6 +203,31 @@ export default function CreateProject() {
 
   const submitDisabled = !step1Valid || !step2Valid || submitting;
 
+  const handleProjectImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? [])
+      .filter((file) => file.type.startsWith("image/"))
+      .slice(0, Math.max(0, MAX_PROJECT_IMAGES - projectImageFiles.length));
+
+    event.target.value = "";
+    if (files.length === 0) {
+      toast.error(`You can upload up to ${MAX_PROJECT_IMAGES} image files.`);
+      return;
+    }
+
+    try {
+      const previews = await Promise.all(files.map(readImageFileAsDataUrl));
+      setProjectImageFiles((current) => [...current, ...files].slice(0, MAX_PROJECT_IMAGES));
+      setProjectImagePreviews((current) => [...current, ...previews].slice(0, MAX_PROJECT_IMAGES));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to preview image.");
+    }
+  };
+
+  const handleRemoveProjectImage = (index: number) => {
+    setProjectImageFiles((current) => current.filter((_, currentIndex) => currentIndex !== index));
+    setProjectImagePreviews((current) => current.filter((_, currentIndex) => currentIndex !== index));
+  };
+
   const handleSubmit = async () => {
     if (submitDisabled) {
       toast.error("Fill in all required fields first.");
@@ -209,6 +252,20 @@ export default function CreateProject() {
         state: "OPEN",
         deadline,
       });
+
+      if (projectImageFiles.length > 0) {
+        try {
+          await uploadFeedImagesApi(response.postId, projectImageFiles);
+        } catch (error) {
+          toast.error(
+            error instanceof Error
+              ? `Project created, but image upload failed: ${error.message}`
+              : "Project created, but image upload failed.",
+          );
+          navigate("/projects");
+          return;
+        }
+      }
 
       toast.success("Project created.");
       navigate("/projects");
@@ -400,6 +457,36 @@ export default function CreateProject() {
                       <label className="mb-2 block text-sm font-semibold text-gray-700">지원 자격</label>
                       <DynamicList items={qualifications} onChange={setQualifications} placeholder="Qualification item" />
                     </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-gray-700">Project images (optional)</label>
+                      <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={handleProjectImageChange}
+                          className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:px-3 file:py-2 file:font-semibold file:text-emerald-700"
+                      />
+                      <p className="mt-2 text-xs text-gray-500">
+                        You can upload up to {MAX_PROJECT_IMAGES} images. Images will be uploaded when you submit.
+                      </p>
+                      {projectImagePreviews.length > 0 && (
+                          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                            {projectImagePreviews.map((preview, index) => (
+                                <div key={`${preview}-${index}`} className="relative aspect-square overflow-hidden rounded-xl border border-gray-200">
+                                  <img src={preview} alt={`Project preview ${index + 1}`} className="h-full w-full object-cover" />
+                                  <button
+                                      type="button"
+                                      onClick={() => handleRemoveProjectImage(index)}
+                                      className="absolute right-2 top-2 rounded-full bg-black/60 p-1.5 text-white"
+                                      aria-label="Remove image"
+                                  >
+                                    <X className="size-3" />
+                                  </button>
+                                </div>
+                            ))}
+                          </div>
+                      )}
+                    </div>
                   </div>
                 </section>
             )}
@@ -442,6 +529,23 @@ export default function CreateProject() {
                             <li>-</li>
                         )}
                       </ul>
+                    </div>
+                    <div className="rounded-2xl bg-gray-50 p-4">
+                      <p className="font-semibold text-slate-900">Project images</p>
+                      {projectImagePreviews.length > 0 ? (
+                          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                            {projectImagePreviews.map((preview, index) => (
+                                <img
+                                    key={`${preview}-${index}`}
+                                    src={preview}
+                                    alt={`Project image ${index + 1}`}
+                                    className="aspect-square w-full rounded-lg object-cover"
+                                />
+                            ))}
+                          </div>
+                      ) : (
+                          <p className="mt-1">-</p>
+                      )}
                     </div>
 
                   </div>
