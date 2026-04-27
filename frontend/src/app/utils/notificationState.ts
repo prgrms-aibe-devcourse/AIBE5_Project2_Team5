@@ -63,6 +63,8 @@ const buildNotificationTitle = (item: NotificationResponse): string => {
       return `${name}님에게서 새 메시지가 도착했습니다.`;
     case "COLLECTION":
       return `${name}님이 회원님의 게시물을 컬렉션에 저장했습니다.`;
+    case "COMMENT":
+      return `${name}님이 회원님의 게시물에 댓글을 남겼습니다.`;
     default:
       return "새 알림이 있습니다.";
   }
@@ -73,10 +75,11 @@ const buildNavigatePath = (item: NotificationResponse): string | undefined => {
   switch (item.type) {
     case "LIKE":
     case "COLLECTION":
+    case "COMMENT":
       // 피드 게시물로 이동 (해당 포스트 앵커)
       return item.referenceId ? `/feed` : "/feed";
     case "MESSAGE":
-      return "/messages";
+      return item.referenceId ? `/messages?conversationId=${item.referenceId}` : "/messages";
     case "PROJECT_APPLY":
     case "PROJECT_ACCEPT":
       return item.referenceId ? `/projects/${item.referenceId}` : "/projects";
@@ -126,9 +129,16 @@ const mapBackendNotification = (item: NotificationResponse): NotificationItem =>
       break;
     case "COLLECTION":
       category = "activity";
-      type = "like";
-      action = "피드 보기";
+      type = "announcement";
+      break;
+    case "COMMENT":
+      category = "activity";
+      type = "message";
       actionType = "feed";
+      action = "댓글 보기";
+      break;
+    default:
+      category = "system";
       break;
   }
 
@@ -144,8 +154,8 @@ const mapBackendNotification = (item: NotificationResponse): NotificationItem =>
     isSnoozed: false,
     actionType,
     action,
-    senderProfileImage: item.senderProfileImage,
-    referenceId: item.referenceId,
+    senderProfileImage: item.senderProfileImage ?? undefined,
+    referenceId: item.referenceId ?? undefined,
     avatar: !!item.senderProfileImage,
     navigatePath: buildNavigatePath(item),
   };

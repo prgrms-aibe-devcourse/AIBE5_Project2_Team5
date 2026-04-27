@@ -161,7 +161,7 @@ function DdayPill({deadline}: { deadline: string }) {
                 ? "bg-red-50 text-red-500"
                 : dday <= 7
                     ? "bg-orange-50 text-orange-500"
-                    : "bg-emerald-50 text-emerald-600";
+                    : "bg-[#F5FFFB] text-[#00A88C]";
 
     return (
         <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${colorClass}`}>
@@ -420,7 +420,7 @@ export default function Projects() {
                             <span className="text-[#00C9A7]">s</span>
                             <span className="text-white">ell</span>
                         </h1>
-                        <p className="mt-3 max-w-2xl text-sm text-slate-300">
+                        <p className="mt-3 max-w-2xl text-sm text-gray-300">
                             원하는 프로젝트 고르고<span className="text-[#FF5C3A]">(Pick)</span>, 크리에이티브를 판매합니다<span className="text-[#00C9A7]">(Sell)</span> <br />
                             클라이언트와 디자이너를 잇는 새로운 방식의 프로젝트 매칭 플랫폼
                         </p>
@@ -451,7 +451,7 @@ export default function Projects() {
                                 event.preventDefault();
                                 toast.error("클라이언트만 프로젝트를 등록할 수 있습니다.");
                             }}
-                            className="rounded-xl bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-900 transition hover:bg-emerald-300"
+                            className="rounded-xl bg-[#00C9A7] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#00A88C]"
                         >
                             + 프로젝트 등록
                         </Link>
@@ -473,7 +473,7 @@ export default function Projects() {
                                     key={projectType}
                                     onClick={() => setSelectedProjectType((prev) => (prev === projectType ? null : projectType))}
                                     className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                                        selectedProjectType === projectType ? "bg-slate-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                        selectedProjectType === projectType ? "bg-[#0F0F0F] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                                     }`}
                                 >
                                     {projectType}
@@ -490,7 +490,7 @@ export default function Projects() {
                                     key={experienceLevel}
                                     onClick={() => setSelectedExperience((prev) => (prev === experienceLevel ? null : experienceLevel))}
                                     className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                                        selectedExperience === experienceLevel ? "bg-slate-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                        selectedExperience === experienceLevel ? "bg-[#0F0F0F] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                                     }`}
                                 >
                                     {experienceLevel}
@@ -508,7 +508,7 @@ export default function Projects() {
                                         key={category}
                                         onClick={() => setSelectedCategory((prev) => (prev === category ? null : category))}
                                         className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
-                                            selectedCategory === category ? "bg-emerald-50 text-emerald-700" : "bg-gray-50 text-gray-600 hover:bg-gray-100"
+                                            selectedCategory === category ? "bg-[#F5FFFB] text-[#007E68]" : "bg-gray-50 text-gray-600 hover:bg-gray-100"
                                         }`}
                                     >
                                         <span>{category}</span>
@@ -525,7 +525,7 @@ export default function Projects() {
                                 setSelectedExperience(null);
                                 setSelectedProjectType(null);
                             }}
-                            className="w-full rounded-xl border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-500 transition hover:border-emerald-400 hover:text-emerald-600"
+                            className="w-full rounded-xl border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-500 transition hover:border-[#00C9A7] hover:text-[#00A88C]"
                         >
                             필터 초기화
                         </button>
@@ -536,7 +536,7 @@ export default function Projects() {
                     <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                         <div>
                             <p className="text-sm text-gray-500">총 프로젝트</p>
-                            <p className="text-3xl font-black text-slate-900">{projectsData.length}</p>
+                            <p className="text-3xl font-black text-[#0F0F0F]">{projectsData.length}</p>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -555,13 +555,13 @@ export default function Projects() {
                             <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
                                 <button
                                     onClick={() => setViewMode("list")}
-                                    className={`p-2 ${viewMode === "list" ? "bg-emerald-500 text-white" : "text-gray-400"}`}
+                                    className={`p-2 ${viewMode === "list" ? "bg-[#00C9A7] text-white" : "text-gray-400"}`}
                                 >
                                     <LayoutList className="size-4"/>
                                 </button>
                                 <button
                                     onClick={() => setViewMode("grid")}
-                                    className={`p-2 ${viewMode === "grid" ? "bg-emerald-500 text-white" : "text-gray-400"}`}
+                                    className={`p-2 ${viewMode === "grid" ? "bg-[#00C9A7] text-white" : "text-gray-400"}`}
                                 >
                                     <LayoutGrid className="size-4"/>
                                 </button>
@@ -597,7 +597,7 @@ export default function Projects() {
                                 <article
                                     key={project.id}
                                     onClick={() => void handleOpenProject(project)}
-                                    className="group cursor-pointer overflow-hidden rounded-3xl border border-white/70 bg-white shadow-sm transition hover:-translate-y-1 hover:border-emerald-200 hover:shadow-xl"
+                                    className="group cursor-pointer overflow-hidden rounded-3xl border border-white/70 bg-white shadow-sm transition hover:-translate-y-1 hover:border-[#BDEFD8] hover:shadow-xl"
                                 >
                                     <div
                                         className={viewMode === "grid" ? "flex flex-col" : "flex flex-col md:flex-row"}>
@@ -608,13 +608,13 @@ export default function Projects() {
                                                 <div className="min-w-0">
                                                     <div className="mb-2 flex flex-wrap items-center gap-2">
                                                         <span
-                                                            className="rounded-full bg-slate-900 px-2.5 py-1 text-xs font-bold text-white">{project.badge}</span>
+                                                            className="rounded-full bg-[#0F0F0F] px-2.5 py-1 text-xs font-bold text-white">{project.badge}</span>
                                                         <span
                                                             className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">{project.category}</span>
                                                         <span
-                                                            className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">{project.projectType}</span>
+                                                            className="rounded-full bg-[#F5FFFB] px-2.5 py-1 text-xs font-semibold text-[#007E68]">{project.projectType}</span>
                                                     </div>
-                                                    <h3 className="line-clamp-1 text-lg font-black text-slate-900 transition group-hover:text-emerald-600">
+                                                    <h3 className="line-clamp-1 text-lg font-black text-[#0F0F0F] transition group-hover:text-[#00A88C]">
                                                         {project.title}
                                                     </h3>
                                                 </div>
@@ -624,7 +624,7 @@ export default function Projects() {
                                                     className="rounded-xl p-2 text-gray-300 transition hover:bg-gray-100"
                                                 >
                                                     <Bookmark
-                                                        className={`size-4 ${bookmarked.includes(project.id) ? "fill-emerald-500 text-emerald-500" : "text-gray-300"}`}
+                                                        className={`size-4 ${bookmarked.includes(project.id) ? "fill-[#00C9A7] text-[#00C9A7]" : "text-gray-300"}`}
                                                     />
                                                 </button>
                                             </div>
@@ -635,7 +635,7 @@ export default function Projects() {
                                                 className="mt-5 flex flex-wrap items-end justify-between gap-4 border-t border-gray-100 pt-4">
                                                 <div>
                                                     <p className="text-xs text-gray-400">예산</p>
-                                                    <p className="text-lg font-black text-emerald-600">{project.budget}만원</p>
+                                                    <p className="text-lg font-black text-[#00A88C]">{project.budget}만원</p>
                                                 </div>
 
                                                 <div className="flex items-center gap-3 text-sm text-gray-500">
@@ -645,7 +645,7 @@ export default function Projects() {
                           </span>
                                                     <DdayPill deadline={project.deadline}/>
                                                     <span
-                                                        className="inline-flex items-center gap-1 font-semibold text-emerald-600">
+                                                        className="inline-flex items-center gap-1 font-semibold text-[#00A88C]">
                             {detailLoading === project.id ? "불러오는 중" : "상세보기"}
                                                         <ArrowRight className="size-4"/>
                           </span>
@@ -670,7 +670,7 @@ export default function Projects() {
                                 onClick={() => setActiveTab("posts")}
                                 className={`flex-1 rounded-xl py-2 text-xs font-bold transition-all ${
                                     activeTab === "posts"
-                                        ? "bg-white text-emerald-700 shadow-sm" // 💡 색상 변경
+                                        ? "bg-white text-[#007E68] shadow-sm" // 💡 색상 변경
                                         : "text-gray-400 hover:text-gray-600"
                                 }`}
                             >
@@ -680,7 +680,7 @@ export default function Projects() {
                                 onClick={() => setActiveTab("applications")}
                                 className={`flex-1 rounded-xl py-2 text-xs font-bold transition-all ${
                                     activeTab === "applications"
-                                        ? "bg-white text-emerald-700 shadow-sm" // 💡 색상 변경
+                                        ? "bg-white text-[#007E68] shadow-sm" // 💡 색상 변경
                                         : "text-gray-400 hover:text-gray-600"
                                 }`}
                             >
@@ -701,17 +701,17 @@ export default function Projects() {
                                     <div
                                         key={item.id || item.postId}
                                         onClick={() => handleActivityItemClick(item)}
-                                        className="group relative cursor-pointer rounded-2xl border border-gray-50 bg-gray-50/50 p-4 transition hover:border-emerald-100 hover:bg-white"
+                                        className="group relative cursor-pointer rounded-2xl border border-gray-50 bg-gray-50/50 p-4 transition hover:border-[#BDEFD8] hover:bg-white"
                                     >
                                         <div className="flex items-center justify-between gap-2">
                                             {/* projectState 표시 */}
-                                            <span className={`text-[10px] font-bold ${item.projectState === 'OPEN' ? 'text-emerald-500' : 'text-gray-400'}`}>
+                                            <span className={`text-[10px] font-bold ${item.projectState === 'OPEN' ? 'text-[#00C9A7]' : 'text-gray-400'}`}>
                                 ● {item.projectState === 'OPEN' ? '모집중' : '마감'}
                             </span>
                                             <span className="text-[10px] text-gray-400">{item.deadline?.split('T')[0]}</span>
                                         </div>
                                         {/* title (주된 컨텐츠 1) */}
-                                        <p className="mt-1 line-clamp-1 text-sm font-black text-slate-800 group-hover:text-emerald-600">
+                                        <p className="mt-1 line-clamp-1 text-sm font-black text-[#0F0F0F] group-hover:text-[#00A88C]">
                                             {item.title}
                                         </p>
                                         {/* overview (주된 컨텐츠 2) */}
@@ -721,28 +721,28 @@ export default function Projects() {
                                         <div className="mt-3 flex items-center justify-between">
                                             {/* 하단 정보: jobState 및 category */}
                                             <div className="flex gap-1.5">
-                                <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+                                <span className="rounded-md bg-[#F1F1EE] px-1.5 py-0.5 text-[10px] font-semibold text-gray-600">
                                     {item.jobState}
                                 </span>
                                                 <span className="rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">
                                     {item.category}
                                 </span>
                                             </div>
-                                            <ArrowRight className="size-3 text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-emerald-500" />
+                                            <ArrowRight className="size-3 text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-[#00C9A7]" />
                                         </div>
                                     </div>
                                 ))
                             )}
                         </div>
 
-                        <button className="mt-5 w-full rounded-xl border border-dashed border-gray-200 py-3 text-xs font-semibold text-gray-400 transition hover:border-emerald-200 hover:text-emerald-600">
+                        <button className="mt-5 w-full rounded-xl border border-dashed border-gray-200 py-3 text-xs font-semibold text-gray-400 transition hover:border-[#BDEFD8] hover:text-[#00A88C]">
                             전체 보기
                         </button>
                     </div>
 
                     {/* 하단 홍보 배너 */}
-                    <div className="rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white shadow-lg">
-                        <div className="flex items-center gap-2 text-emerald-400">
+                    <div className="rounded-3xl bg-gradient-to-br from-[#0F0F0F] to-[#1a1a1a] p-6 text-white shadow-lg">
+                        <div className="flex items-center gap-2 text-[#00C9A7]">
                             <BadgeCheck className="size-4" />
                             <span className="text-[10px] font-bold uppercase">Pro Verified</span>
                         </div>
@@ -750,7 +750,7 @@ export default function Projects() {
                             매칭 성공률을 높이고 싶다면?<br />
                             포트폴리오를 업데이트 하세요!
                         </p>
-                        <Link to="/profile/me" className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-emerald-400 hover:underline">
+                        <Link to="/profile/me" className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-[#00C9A7] hover:underline">
                             프로필 수정하기 <ArrowRight className="size-3" />
                         </Link>
                     </div>

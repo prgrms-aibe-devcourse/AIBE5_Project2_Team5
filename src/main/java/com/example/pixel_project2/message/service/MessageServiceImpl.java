@@ -252,6 +252,7 @@ public class MessageServiceImpl implements MessageService {
                 NotificationType.MESSAGE,
                 savedMessage.getId(),
                 createNotificationPreview(message, attachments)
+
         );
 
         return toChatMessageResponse(savedMessage, currentUser.id(), conversation.getPartnerLastReadMessageId(currentUser.id()));

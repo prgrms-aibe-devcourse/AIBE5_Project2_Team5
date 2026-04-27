@@ -1,30 +1,45 @@
-import Navigation from "../components/Navigation";
+﻿import Navigation from "../components/Navigation";
 import { apiRequest } from "../api/apiClient";
 import {
-  Search, Sparkles, Heart, Eye, Users, UserSearch, ImageOff,
-  LayoutGrid, Palette, Camera, PenTool, Box, Monitor, Building2,
-  Shirt, Megaphone, Scissors, Brush, Package, Gamepad2, Music,
-  ArrowRight, X, Plus, ChevronLeft, ChevronRight, Bookmark, Check, FolderPlus, Share2, MessageCircle, Send, MoreVertical, ExternalLink, Figma, Sparkles as SparklesIcon
+  Search, Sparkles, Heart, Users, UserSearch, ImageOff,
+  Palette, Camera, Box, Monitor,
+  ArrowRight, X, Bookmark, MessageCircle, Send,
+  ArrowUpDown,
+  Brush,
+  Building2,
+  Check,
+  Clock,
+  FolderPlus,
+  Gamepad2,
+  LayoutGrid,
+  Megaphone,
+  Music,
+  Package,
+  PenTool,
+  Scissors,
+  Shirt,
+  Star,
+  TrendingUp,
+  type LucideIcon
 } from "lucide-react";
-import { useMemo, useState, useEffect, useRef, useCallback } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback, JSX } from "react";
 import { Link, useNavigate } from "react-router";
-import { motion, AnimatePresence, LayoutGroup } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { FeedDetailModal } from "../components/feed/FeedDetailModal";
 import { useFeedComments } from "../hooks/useFeedComments";
-import { getFeedIntegrationLabel, parseFeedIntegrations } from "../utils/feedIntegrations";
-import { matchingCategories, normalizeCategoryLabel, normalizePostTypeLabel } from "../utils/matchingCategories";
+import { useFeedCollections } from "../hooks/useFeedCollections";
+import { matchingCategories } from "../utils/matchingCategories";
 import {
   getExploreFeedsApi,
-  type ExplorePostResponseDto,
   getExploreDesignersApi,
   type ExploreDesignerResponseDto,
-  getExploreFeedDetailApi,
-  type ExploreFeedDetailResponseDto,
 } from "../api/exploreApi";
-import { getMyCollectionsApi, saveFeedToCollectionApi, createCollectionFolderApi, CollectionFolderResponse } from "../api/collectionApi";
+import { useFeedDetail } from "../hooks/useFeedDetail";
+import { toggleFeedPickApi } from "../api/feedApi";
+import type { CollectionFolderResponse } from "../api/collectionApi";
 import { createMessageConversationApi, sendConversationMessageApi } from "../api/messageApi";
 import { getCurrentUser } from "../utils/auth";
 import { getUserAvatar } from "../utils/avatar";
@@ -100,8 +115,24 @@ const creatorProfiles = [
   },
 ];
 
+// 카테고리 카드 버튼용 배경 이미지 (Unsplash CDN, 작은 사이즈로 최적화)
+const CATEGORY_IMAGES: Record<string, string> = {
+  "그래픽 디자인": "https://images.unsplash.com/photo-1561070791-2526d30994b8?w=240&q=70&auto=format&fit=crop",
+  "포토그래피": "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=240&q=70&auto=format&fit=crop",
+  "일러스트레이션": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=240&q=70&auto=format&fit=crop",
+  "3D Art": "https://images.unsplash.com/photo-1633957897986-70e83293f3ff?w=240&q=70&auto=format&fit=crop",
+  "UI/UX": "https://images.unsplash.com/photo-1551650975-87deedd944c3?w=240&q=70&auto=format&fit=crop",
+  "건축": "https://images.unsplash.com/photo-1487958449943-2429e8be8625?w=240&q=70&auto=format&fit=crop",
+  "패션": "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=240&q=70&auto=format&fit=crop",
+  "광고": "https://images.unsplash.com/photo-1567446537708-ac4aa75c9c28?w=240&q=70&auto=format&fit=crop",
+  "공예": "https://images.unsplash.com/photo-1452860606245-08befc0ff44b?w=240&q=70&auto=format&fit=crop",
+  "미술": "https://images.unsplash.com/photo-1547891654-e66ed7ebb968?w=240&q=70&auto=format&fit=crop",
+  "제품 디자인": "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=240&q=70&auto=format&fit=crop",
+  "게임 디자인": "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=240&q=70&auto=format&fit=crop",
+  "사운드": "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=240&q=70&auto=format&fit=crop",
+};
 
-const CATEGORY_ICONS: Record<string, (props: { className?: string }) => JSX.Element> = {
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
   "그래픽 디자인": Palette,
   "포토그래피": Camera,
   "일러스트레이션": PenTool,
@@ -141,19 +172,6 @@ const AI_MOCK_RESPONSES: Record<string, { summary: string; designers: typeof cre
     tags: ["포토그래피", "룩북", "캠페인"],
   },
 };
-// 탐색 페이지 컬렉션 저장용 타입
-type SavedCollection = CollectionFolderResponse;
-
-const COLLECTION_KEY = "pickxel-explore-collections";
-
-const fetchCollections = async (setCollections: React.Dispatch<React.SetStateAction<SavedCollection[]>>) => {
-  try {
-    const data = await getMyCollectionsApi();
-    setCollections(data);
-  } catch (error) {
-    console.error("컬렉션 목록 로드 실패:", error);
-  }
-};
 
 export default function Explore() {
   const navigate = useNavigate();
@@ -166,64 +184,68 @@ export default function Explore() {
   const currentUserName = currentUser?.nickname || currentUser?.name || "내 프로필";
   const categories = matchingCategories;
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"feed" | "profile">("feed");
+  // ?뺣젹 ?곹깭: 異붿쿇(?쒕쾭 湲곕낯) | 理쒖떊(id ?대┝李⑥닚) | ?멸린(醫뗭븘???대┝李⑥닚)
+  const [sortBy, setSortBy] = useState<"recommended" | "latest" | "popular">("recommended");
+  const [isSortOpen, setIsSortOpen] = useState(false);
 
-  // 서버 데이터 상태
-  const [feeds, setFeeds] = useState<ExplorePostResponseDto[]>([]);
-  const [isFeedsLoading, setIsFeedsLoading] = useState(false);
+  // ?쒕쾭 ?곗씠???곹깭
+  const [feeds, setFeeds] = useState<FeedCardItem[]>([]);
+  const [isFeedsLoading, setIsFeedsLoading] = useState(true);
   const [designers, setDesigners] = useState<ExploreDesignerResponseDto[]>([]);
   const [isDesignersLoading, setIsDesignersLoading] = useState(false);
 
-  // 상호작용 상태
+  // ?섏씠吏??곹깭
+  const [feedPage, setFeedPage] = useState(0);
+  const [hasMoreFeeds, setHasMoreFeeds] = useState(true);
+  const [isFetchingMoreFeeds, setIsFetchingMoreFeeds] = useState(false);
+  const [designerPage, setDesignerPage] = useState(0);
+  const [hasMoreDesigners, setHasMoreDesigners] = useState(true);
+  const [isFetchingMoreDesigners, setIsFetchingMoreDesigners] = useState(false);
+
+  const observerRef = useRef<HTMLDivElement>(null);
+
+  // ?곹샇?묒슜 ?곹깭
   const [likedItems, setLikedItems] = useState<Set<number>>(new Set());
   const commentInputRef = useRef<HTMLInputElement | null>(null);
 
-  // 모달 상태
-  const [selectedProjectForModal, setSelectedProjectForModal] = useState<ExplorePostResponseDto | null>(null);
-  const [selectedProjectDetail, setSelectedProjectDetail] = useState<ExploreFeedDetailResponseDto | null>(null);
+  // 紐⑤떖 ?곹깭
   const [selectedExploreFeed, setSelectedExploreFeed] = useState<FeedCardItem | null>(null);
   const [commentFeedItems, setCommentFeedItems] = useState<FeedCardItem[]>([]);
-  const [isModalDetailLoading, setIsModalDetailLoading] = useState(false);
   const [modalImageIndex, setModalImageIndex] = useState(0);
   const [startingProposalPostId, setStartingProposalPostId] = useState<number | null>(null);
 
-  const [collections, setCollections] = useState<SavedCollection[]>([]);
-  const [collectionModalProject, setCollectionModalProject] = useState<ExplorePostResponseDto | null>(null);
-  const [newCollectionName, setNewCollectionName] = useState("");
-  const [collectionNotice, setCollectionNotice] = useState("");
-  const [isCollectionsLoading, setIsCollectionsLoading] = useState(false);
 
-  // 컬렉션 목록 로드
-  const loadCollections = useCallback(async () => {
-    setIsCollectionsLoading(true);
-    await fetchCollections(setCollections);
-    setIsCollectionsLoading(false);
-  }, []);
 
-  // 초기 컬렉션 로드
+  const {
+    collections,
+    collectionPostIdsByFolder,
+    collectionModalFeed: collectionModalProject,
+    newCollectionName,
+    collectionSavedNotice: collectionNotice,
+    isCollectionSaving,
+    savedItemIds: savedProjectIds,
+    setNewCollectionName,
+    openCollectionModal,
+    closeCollectionModal,
+    saveToCollection,
+    createCollectionAndSave,
+  } = useFeedCollections<FeedCardItem>();
+
+  // 寃?됱뼱 ?붾컮?댁뒪 泥섎━
   useEffect(() => {
-    void loadCollections();
-  }, [loadCollections]);
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
-  // 저장 상태는 우선 프론트 로컬 상태로 관리
-  const [savedProjectIds, setSavedProjectIds] = useState<Set<number>>(new Set());
-
-  // AI 검색 상태
-  const [aiMode, setAiMode] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiResult, setAiResult] = useState<typeof AI_MOCK_RESPONSES["default"] | null>(null);
-  const [aiTypedText, setAiTypedText] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const catScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
-
-  function toCommentAuthorRole(role: string) {
-    if (role === "CLIENT") return "프로젝트 클라이언트";
-    if (role === "DESIGNER") return "디자이너";
-    return role;
-  }
 
   const {
     commentText,
@@ -248,43 +270,67 @@ export default function Explore() {
     selectedFeed: selectedExploreFeed,
     currentUser,
     currentUserId: currentUser?.userId ?? null,
+    apiFeedItems: commentFeedItems,
     setApiFeedItems: setCommentFeedItems,
     setSelectedFeed: setSelectedExploreFeed,
     toFeedCommentRole: toCommentAuthorRole,
   });
 
-  // 피드 액션 헬퍼
+  // useFeedDetail ???곸슜 (?쇰뱶 ?섏씠吏? ?숈씪???곸꽭 濡쒕뵫 濡쒖쭅)
+  const { isLoading: isFeedDetailLoading } = useFeedDetail({
+    selectedFeed: selectedExploreFeed,
+    setApiFeedItems: setFeeds as React.Dispatch<React.SetStateAction<FeedCardItem[]>>,
+    setSelectedFeed: setSelectedExploreFeed,
+  });
+
+  const openFeedDetail = (project: FeedCardItem) => {
+    setSelectedExploreFeed(project);
+    setModalImageIndex(0);
+  };
+
+  // ?쇰뱶 ?≪뀡 ?ы띁
   const toggleLike = async (id: number, e?: React.MouseEvent) => {
     e?.stopPropagation();
     try {
-      const result = await apiRequest<{ postId: number; picked: boolean; pickCount: number }>(
-        `/api/feeds/${id}/like`,
-        { method: "POST" },
-        "좋아요 처리에 실패했습니다.",
-      );
-      setFeeds((prev) =>
-        prev.map((item) =>
-          item.postId === result.postId ? { ...item, pickCount: result.pickCount } : item,
-        ),
-      );
-      setLikedItems((prev) => {
+      // ?쒕쾭??醫뗭븘???붿껌 ?꾩넚
+      const response = await toggleFeedPickApi(id);
+
+      // 1. ?섑듃 ?쒖꽦???곹깭 ?낅뜲?댄듃 (Set)
+      setLikedItems(prev => {
         const newSet = new Set(prev);
-        if (result.picked) newSet.add(result.postId);
-        else newSet.delete(result.postId);
+        if (response.picked) newSet.add(id);
+        else newSet.delete(id);
         return newSet;
       });
-    } catch {
-      // 실패 시 낙관적 업데이트 없이 무시
+
+      // 2. ?쇰뱶 紐⑸줉(feeds) ?곗씠?곗쓽 醫뗭븘?????숆린??
+      setFeeds(prevFeeds =>
+        prevFeeds.map(feed =>
+          feed.id === id
+            ? { ...feed, likes: response.pickCount, likedByMe: response.picked }
+            : feed
+        )
+      );
+
+      // 3. 留뚯빟 ?곸꽭 紐⑤떖???대젮?덈떎硫??곸꽭 ?곗씠?곕룄 ?숆린??
+      if (selectedExploreFeed && selectedExploreFeed.id === id) {
+        setSelectedExploreFeed(prev =>
+          prev ? { ...prev, likes: response.pickCount, likedByMe: response.picked } : null
+        );
+      }
+    } catch (error) {
+      console.error("醫뗭븘??泥섎━ 以??ㅻ쪟 諛쒖깮:", error);
+      alert("醫뗭븘??泥섎━???ㅽ뙣?덉뒿?덈떎. ?ㅼ떆 ?쒕룄?댁＜?몄슂.");
     }
   };
 
-  const handleShare = (item: ExplorePostResponseDto, e?: React.MouseEvent) => {
+  const handleShare = (item: FeedCardItem, e?: React.MouseEvent) => {
     e?.stopPropagation();
     const copyToClipboard = () => {
       navigator.clipboard
         .writeText(window.location.href)
-        .then(() => alert("공유 링크가 클립보드에 복사되었습니다."))
-        .catch(() => alert("링크 복사에 실패했습니다."));
+        .then(() => alert("怨듭쑀 留곹겕媛 ?대┰蹂대뱶??蹂듭궗?섏뿀?듬땲??"))
+        .catch(() => alert("留곹겕 蹂듭궗???ㅽ뙣?덉뒿?덈떎."));
     };
     if (navigator.share) {
       navigator
@@ -295,211 +341,59 @@ export default function Explore() {
     }
   };
 
-  const openCollectionModal = (project: any, e?: React.MouseEvent) => {
+
+  const moveModalCarousel = (dir: -1 | 1, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    setCollectionModalProject(project);
-    setCollectionNotice("");
-    setNewCollectionName("");
-    void loadCollections();
-  };
-
-  const saveToCollection = async (folderId: number) => {
-    if (!collectionModalProject) return;
-    
-    try {
-      await saveFeedToCollectionApi(folderId, collectionModalProject.postId);
-      setCollectionNotice("컬렉션에 저장되었습니다.");
-      setSavedProjectIds(prev => new Set(prev).add(collectionModalProject.postId));
-      void loadCollections();
-      setTimeout(() => setCollectionModalProject(null), 1000);
-    } catch (error) {
-      setCollectionNotice("저장에 실패했습니다. 이미 저장된 항목일 수 있습니다.");
-    }
-  };
-
-  const createCollectionAndSave = async () => {
-    if (!newCollectionName.trim() || !collectionModalProject) return;
-    
-    try {
-      const newFolder = await createCollectionFolderApi(newCollectionName.trim());
-      if (newFolder && newFolder.folderId) {
-        await saveToCollection(newFolder.folderId);
-        setNewCollectionName("");
-      }
-    } catch (error) {
-      setCollectionNotice("컬렉션 생성 또는 저장에 실패했습니다.");
-    }
-  };
-
-  useEffect(() => {
-    if (!selectedProjectForModal) {
-      setSelectedProjectDetail(null);
-      setIsModalDetailLoading(false);
-      setModalImageIndex(0);
-      return;
-    }
-
-    let ignore = false;
-
-    async function loadExploreFeedDetail() {
-      try {
-        setIsModalDetailLoading(true);
-        const detail = await getExploreFeedDetailApi(selectedProjectForModal.postId);
-        if (ignore) return;
-        setSelectedProjectDetail(detail);
-      } catch (error) {
-        if (ignore) return;
-        console.error("탐색 피드 상세 로딩 실패:", error);
-        setSelectedProjectDetail(null);
-      } finally {
-        if (!ignore) {
-          setIsModalDetailLoading(false);
-        }
-      }
-    }
-
-    void loadExploreFeedDetail();
-
-    return () => {
-      ignore = true;
-    };
-  }, [selectedProjectForModal?.postId]);
-
-  const mappedSelectedExploreFeed = useMemo<FeedCardItem | null>(() => {
-    if (!selectedProjectForModal) return null;
-
-    const detail = selectedProjectDetail;
-    const imageUrls =
-      detail?.imageUrls?.filter(Boolean).length
-        ? detail.imageUrls.filter(Boolean)
-        : selectedProjectForModal.imageUrl
-          ? [selectedProjectForModal.imageUrl]
-          : [];
-    const commentCount =
-      selectedExploreFeed?.id === selectedProjectForModal.postId
-        ? selectedExploreFeed.comments
-        : detail?.commentCount ?? 0;
-
-    return {
-      id: selectedProjectForModal.postId,
-      feedKey: selectedProjectForModal.postId,
-      author: {
-        userId: selectedProjectForModal.userId,
-        name: detail?.nickname ?? selectedProjectForModal.nickname,
-        role: detail?.job || selectedProjectForModal.job || "디자이너",
-        avatar: getUserAvatar(
-          detail?.profileImageUrl ?? selectedProjectForModal.profileImage,
-          selectedProjectForModal.userId,
-          selectedProjectForModal.nickname,
-        ),
-        profileKey: detail?.profileKey ?? String(selectedProjectForModal.userId),
-      },
-      title: detail?.title ?? selectedProjectForModal.title,
-      description: detail?.description ?? selectedProjectForModal.description ?? "",
-      image: imageUrls[0] ?? "",
-      images: imageUrls,
-      likes:
-        (detail?.pickCount ?? selectedProjectForModal.pickCount) +
-        (likedItems.has(selectedProjectForModal.postId) ? 1 : 0),
-      comments: commentCount,
-      tags: [
-        normalizeCategoryLabel(detail?.category ?? selectedProjectForModal.category ?? ""),
-        normalizePostTypeLabel(detail?.postType ?? "PORTFOLIO"),
-      ].filter(
-        Boolean,
-      ) as string[],
-      category: normalizeCategoryLabel(detail?.category ?? selectedProjectForModal.category ?? ""),
-      integrations: parseFeedIntegrations(detail?.portfolioUrl).map((integration) => ({
-        ...integration,
-        label: getFeedIntegrationLabel(integration.provider),
-      })),
-      createdAt: detail?.createdAt,
-      userId: selectedProjectForModal.userId,
-      portfolioUrl: detail?.portfolioUrl ?? null,
-      likedByMe: likedItems.has(selectedProjectForModal.postId),
-      isMine: detail?.mine ?? currentUser?.userId === selectedProjectForModal.userId,
-      isApiFeed: true,
-    };
-  }, [selectedProjectForModal, selectedProjectDetail, selectedExploreFeed, likedItems, currentUser?.userId]);
-
-  useEffect(() => {
-    if (!mappedSelectedExploreFeed) {
-      setSelectedExploreFeed(null);
-      setCommentFeedItems([]);
-      return;
-    }
-
-    setSelectedExploreFeed((prev) =>
-      prev && prev.id === mappedSelectedExploreFeed.id
-        ? { ...mappedSelectedExploreFeed, comments: prev.comments }
-        : mappedSelectedExploreFeed,
-    );
-
-    setCommentFeedItems((prev) => {
-      const current = prev.find((item) => item.id === mappedSelectedExploreFeed.id);
-      const nextItem =
-        current && current.id === mappedSelectedExploreFeed.id
-          ? { ...mappedSelectedExploreFeed, comments: current.comments }
-          : mappedSelectedExploreFeed;
-
-      return [nextItem];
-    });
-  }, [mappedSelectedExploreFeed]);
-
-  const moveModalCarousel = (direction: -1 | 1, e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    const images = mappedSelectedExploreFeed?.images ?? [];
+    if (!selectedExploreFeed) return;
+    const images = selectedExploreFeed.images || [selectedExploreFeed.image];
     if (images.length <= 1) return;
-    setModalImageIndex(prev => (prev + direction + images.length) % images.length);
+    setModalImageIndex(prev => (prev + dir + images.length) % images.length);
   };
 
-  const handleProposalClick = async (item: ExplorePostResponseDto, e?: React.MouseEvent) => {
+  const handleProposalClick = async (item: FeedCardItem, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    if (startingProposalPostId !== null) return;
 
-    if (!item.userId) {
-      alert("상대방 정보를 찾을 수 없습니다.");
+    if (!item.author?.userId) {
+      alert("?곷?諛??뺣낫瑜?李얠쓣 ???놁뒿?덈떎.");
       return;
     }
 
-    if (currentUser?.userId === item.userId) {
-      alert("내 피드에는 제안을 보낼 수 없습니다.");
+    if (currentUser?.userId === item.author.userId) {
+      alert("???쇰뱶?먮뒗 ?쒖븞??蹂대궪 ???놁뒿?덈떎.");
       return;
     }
 
     const now = Date.now();
-    const proposalMessage = `안녕하세요. "${item.title}" 작업을 보고 프로젝트 제안을 드리고 싶어 연락드립니다. 작업 가능 여부와 일정, 견적을 함께 이야기해보고 싶습니다.`;
+    const proposalMessage = `?덈뀞?섏꽭?? "${item.title}" ?묒뾽??蹂닿퀬 ?꾨줈?앺듃 ?쒖븞???쒕━怨??띠뼱 ?곕씫?쒕┰?덈떎. ?묒뾽 媛???щ?? ?쇱젙, 寃ъ쟻???④퍡 ?댁빞湲고빐蹂닿퀬 ?띠뒿?덈떎.`;
 
-    setStartingProposalPostId(item.postId);
+    setStartingProposalPostId(item.id);
     try {
-      const conversation = await createMessageConversationApi(item.userId);
-      setSelectedProjectForModal(null);
-      navigate(`/messages?conversationId=${conversation.id}`);
-      void sendConversationMessageApi(conversation.id, {
-        clientId: `explore-proposal-${item.postId}-${now}`,
+      const conversation = await createMessageConversationApi(item.author.userId);
+      await sendConversationMessageApi(conversation.id, {
+        clientId: `explore-proposal-${item.id}-${now}`,
         message: proposalMessage,
-        attachments: item.imageUrl
+        attachments: item.image
           ? [
               {
-                id: `explore-feed-${item.postId}`,
+                id: `explore-feed-${item.id}`,
                 type: "image",
-                src: item.imageUrl,
+                src: item.image,
                 name: item.title,
                 uploadStatus: "ready",
               },
             ]
           : [],
-      }).catch((error) => {
-        console.error("제안 메시지 자동 전송 실패:", error);
       });
+
+      navigate(`/messages?conversationId=${conversation.id}`);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "대화를 시작하지 못했습니다.");
+      alert(error instanceof Error ? error.message : "??붾? ?쒖옉?섏? 紐삵뻽?듬땲??");
     } finally {
       setStartingProposalPostId(null);
     }
   };
 
-  // Lenis smooth scroll 설정
+  // Lenis smooth scroll ?ㅼ젙
   useEffect(() => {
     const lenis = new Lenis({ lerp: 0.08, smoothWheel: true });
     
@@ -526,396 +420,530 @@ export default function Explore() {
   }, [checkCatScroll, activeTab]);
 
   const scrollCat = (dir: "left" | "right") => {
-    catScrollRef.current?.scrollBy({ left: dir === "left" ? -200 : 200, behavior: "smooth" });
+    const el = catScrollRef.current;
+    if (!el) return;
+    // 媛???곸뿭??80% ?뺣룄??遺?쒕읇寃??대룞
+    const amount = Math.max(240, el.clientWidth * 0.8);
+    el.scrollBy({ left: dir === "left" ? -amount : amount, behavior: "smooth" });
   };
 
-  // 피드 목록 조회
-  useEffect(() => {
-    if (activeTab !== "feed") return;
-
-    const fetchFeeds = async () => {
-      try {
-        setIsFeedsLoading(true);
-        // 선택 카테고리가 없으면 all로 조회
-        const data = await getExploreFeedsApi(selectedCategory || "all");
-        setFeeds(data);
-      } catch (error) {
-        console.error("피드 로딩 중 오류:", error);
-      } finally {
-        setIsFeedsLoading(false);
+  // ?섏쭅 ?????섑룊 ?ㅽ겕濡?蹂??(移댄뀒怨좊━ ?됱슜)
+  const handleCatWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      const el = catScrollRef.current;
+      if (el) {
+        el.scrollLeft += e.deltaY;
       }
-    };
-
-    fetchFeeds();
-  }, [selectedCategory, activeTab]);
-
-  // 디자이너 목록 조회
-  useEffect(() => {
-    if (activeTab !== "profile") return;
-
-    const fetchDesigners = async () => {
-      try {
-        setIsDesignersLoading(true);
-        const data = await getExploreDesignersApi();
-        setDesigners(data);
-      } catch (error) {
-        console.error("디자이너 로딩 중 오류:", error);
-      } finally {
-        setIsDesignersLoading(false);
-      }
-    };
-
-    fetchDesigners();
-  }, [activeTab]);
-
-  const filteredProjects = useMemo(() => {
-    // 검색어가 있으면 클라이언트에서 제목/닉네임 기준 필터링
-    if (!searchQuery.trim()) return feeds;
-    
-    return feeds.filter((p) => {
-      const q = searchQuery.toLowerCase();
-      return p.title.toLowerCase().includes(q) || p.nickname.toLowerCase().includes(q);
-    });
-  }, [feeds, searchQuery]);
-
-  const filteredDesigners = useMemo(() => {
-    if (!searchQuery.trim()) return designers;
-    const q = searchQuery.toLowerCase();
-    return designers.filter(
-      (d) => 
-        d.nickname.toLowerCase().includes(q) || 
-        (d.job && d.job.toLowerCase().includes(q))
-    );
-  }, [designers, searchQuery]);
-
-  // AI 검색 실행
-  const runAiSearch = useCallback(() => {
-    if (!searchQuery.trim()) return;
-    setAiLoading(true);
-    setAiResult(null);
-    setAiTypedText("");
-      // mock 응답 딜레이
-    setTimeout(() => {
-      const mock = AI_MOCK_RESPONSES.default;
-      setAiResult(mock);
-      setAiLoading(false);
-      // 타이핑 애니메이션
-      let i = 0;
-      const txt = mock.summary;
-      const interval = setInterval(() => {
-        i++;
-        setAiTypedText(txt.slice(0, i));
-        if (i >= txt.length) clearInterval(interval);
-      }, 25);
-    }, 1200);
-  }, [searchQuery]);
-
-  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && aiMode) {
-      e.preventDefault();
-      runAiSearch();
     }
   };
 
+  // ?덉씠??而⑤뵒??諛⑹?瑜??꾪븳 ?붿껌 ID 愿由?
+  const lastFeedsRequestId = useRef(0);
+  const lastDesignersRequestId = useRef(0);
+
+  // ?쇰뱶 紐⑸줉 議고쉶 (珥덇린??諛?臾댄븳 ?ㅽ겕濡?蹂묓빀)
+  const fetchFeeds = useCallback(async (pageNum: number, isInitial: boolean = false) => {
+    const requestId = ++lastFeedsRequestId.current;
+    try {
+      if (isInitial) setIsFeedsLoading(true);
+      else setIsFetchingMoreFeeds(true);
+
+      const data = await getExploreFeedsApi(selectedCategory || "all", debouncedSearchQuery, pageNum, 20);
+      
+      // 理쒖떊 ?붿껌???꾨땲硫??곹깭 ?낅뜲?댄듃 臾댁떆
+      if (requestId !== lastFeedsRequestId.current) return;
+
+      const mappedFeeds: FeedCardItem[] = data.map(item => ({
+        id: item.postId,
+        feedKey: item.postId,
+        author: {
+          userId: item.userId,
+          name: item.nickname,
+          role: item.job || "?붿옄?대꼫",
+          avatar: getUserAvatar(item.profileImage, item.userId, item.nickname),
+          profileKey: String(item.userId),
+        },
+        title: item.title,
+        description: item.description || "",
+        image: item.imageUrl || "",
+        images: item.imageUrl ? [item.imageUrl] : [],
+        likes: item.pickCount,
+        comments: item.commentCount ?? 0,
+        tags: [item.category].filter(Boolean) as string[],
+        category: item.category || undefined,
+        likedByMe: item.picked,
+        isApiFeed: true
+      }));
+
+      if (isInitial) {
+        setFeeds(mappedFeeds);
+        const initiallyLiked = new Set<number>();
+        data.forEach(feed => { if (feed.picked) initiallyLiked.add(feed.postId); });
+        setLikedItems(initiallyLiked);
+      } else {
+        setFeeds(prev => [...prev, ...mappedFeeds]);
+        setLikedItems(prev => {
+          const newSet = new Set(prev);
+          data.forEach(feed => { if (feed.picked) newSet.add(feed.postId); });
+          return newSet;
+        });
+      }
+
+      setHasMoreFeeds(data.length === 20);
+    } catch (error) {
+      if (requestId === lastFeedsRequestId.current) {
+        console.error("?쇰뱶 濡쒕뵫 以??ㅻ쪟:", error);
+      }
+    } finally {
+      if (requestId === lastFeedsRequestId.current) {
+        setIsFeedsLoading(false);
+        setIsFetchingMoreFeeds(false);
+      }
+    }
+  }, [selectedCategory, debouncedSearchQuery]);
+
+  // ?붿옄?대꼫 紐⑸줉 議고쉶
+  const fetchDesigners = useCallback(async (pageNum: number, isInitial: boolean = false) => {
+    const requestId = ++lastDesignersRequestId.current;
+    try {
+      if (isInitial) setIsDesignersLoading(true);
+      else setIsFetchingMoreDesigners(true);
+
+      const data = await getExploreDesignersApi(debouncedSearchQuery, pageNum, 20);
+      
+      // 理쒖떊 ?붿껌???꾨땲硫??곹깭 ?낅뜲?댄듃 臾댁떆
+      if (requestId !== lastDesignersRequestId.current) return;
+
+      if (isInitial) {
+        setDesigners(data);
+      } else {
+        setDesigners(prev => [...prev, ...data]);
+      }
+
+      setHasMoreDesigners(data.length === 20);
+    } catch (error) {
+      if (requestId === lastDesignersRequestId.current) {
+        console.error("?붿옄?대꼫 濡쒕뵫 以??ㅻ쪟:", error);
+      }
+    } finally {
+      if (requestId === lastDesignersRequestId.current) {
+        setIsDesignersLoading(false);
+        setIsFetchingMoreDesigners(false);
+      }
+    }
+  }, [debouncedSearchQuery]);
+
+  // 寃??議곌굔 蹂寃???珥덇린??諛?泥??섏씠吏 濡쒕뱶
+  useEffect(() => {
+    setFeedPage(0);
+    setDesignerPage(0);
+    setHasMoreFeeds(true);
+    setHasMoreDesigners(true);
+
+    if (activeTab === "feed") {
+      fetchFeeds(0, true);
+    } else {
+      fetchDesigners(0, true);
+    }
+  }, [selectedCategory, debouncedSearchQuery, activeTab, fetchFeeds, fetchDesigners]);
+
+  // ?섏씠吏 踰덊샇 利앷? ??異붽? ?곗씠??濡쒕뱶
+  useEffect(() => {
+    if (feedPage > 0 && activeTab === "feed") {
+      fetchFeeds(feedPage);
+    }
+  }, [feedPage, activeTab, fetchFeeds]);
+
+  useEffect(() => {
+    if (designerPage > 0 && activeTab === "profile") {
+      fetchDesigners(designerPage);
+    }
+  }, [designerPage, activeTab, fetchDesigners]);
+
+  // 臾댄븳 ?ㅽ겕濡?Observer ?ㅼ젙
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (first.isIntersecting) {
+          if (activeTab === "feed" && hasMoreFeeds && !isFeedsLoading && !isFetchingMoreFeeds) {
+            setFeedPage(prev => prev + 1);
+          } else if (activeTab === "profile" && hasMoreDesigners && !isDesignersLoading && !isFetchingMoreDesigners) {
+            setDesignerPage(prev => prev + 1);
+          }
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentRef = observerRef.current;
+    if (currentRef) observer.observe(currentRef);
+    return () => { if (currentRef) observer.unobserve(currentRef); };
+  }, [activeTab, hasMoreFeeds, isFeedsLoading, isFetchingMoreFeeds, hasMoreDesigners, isDesignersLoading, isFetchingMoreDesigners]);
+
+  const filteredProjects = useMemo(() => {
+    const list = [...feeds];
+    if (sortBy === "latest") {
+      // createdAt ??遺????id ?대┝李⑥닚?쇰줈 ?대갚
+      list.sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
+    } else if (sortBy === "popular") {
+      list.sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0));
+    }
+    return list;
+  }, [feeds, sortBy]);
+
+  const sortLabel: Record<typeof sortBy, string> = {
+    recommended: "異붿쿇",
+    latest: "理쒖떊",
+    popular: "?멸린",
+  };
+
+  const filteredDesigners = useMemo(() => designers, [designers]);
+
+  // AI 梨꾪똿 ?섎떒 ?ㅽ겕濡?
+
+
+  // ?볤? 紐⑤떖 ?낅젰??onCommentKeyDown?쇰줈 ?꾨떖?섎뒗 ?뱀븘???몃뱾??(?꾩옱??no-op)
+  const handleSearchKeyDown = (_e: React.KeyboardEvent) => {};
+
   return (
-    <div className="min-h-screen flex flex-col bg-[#F7F7F5]">
+    <div className="min-h-screen flex flex-col bg-[#FAFAF8]">
       <Navigation />
 
-      {/* 탐색 검색바 + AI 검색 + 탭 전환 */}
-      <section className="relative z-30 flex justify-center">
-        <div className="bg-transparent w-full max-w-none px-0 pt-6 pb-2 mx-auto">
-          <div className="mx-auto w-full max-w-[1800px] px-5">
-            <div className="flex items-center gap-2.5">
-            {/* 검색 인풋 */}
-            <div className={`relative flex-1 rounded-xl transition-all duration-300 ${
-              aiMode
-                ? "bg-gradient-to-r from-[#00C9A7]/8 to-[#FF5C3A]/4 border-2 border-[#00C9A7]/30 shadow-[0_0_24px_rgba(0,201,167,0.1)]"
-                : "bg-white border border-gray-200/80 shadow-sm hover:border-gray-300 focus-within:border-[#00C9A7]/40 focus-within:shadow-[0_0_0_3px_rgba(0,201,167,0.1)]"
-            }`}>
-              {aiMode ? (
-                <Sparkles className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-[#00C9A7]" />
-              ) : (
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
-              )}
+      {/* ?먯깋 寃?됰컮 (?⑥씪 capsule pill) */}
+      <section className="relative z-30">
+        <div className="max-w-[1800px] mx-auto px-5 pt-7 pb-3">
+          <div className="flex items-center h-12 rounded-full bg-white border border-gray-200/70 shadow-sm hover:border-gray-300 focus-within:border-[#00C9A7]/40 focus-within:shadow-[0_0_0_3px_rgba(0,201,167,0.1)] transition-all duration-300">
+            {/* 寃???명뭼 */}
+            <div className="relative flex-1 min-w-0 flex items-center pl-5 pr-2">
+              <Search className="size-4 text-gray-400 shrink-0" />
               <input
                 ref={searchRef}
                 value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); if (aiResult) setAiResult(null); }}
-                onKeyDown={handleSearchKeyDown}
-                placeholder={aiMode ? "어떤 디자이너를 찾고 계세요? AI가 추천해드릴게요..." : "pickxel에서 검색..."}
-                className="w-full h-10 pl-10 pr-4 bg-transparent text-sm text-[#0F0F0F] placeholder:text-gray-400 focus:outline-none rounded-xl"
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="pickxel?먯꽌 寃??.."
+                className="w-full h-12 pl-3 pr-2 bg-transparent text-[14px] text-[#0F0F0F] placeholder:text-gray-400 focus:outline-none"
               />
               {searchQuery && (
-                <button onClick={() => { setSearchQuery(""); setAiResult(null); }} className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 hover:bg-gray-200/60 rounded-full transition-colors">
+                <button onClick={() => setSearchQuery("")} className="p-0.5 hover:bg-gray-100 rounded-full transition-colors shrink-0" aria-label="寃?됱뼱 吏?곌린">
                   <X className="size-3.5 text-gray-400" />
                 </button>
               )}
             </div>
 
-            {/* AI 버튼 */}
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={() => { setAiMode(!aiMode); setAiResult(null); }}
-              className={`flex items-center gap-1.5 h-10 px-4 rounded-xl text-sm font-semibold transition-all shrink-0 ${
-                aiMode
-                  ? "bg-gradient-to-r from-[#00C9A7] to-[#00A88C] text-white shadow-lg shadow-[#00C9A7]/20"
-                  : "bg-white border border-gray-200/80 shadow-sm text-gray-600 hover:bg-gray-50 hover:text-[#00A88C]"
-              }`}
-            >
-              <Sparkles className="size-3.5" />
-              AI
-            </motion.button>
-
             <div className="w-px h-6 bg-gray-200 shrink-0" />
 
-            {/* 탭 전환 */}
-            <div className="flex rounded-lg bg-white border border-gray-200/80 shadow-sm p-0.5 shrink-0">
+            {/* ??segmented (?쇰뱶/?꾨줈?? */}
+            <div className="relative flex items-center px-1.5 shrink-0">
               <button
                 onClick={() => setActiveTab("feed")}
-                className={`flex items-center gap-1.5 px-3.5 h-9 rounded-md text-sm font-medium transition-all ${
-                  activeTab === "feed" ? "bg-[#00C9A7] text-white shadow-md shadow-[#00C9A7]/20" : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+                className={`relative flex items-center gap-1.5 h-9 px-3 rounded-full text-[13px] font-bold transition-colors z-[1] ${
+                  activeTab === "feed" ? "text-white" : "text-gray-500 hover:text-gray-800"
                 }`}
               >
-                <LayoutGrid className="size-3.5" />
-                <span>피드</span>
+                {activeTab === "feed" && (
+                  <motion.div
+                    layoutId="explore-active-pill"
+                    className="absolute inset-0 bg-[#00C9A7] rounded-full shadow-sm z-0"
+                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                  />
+                )}
+                <LayoutGrid className={`relative z-[2] size-3.5 transition-colors ${activeTab === "feed" ? "text-white" : "text-gray-400"}`} />
+                <span className="relative z-[2]">?쇰뱶</span>
               </button>
               <button
                 onClick={() => setActiveTab("profile")}
-                className={`flex items-center gap-1.5 px-3.5 h-9 rounded-md text-sm font-medium transition-all ${
-                  activeTab === "profile" ? "bg-[#00C9A7] text-white shadow-md shadow-[#00C9A7]/20" : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+                className={`relative flex items-center gap-1.5 h-9 px-3 rounded-full text-[13px] font-bold transition-colors z-[1] ${
+                  activeTab === "profile" ? "text-white" : "text-gray-500 hover:text-gray-800"
                 }`}
               >
-                <Users className="size-3.5" />
-                <span>프로필</span>
+                {activeTab === "profile" && (
+                  <motion.div
+                    layoutId="explore-active-pill"
+                    className="absolute inset-0 bg-[#FF5C3A] rounded-full shadow-sm z-0"
+                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                  />
+                )}
+                <span className="relative z-[2]">프로필</span>
               </button>
             </div>
-          </div>
 
-          {/* AI 결과 패널 */}
-          <AnimatePresence>
-            {aiMode && (aiLoading || aiResult) && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.3 }}
-                className="overflow-hidden"
-              >
-                <div className="mt-3 p-5 bg-gradient-to-br from-white to-[#F0FDF9] rounded-2xl border border-[#00C9A7]/15 shadow-lg">
-                  {aiLoading ? (
-                    <div className="flex items-center gap-3">
-                      <div className="relative size-8">
-                        <div className="absolute inset-0 rounded-full border-2 border-[#00C9A7]/30 border-t-[#00C9A7] animate-spin" />
-                        <Sparkles className="absolute inset-1.5 size-5 text-[#00C9A7]" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-[#0F0F0F]">AI가 분석 중이에요...</p>
-                        <p className="text-xs text-gray-400">조건에 맞는 디자이너를 찾고 있습니다.</p>
-                      </div>
-                    </div>
-                  ) : aiResult && (
-                    <div>
-                      <div className="flex items-start gap-2.5 mb-4">
-                        <div className="size-7 rounded-full bg-gradient-to-br from-[#00C9A7] to-[#00A88C] flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
-                          <Sparkles className="size-3.5 text-white" />
-                        </div>
-                        <p className="text-sm text-gray-700 leading-relaxed">{aiTypedText}<span className="animate-pulse text-[#00C9A7]">|</span></p>
-                      </div>
-                      <div className="grid grid-cols-3 gap-3 mb-4">
-                        {aiResult.designers.map((d) => (
-                          <Link key={d.id} to={`/profile/${d.name}`} className="flex items-center gap-3 p-3 rounded-xl bg-white hover:bg-[#00C9A7]/5 border border-gray-100 hover:border-[#00C9A7]/30 transition-all group/ai shadow-sm">
-                            <ImageWithFallback src={d.avatar} alt={d.name} className="size-10 rounded-full ring-2 ring-white shadow-sm" />
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-[#0F0F0F] group-hover/ai:text-[#00A88C] transition-colors truncate">{d.name}</p>
-                              <p className="text-xs text-gray-500 truncate">{d.role}</p>
-                            </div>
-                          </Link>
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[10px] text-gray-400 font-medium">추천 카테고리</span>
-                        {aiResult.tags.map((t) => (
-                          <button key={t} onClick={() => { setSelectedCategory(t); setAiResult(null); setAiMode(false); }} className="text-xs px-2.5 py-1 rounded-full bg-[#00C9A7]/10 text-[#00A88C] font-medium hover:bg-[#00C9A7]/20 transition-colors">
-                            {t}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+            {/* ?뺣젹 ??됲꽣 (?묒そ ??怨듯넻 ?몄텧, jitter ?쒓굅) */}
+            <div className="w-px h-6 bg-gray-200 shrink-0" />
+            <div className="relative shrink-0 pr-2">
+                  <button
+                    onClick={() => setIsSortOpen((v) => !v)}
+                    className="flex items-center gap-1.5 h-9 px-3 rounded-full text-[13px] font-medium text-gray-700 hover:bg-gray-50 transition-all"
+                  >
+                    <ArrowUpDown className="size-3.5 text-gray-400" />
+                    <span>{sortLabel[sortBy]}</span>
+                  </button>
+                  <AnimatePresence>
+                    {isSortOpen && (
+                      <>
+                        <div className="fixed inset-0 z-30" onClick={() => setIsSortOpen(false)} />
+                        <motion.div
+                          initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                          transition={{ duration: 0.15 }}
+                          className="absolute right-0 top-full mt-2 z-40 w-44 rounded-xl bg-white border border-gray-200 shadow-xl py-1.5 overflow-hidden"
+                        >
+                          {([
+                            { key: "recommended", icon: Star, label: "추천", desc: "Pickxel 큐레이션" },
+                            { key: "latest", icon: Clock, label: "최신", desc: "최근 등록된 순" },
+                            { key: "popular", icon: TrendingUp, label: "인기", desc: "좋아요 많은 순" },
+                          ] as const).map(({ key, icon: Icon, label, desc }) => (
+                            <button
+                              key={key}
+                              onClick={() => { setSortBy(key); setIsSortOpen(false); }}
+                              className={`w-full flex items-start gap-2.5 px-3 py-2 text-left hover:bg-gray-50 transition-colors ${
+                                sortBy === key ? "bg-[#00C9A7]/5" : ""
+                              }`}
+                            >
+                              <Icon className={`size-3.5 mt-1 shrink-0 ${sortBy === key ? "text-[#00A88C]" : "text-gray-400"}`} />
+                              <div className="min-w-0">
+                                <p className={`text-[13px] font-semibold ${sortBy === key ? "text-[#00A88C]" : "text-gray-800"}`}>{label}</p>
+                                <p className="text-[11px] text-gray-400 truncate">{desc}</p>
+                              </div>
+                              {sortBy === key && <Check className="ml-auto size-3.5 text-[#00A88C] mt-1" />}
+                            </button>
+                          ))}
+                        </motion.div>
+                      </>
+                    )}
+                  </AnimatePresence>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* 탐색 카테고리 필터 */}
+      {/* ?먯깋 移댄뀒怨좊━ ?꾪꽣 (??以?洹좊벑 遺꾨같, ?쒕늿???몄텧) */}
       {activeTab === "feed" && (
         <section className="bg-transparent pb-3">
-          <div className="max-w-[1800px] mx-auto px-5 relative">
-            {/* 왼쪽 스크롤 버튼 */}
-            {canScrollLeft && (
-              <div className="absolute left-0 top-0 bottom-0 z-10 flex items-center">
-                <div className="w-20 h-full bg-gradient-to-r from-[#F7F7F5] via-[#F7F7F5]/80 to-transparent pointer-events-none absolute left-0" />
-                <button onClick={() => scrollCat("left")} className="relative z-10 ml-2 size-8 rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 shadow-sm flex items-center justify-center text-gray-500 hover:bg-white hover:text-gray-700 transition-all">
-                  <ChevronLeft className="size-4" />
-                </button>
-              </div>
-            )}
-            {/* 오른쪽 스크롤 버튼 */}
-            {canScrollRight && (
-              <div className="absolute right-0 top-0 bottom-0 z-10 flex items-center">
-                <div className="w-20 h-full bg-gradient-to-l from-[#F7F7F5] via-[#F7F7F5]/80 to-transparent pointer-events-none absolute right-0" />
-                <button onClick={() => scrollCat("right")} className="relative z-10 mr-2 ml-auto size-8 rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 shadow-sm flex items-center justify-center text-gray-500 hover:bg-white hover:text-gray-700 transition-all">
-                  <ChevronRight className="size-4" />
-                </button>
-              </div>
-            )}
-            <LayoutGroup>
-            <div
-              ref={catScrollRef}
-              data-cat-scroll
-              className="flex items-center gap-2 py-4 px-1 overflow-x-auto [&::-webkit-scrollbar]:hidden"
-              style={{ scrollbarWidth: "none" }}
-            >
-              {/* 전체 버튼 */}
-              <button
-                onClick={() => setSelectedCategory(null)}
-                className={`relative flex items-center gap-2 px-5 py-2.5 rounded-lg text-[13px] font-semibold whitespace-nowrap shrink-0 transition-colors duration-200 z-[1] ${
-                  !selectedCategory ? "text-white" : "text-gray-600 bg-white border border-gray-200/80 shadow-sm hover:bg-gray-50"
-                }`}
-              >
-                {!selectedCategory && (
-                  <motion.div
-                    layoutId="catIndicator"
-                    className="absolute inset-0 rounded-lg bg-gradient-to-r from-[#FF5C3A] to-[#00C9A7] shadow-lg shadow-[#FF5C3A]/20"
-                    transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                  />
-                )}
-                <span className="relative z-[1]">전체</span>
-              </button>
-              {categories.map((cat) => {
-                const Icon = CATEGORY_ICONS[cat] || Palette;
-                const isActive = selectedCategory === cat;
-                return (
+          <div className="max-w-[1800px] mx-auto px-5">
+            <div className="flex items-stretch gap-1.5 py-3 px-1">
+                  {/* ?꾩껜 踰꾪듉 (?붾━??洹몃씪?붿뼵?? */}
                   <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(isActive ? null : cat)}
-                    className={`relative flex items-center gap-2 px-5 py-2.5 rounded-lg text-[13px] font-semibold whitespace-nowrap shrink-0 transition-colors duration-200 z-[1] ${
-                      isActive ? "text-white" : "text-gray-600 bg-white border border-gray-200/80 shadow-sm hover:bg-gray-50"
+                    onClick={() => setSelectedCategory(null)}
+                    className={`relative h-[52px] flex-1 basis-0 min-w-0 rounded-md overflow-visible transition-all duration-200 ${
+                      !selectedCategory ? "scale-[1.03] shadow-lg shadow-[#00C9A7]/30" : "hover:-translate-y-0.5 hover:shadow-md"
                     }`}
                   >
-                    {isActive && (
-                      <motion.div
-                        layoutId="catIndicator"
-                        className="absolute inset-0 rounded-lg bg-gradient-to-r from-[#FF5C3A] to-[#00C9A7] shadow-lg shadow-[#FF5C3A]/20"
-                        transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                      />
-                    )}
-                    <Icon className="relative z-[1] size-4" />
-                    <span className="relative z-[1]">{cat}</span>
+                    {/* 諛곌꼍 (overflow-hidden???덉そ span?쇰줈 寃⑸━) */}
+                    <span className="absolute inset-0 rounded-md overflow-hidden">
+                      <span className="absolute inset-0 bg-gradient-to-br from-[#00C9A7] via-[#00A88C] to-[#008F77]" />
+                    </span>
+                    {/* 議곕챸 耳쒖???湲濡쒖슦 bloom */}
+                    <AnimatePresence>
+                      {!selectedCategory && (
+                        <motion.span
+                          key="all-active"
+                          className="absolute inset-0 rounded-md pointer-events-none"
+                          initial={{ opacity: 0, boxShadow: "0 0 0 2px rgba(0,201,167,0), 0 0 0 0px rgba(0,201,167,0), 0 0 0px rgba(0,201,167,0)" }}
+                          animate={{ opacity: 1, boxShadow: "0 0 0 2.5px #00C9A7, 0 0 0 6px rgba(0,201,167,0.2), 0 4px 22px rgba(0,201,167,0.4)" }}
+                          exit={{ opacity: 0, boxShadow: "0 0 0 2px rgba(0,201,167,0), 0 0 0 0px rgba(0,201,167,0), 0 0 0px rgba(0,201,167,0)" }}
+                          transition={{ duration: 0.28, ease: "easeOut" }}
+                        />
+                      )}
+                    </AnimatePresence>
+                    <span className="relative z-[1] flex items-center justify-center gap-1 h-full px-1 text-white">
+                      <LayoutGrid className="size-3.5 shrink-0" strokeWidth={2.2} />
+                      <span className="text-[12.5px] font-bold tracking-tight">?꾩껜</span>
+                    </span>
                   </button>
-                );
-              })}
+
+                  {categories.map((cat) => {
+                    const Icon = CATEGORY_ICONS[cat] || Palette;
+                    const image = CATEGORY_IMAGES[cat];
+                    const isActive = selectedCategory === cat;
+                    return (
+                      <button
+                        key={cat}
+                        onClick={() => setSelectedCategory(isActive ? null : cat)}
+                        className={`relative h-[52px] flex-1 basis-0 min-w-0 rounded-md overflow-visible bg-gray-800 transition-all duration-200 ${
+                          isActive ? "scale-[1.03] shadow-lg shadow-[#00C9A7]/25" : "hover:-translate-y-0.5 hover:shadow-md"
+                        }`}
+                      >
+                        {/* ?대?吏 + ?ㅻ쾭?덉씠 (overflow-hidden 寃⑸━) */}
+                        <span className="absolute inset-0 rounded-md overflow-hidden">
+                          {image && (
+                            <img
+                              src={image}
+                              alt=""
+                              loading="lazy"
+                              className={`absolute inset-0 w-full h-full object-cover transition-transform duration-500 ${
+                                isActive ? "scale-110" : "scale-100"
+                              }`}
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = "none";
+                              }}
+                            />
+                          )}
+                          <span
+                            className={`absolute inset-0 transition-opacity duration-200 ${
+                              isActive
+                                ? "bg-gradient-to-t from-black/65 via-black/45 to-black/25"
+                                : "bg-gradient-to-t from-black/80 via-black/60 to-black/40"
+                            }`}
+                          />
+                        </span>
+
+                        {/* 議곕챸 耳쒖???湲濡쒖슦 bloom */}
+                        <AnimatePresence>
+                          {isActive && (
+                            <motion.span
+                              key={`active-${cat}`}
+                              className="absolute inset-0 rounded-md pointer-events-none"
+                              initial={{ opacity: 0, boxShadow: "0 0 0 2px rgba(0,201,167,0), 0 0 0 0px rgba(0,201,167,0), 0 0 0px rgba(0,201,167,0)" }}
+                              animate={{ opacity: 1, boxShadow: "0 0 0 2.5px #00C9A7, 0 0 0 6px rgba(0,201,167,0.2), 0 4px 22px rgba(0,201,167,0.4)" }}
+                              exit={{ opacity: 0, boxShadow: "0 0 0 2px rgba(0,201,167,0), 0 0 0 0px rgba(0,201,167,0), 0 0 0px rgba(0,201,167,0)" }}
+                              transition={{ duration: 0.28, ease: "easeOut" }}
+                            />
+                          )}
+                        </AnimatePresence>
+
+                        {/* 肄섑뀗痢?*/}
+                        <span className="relative z-[1] flex items-center justify-center gap-1.5 h-full px-2 text-white">
+                          <Icon className="size-3.5 shrink-0" />
+                          <span
+                            className="text-[13px] font-bold tracking-tight text-center leading-tight whitespace-nowrap"
+                            style={{ textShadow: "0 1px 4px rgba(0,0,0,0.85), 0 0 2px rgba(0,0,0,0.6)" }}
+                          >
+                            {cat}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
             </div>
-            </LayoutGroup>
-          </div>
         </section>
       )}
 
-      {/* 탐색 메인 콘텐츠 */}
+      {/* ?먯깋 硫붿씤 肄섑뀗痢?*/}
       <div className="flex-1">
-        {/* 피드 카드 그리드 */}
+        {/* ?쇰뱶 移대뱶 洹몃━??*/}
         {activeTab === "feed" && (
           <section className="max-w-[1800px] mx-auto px-5 pt-1 pb-16">
             {isFeedsLoading ? (
-              // 로딩 스피너
+              // 濡쒕뵫 ?ㅽ뵾??
               <div className="flex justify-center py-20">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00C9A7]"></div>
               </div>
             ) : filteredProjects.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {filteredProjects.map((project, index) => (
-                  <motion.div
-                    key={project.postId}
-                    initial={{ opacity: 0, y: 30 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true, margin: "-60px" }}
-                    transition={{ delay: (index % 4) * 0.08, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-                    className="group cursor-pointer pb-2"
-                    onClick={() => setSelectedProjectForModal(project)}
-                  >
-                    <div className="relative rounded-2xl overflow-hidden bg-white shadow-[0_2px_8px_rgba(0,0,0,0.06)] group-hover:shadow-[0_20px_50px_rgba(0,0,0,0.12)] group-hover:-translate-y-2 transition-all duration-500 ease-out">
-                      {/* 이미지 영역 */}
-                      <div className="relative aspect-[4/3] overflow-hidden">
-                        <ImageWithFallback
-                          src={project.imageUrl || ""}
-                          alt={project.title}
-                          className="w-full h-full object-cover group-hover:scale-[1.08] transition-transform duration-700 ease-out"
-                        />
-                        {/* hover 오버레이 */}
-                        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-400 pointer-events-none" />
+              <>
+                {/* 洹좎씪 洹몃━?? 紐⑤뱺 移대뱶 4:3 ?숈씪 ?ъ씠利?*/}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
+                  {filteredProjects.map((project, index) => {
+                    const isSaved = savedProjectIds.has(project.id);
+                    const isLiked = likedItems.has(project.id) || project.likedByMe;
+                    return (
+                      <motion.div
+                        key={project.id}
+                        initial={{ opacity: 0, y: 24 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true, margin: "-60px" }}
+                        transition={{ delay: (index % 5) * 0.06, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                        className="group cursor-pointer"
+                        onClick={() => openFeedDetail(project)}
+                      >
+                        {/* ?대?吏 移대뱶 (4:3 怨좎젙) */}
+                        <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] group-hover:shadow-[0_18px_40px_rgba(0,0,0,0.14)] transition-shadow duration-500">
+                          <ImageWithFallback
+                            src={project.image || ""}
+                            alt={project.title}
+                            className="w-full h-full object-cover block group-hover:scale-[1.03] transition-transform duration-700 ease-out"
+                          />
 
-                        {/* 저장 버튼 */}
-                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 -translate-y-1 group-hover:translate-y-0 transition-all duration-300 z-10">
+                          {/* 移댄뀒怨좊━ 諛곗? (醫뚯긽?? ?몃쾭 ???몄텧) */}
+                          {project.category && (
+                            <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 -translate-y-1 group-hover:translate-y-0 transition-all duration-300 z-10">
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-md text-[11px] font-semibold text-[#0F0F0F] shadow-sm">
+                                {project.category}
+                              </span>
+                            </div>
+                          )}
+
                           <button
                             onClick={(e) => { e.stopPropagation(); openCollectionModal(project, e); }}
-                            className={`flex items-center gap-1.5 h-8 px-3.5 rounded-full text-xs font-semibold shadow-lg cursor-pointer hover:scale-105 active:scale-95 transition-all duration-200 ${
-                              savedProjectIds.has(project.postId)
-                                ? "bg-[#00C9A7] text-white shadow-[#00C9A7]/30 hover:bg-[#00b89a]"
-                                : "bg-black/60 backdrop-blur-xl text-white hover:bg-black/80 border border-white/15"
-                            }`}
                             title="컬렉션에 저장"
+                            className={`absolute top-0 right-3 z-10 flex flex-col items-center justify-center gap-0.5 w-9 pt-2.5 pb-4 opacity-0 group-hover:opacity-100 transition-all duration-300 active:brightness-90 ${
+                              isSaved
+                                ? "bg-[#FF5C3A]"
+                                : "bg-[#1C1C1C] hover:bg-[#333]"
+                            }`}
+                            style={{
+                              clipPath: "polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 11px), 0 100%)",
+                              boxShadow: "0 4px 10px rgba(0,0,0,0.3)"
+                            }}
                           >
-                            <Bookmark className={`size-3.5 ${savedProjectIds.has(project.postId) ? "fill-white" : ""}`} />
-                            {savedProjectIds.has(project.postId) ? "저장됨" : "저장"}
+                            <Bookmark className={`size-3.5 text-white ${isSaved ? "fill-white" : ""}`} />
+                            <span className="text-[10px] font-bold text-white tracking-tight leading-none">
+                              {isSaved ? "저장됨" : "저장"}
+                            </span>
                           </button>
+
+                          {/* ?섎떒 ?댁쭩 洹몃씪?붿뼵???몃쾭 ??移댄뀒怨좊━/???諛곗? 媛?낆꽦?? */}
+                          <div className="absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
                         </div>
 
-                        {/* 하단 정보 오버레이 */}
-                        <div className="absolute inset-x-0 bottom-0 flex flex-col justify-end p-4">
-                          <div className="translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-400 delay-75">
-                            <div className="flex items-end justify-between">
-                              <div className="min-w-0 flex-1">
-                                <p className="text-white font-bold text-[15px] leading-tight mb-1 truncate" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.5)" }}>{project.title}</p>
-                                <p className="text-white/80 text-sm" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.4)" }}>{project.nickname}</p>
-                              </div>
-                              <div className="flex gap-1.5 shrink-0 ml-3">
-                                <span className="flex items-center gap-1 bg-black/40 backdrop-blur-xl text-white text-[11px] px-2.5 py-1 rounded-full font-medium">
-                                  <Heart className="size-3 fill-white" />{project.pickCount}
-                                </span>
-                              </div>
+                        {/* 移대뱶 ?몃? 罹≪뀡 (Behance ?? ?쒕ぉ / ?묎? + 醫뗭븘?붋룸뙎湲) */}
+                        <div className="pt-2.5 px-0.5 pb-2">
+                          <h3 className="font-semibold text-[13.5px] text-[#0F0F0F] truncate group-hover:text-[#00A88C] transition-colors duration-300 leading-snug">
+                            {project.title}
+                          </h3>
+                          <div className="mt-1 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                              <ImageWithFallback
+                                src={project.author.avatar}
+                                alt={project.author.name}
+                                className="size-4 rounded-full ring-1 ring-gray-100 shrink-0 object-cover"
+                              />
+                              <p className="text-[11.5px] text-gray-500 font-medium truncate">{project.author.name}</p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0 text-[11px] text-gray-400 font-medium">
+                              <span className="flex items-center gap-0.5">
+                                <Heart className={`size-3 ${isLiked ? "fill-[#FF5C3A] text-[#FF5C3A]" : ""}`} />
+                                {project.likes}
+                              </span>
+                              <span className="flex items-center gap-0.5">
+                                <MessageCircle className="size-3" />
+                                {project.comments ?? 0}
+                              </span>
                             </div>
                           </div>
                         </div>
-                      </div>
-                      {/* 카드 하단 정보 */}
-                      <div className="px-4 py-3.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <h3 className="font-semibold text-sm text-[#0F0F0F] truncate group-hover:text-[#00A88C] transition-colors duration-300">{project.title}</h3>
-                            <p className="text-xs text-gray-400 mt-1">{project.nickname}</p>
-                          </div>
-                        </div>
-                      </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+
+                {/* 臾댄븳 ?ㅽ겕濡?媛먯? 諛?濡쒕뵫 ?쒖떆 */}
+                <div ref={observerRef} className="h-20 flex items-center justify-center mt-10">
+                  {isFetchingMoreFeeds && (
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#00C9A7]"></div>
+                      <p className="text-xs text-gray-400 font-medium">새로운 피드를 불러오는 중...</p>
                     </div>
-                  </motion.div>
-                ))}
-              </div>
+                  )}
+                  {!hasMoreFeeds && filteredProjects.length > 0 && (
+                    <p className="text-sm text-gray-400 font-medium">모든 피드를 확인했습니다.</p>
+                  )}
+                </div>
+              </>
             ) : (
               <div className="flex flex-col items-center justify-center py-32">
                 <div className="w-24 h-24 rounded-full bg-gray-100 flex items-center justify-center mb-5 animate-pulse">
                   <ImageOff className="size-12 text-gray-300" />
                 </div>
                 <h3 className="text-lg font-semibold text-gray-700 mb-1">
-                  {selectedCategory ? `"${selectedCategory}" 카테고리의 작품이 없습니다` : searchQuery ? `"${searchQuery}" 검색 결과가 없습니다` : "표시할 작품이 없습니다"}
+                  {selectedCategory ? `"${selectedCategory}" 移댄뀒怨좊━???묓뭹???놁뒿?덈떎` : searchQuery ? `"${searchQuery}" 寃??寃곌낵媛 ?놁뒿?덈떎` : "?쒖떆???묓뭹???놁뒿?덈떎"}
                 </h3>
-                <p className="text-sm text-gray-400 mb-5">다른 카테고리를 선택하거나 검색어를 변경해보세요.</p>
+                <p className="text-sm text-gray-400 mb-5">?ㅻⅨ 移댄뀒怨좊━瑜??좏깮?섍굅??寃?됱뼱瑜?蹂寃쏀빐蹂댁꽭??</p>
                 {(selectedCategory || searchQuery) && (
                   <motion.button whileTap={{ scale: 0.95 }} onClick={() => { setSelectedCategory(null); setSearchQuery(""); }} className="px-6 py-2.5 rounded-lg bg-[#0F0F0F] text-white text-sm font-medium hover:bg-gray-800 transition-colors">
-                    필터 초기화
+                    ?꾪꽣 珥덇린??
                   </motion.button>
                 )}
               </div>
@@ -923,7 +951,7 @@ export default function Explore() {
           </section>
         )}
 
-        {/* 디자이너 목록 */}
+        {/* ?붿옄?대꼫 紐⑸줉 */}
         {activeTab === "profile" && (
           <section className="max-w-[1800px] mx-auto px-5 py-6">
             <div className="mb-5 flex items-center gap-2">
@@ -936,49 +964,94 @@ export default function Explore() {
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00C9A7]"></div>
               </div>
             ) : filteredDesigners.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {filteredDesigners.map((profile, index) => (
-                  <motion.div
-                    key={profile.userId}
-                    initial={{ opacity: 0, y: 30 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true, margin: "-40px" }}
-                    transition={{ delay: (index % 4) * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                    className="group pb-2"
-                  >
-                    <Link to={`/profile/${profile.nickname}`} className="flex h-[156px] bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)] group-hover:border-[#00C9A7]/40 group-hover:shadow-[0_16px_40px_rgba(0,0,0,0.1)] group-hover:-translate-y-1 transition-all duration-500">
-                      {/* 왼쪽 배너 */}
-                      <div className="w-32 shrink-0 relative overflow-hidden">
-                        <ImageWithFallback
-                          src={profile.bannerImage || "https://images.unsplash.com/photo-1618761714954-0b8cd0026356?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400"}
-                          alt={profile.nickname}
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent to-black/10" />
-                      </div>
-                      {/* 오른쪽 정보 */}
-                      <div className="flex-1 p-3.5 flex flex-col justify-between min-w-0">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1.5">
-                            <ImageWithFallback src={getUserAvatar(profile.profileImage)} alt={profile.nickname} className="size-9 rounded-full ring-2 ring-[#00C9A7]/15 shadow-sm shrink-0" />
-                            <div className="min-w-0">
-                              <h3 className="font-bold text-sm text-[#0F0F0F] group-hover:text-[#00A88C] transition-colors truncate leading-tight">{profile.nickname}</h3>
-                              <p className="text-[11px] text-gray-500 truncate">{profile.job}</p>
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+                  {filteredDesigners.map((profile, index) => (
+                    <motion.div
+                      key={profile.userId}
+                      initial={{ opacity: 0, y: 24 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true, margin: "-40px" }}
+                      transition={{ delay: (index % 5) * 0.06, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                      className="group"
+                    >
+                      <Link
+                        to={`/profile/${profile.nickname}`}
+                        className="block bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] group-hover:border-[#00C9A7]/40 group-hover:shadow-[0_18px_40px_rgba(0,0,0,0.1)] group-hover:-translate-y-1 transition-all duration-500"
+                      >
+                        {/* ?곷떒 諛곕꼫 (16:9) */}
+                        <div className="relative aspect-[16/9] overflow-hidden bg-[#F9FAFB]">
+                          {profile.bannerImage ? (
+                            <>
+                              <ImageWithFallback
+                                src={profile.bannerImage}
+                                alt={profile.nickname}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
+                            </>
+                          ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-gray-50 to-gray-100/50 border-b border-gray-100">
+                              <ImageOff className="size-6 text-gray-300 group-hover:scale-110 transition-transform duration-500" />
+                              <span className="text-[9px] font-bold text-gray-300 uppercase tracking-[0.2em] px-2 text-center leading-tight">
+                                대표 이미지가 없습니다
+                              </span>
                             </div>
+                          )}
+                        </div>
+
+                        {/* 蹂몃Ц ?곸뿭 */}
+                        <div className="px-4 pb-4 pt-0 -mt-8 relative">
+                          {/* ???꾨컮? (諛곕꼫??嫄몄묠) */}
+                          <ImageWithFallback
+                            src={profile.profileImage || `https://i.pravatar.cc/150?u=${profile.userId}`}
+                            alt={profile.nickname}
+                            className="size-16 rounded-full ring-4 ring-white shadow-md object-cover mb-3"
+                          />
+                          <h3 className="font-bold text-[15px] text-[#0F0F0F] group-hover:text-[#00A88C] transition-colors truncate leading-tight">
+                            {profile.nickname}
+                          </h3>
+                          <p className="text-[12px] text-gray-500 mt-0.5 truncate">
+                            {profile.job || "디자이너"}
+                          </p>
+                          <p className="text-[12px] text-gray-400 mt-2 line-clamp-2 leading-relaxed min-h-[34px]">
+                            {profile.introduction || "멋진 작업을 만들어가는 디자이너입니다."}
+                          </p>
+
+                          {/* 硫뷀? ??*/}
+                          <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-[12px]">
+                            <div className="flex items-center gap-3">
+                              <span className="text-gray-500">
+                                <strong className="text-[#0F0F0F] text-[13px] font-bold">{profile.followCount}</strong>{" "}
+                                <span className="text-[11px]">팔로워</span>
+                              </span>
+                              <span className="w-px h-3 bg-gray-200" />
+                              <span className="text-gray-500">
+                                <strong className="text-[#0F0F0F] text-[13px] font-bold">{profile.postCount}</strong>{" "}
+                                <span className="text-[11px]">?묓뭹</span>
+                              </span>
+                            </div>
+                            <ArrowRight className="size-3.5 text-gray-300 group-hover:text-[#00A88C] group-hover:translate-x-0.5 transition-all" />
                           </div>
-                          <span className="inline-block text-[10px] font-semibold bg-[#A8F0E4]/25 text-[#00A88C] px-2 py-0.5 rounded-full mb-1.5">{profile.job || "디자이너"}</span>
-                          <p className="text-[11px] text-gray-400 line-clamp-1 leading-relaxed">{profile.introduction || "멋진 작업을 만드는 디자이너입니다."}</p>
                         </div>
-                        <div className="flex items-center gap-3 mt-auto pt-2 border-t border-gray-50 text-[10px]">
-                          <span className="text-gray-500"><strong className="text-[#0F0F0F] text-xs">{profile.followCount}</strong> 팔로우</span>
-                          <span className="text-gray-500"><strong className="text-[#0F0F0F] text-xs">{profile.postCount}</strong> 작품</span>
-                          <ArrowRight className="ml-auto size-3 text-gray-300 group-hover:text-[#00A88C] transition-colors" />
-                        </div>
-                      </div>
-                    </Link>
-                  </motion.div>
-                ))}
-              </div>
+                      </Link>
+                    </motion.div>
+                  ))}
+                </div>
+
+                {/* 臾댄븳 ?ㅽ겕濡?媛먯? 諛?濡쒕뵫 ?쒖떆 (?붿옄?대꼫) */}
+                <div ref={observerRef} className="h-20 flex items-center justify-center mt-10">
+                  {isFetchingMoreDesigners && (
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#00C9A7]"></div>
+                      <p className="text-xs text-gray-400 font-medium">디자이너를 불러오는 중...</p>
+                    </div>
+                  )}
+                  {!hasMoreDesigners && filteredDesigners.length > 0 && (
+                    <p className="text-sm text-gray-400 font-medium">모든 디자이너를 확인했습니다.</p>
+                  )}
+                </div>
+              </>
             ) : (
               <div className="flex flex-col items-center justify-center py-32">
                 <div className="w-24 h-24 rounded-full bg-gray-100 flex items-center justify-center mb-5 animate-pulse">
@@ -1000,18 +1073,18 @@ export default function Explore() {
       </div>
 
 
-      {selectedProjectForModal && mappedSelectedExploreFeed && (
+      {selectedExploreFeed && (
         <FeedDetailModal
-          selectedFeed={mappedSelectedExploreFeed}
+          selectedFeed={selectedExploreFeed}
           activeModalImage={
-            (mappedSelectedExploreFeed.images ?? [mappedSelectedExploreFeed.image])[modalImageIndex] ??
-            mappedSelectedExploreFeed.image
+            (selectedExploreFeed.images ?? [selectedExploreFeed.image])[modalImageIndex] ??
+            selectedExploreFeed.image
           }
-          selectedFeedImages={mappedSelectedExploreFeed.images ?? [mappedSelectedExploreFeed.image]}
+          selectedFeedImages={selectedExploreFeed.images ?? [selectedExploreFeed.image]}
           modalImageIndex={modalImageIndex}
           savedItemIds={savedProjectIds}
           selectedFeedComments={selectedFeedComments}
-          isFeedDetailLoading={isModalDetailLoading}
+          isFeedDetailLoading={isFeedDetailLoading}
           feedDetailError={null}
           commentSubmitError={commentSubmitError}
           commentLoadError={commentLoadError}
@@ -1037,12 +1110,10 @@ export default function Explore() {
               minute: "2-digit",
             });
           }}
-          isFeedLiked={() => likedItems.has(selectedProjectForModal.postId)}
-          getLikeCount={() => mappedSelectedExploreFeed.likes}
-          getCommentCount={() => selectedExploreFeed?.comments ?? selectedFeedComments.length}
+          isFeedLiked={() => Boolean(selectedExploreFeed.likedByMe)}
+          getLikeCount={() => selectedExploreFeed.likes}
+          getCommentCount={() => selectedExploreFeed.comments}
           onClose={() => {
-            setSelectedProjectForModal(null);
-            setSelectedProjectDetail(null);
             setSelectedExploreFeed(null);
             setCommentFeedItems([]);
             setModalImageIndex(0);
@@ -1052,29 +1123,24 @@ export default function Explore() {
             e.stopPropagation();
             setModalImageIndex(index);
           }}
-          onToggleLike={(_, e) => toggleLike(selectedProjectForModal.postId, e)}
-          onOpenCollectionModal={(_, e) => openCollectionModal(selectedProjectForModal, e)}
-          onShare={(_, e) => handleShare(selectedProjectForModal, e)}
-          onProposalClick={(_, e) => handleProposalClick(selectedProjectForModal, e)}
+          onToggleLike={(_, e) => toggleLike(selectedExploreFeed.id, e)}
+          onOpenCollectionModal={(_, e) => openCollectionModal(selectedExploreFeed, e)}
+          onShare={(_, e) => handleShare(selectedExploreFeed, e)}
+          onProposalClick={(_, e) => handleProposalClick(selectedExploreFeed, e)}
           onStartEditingComment={startEditingComment}
           onEditingCommentTextChange={setEditingCommentText}
           onUpdateComment={handleUpdateComment}
           onCancelEditingComment={cancelEditingComment}
           onDeleteComment={handleDeleteComment}
           onCommentTextChange={setCommentText}
-          onCommentKeyDown={handleCommentKeyDown}
+          onCommentKeyDown={handleSearchKeyDown}
           onSubmitComment={handleSubmitComment}
         />
       )}
 
-      {/* Floating Action Button */}
-      <motion.div whileHover={{ scale: 1.1, rotate: 45 }} whileTap={{ scale: 0.9 }} className="fixed bottom-8 right-8 z-40">
-        <Link to="/projects/new" className="bg-gradient-to-br from-[#00C9A7] to-[#00A88C] text-white size-14 rounded-full shadow-xl flex items-center justify-center ring-4 ring-white">
-          <Plus className="size-6" />
-        </Link>
-      </motion.div>
 
-      {/* 컬렉션 저장 모달 */}
+
+      {/* 而щ젆?????紐⑤떖 */}
       <AnimatePresence>
         {collectionModalProject && (
           <motion.div
@@ -1082,7 +1148,7 @@ export default function Explore() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
-            onClick={() => setCollectionModalProject(null)}
+            onClick={() => closeCollectionModal()}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0, y: 20 }}
@@ -1096,21 +1162,21 @@ export default function Explore() {
                   <h3 className="font-bold text-lg text-[#0F0F0F]">컬렉션에 저장</h3>
                   <p className="text-xs text-gray-500 mt-0.5 truncate max-w-[280px]">{collectionModalProject.title}</p>
                 </div>
-                <button onClick={() => setCollectionModalProject(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                <button onClick={() => closeCollectionModal()} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                   <X className="size-5 text-gray-400" />
                 </button>
               </div>
 
               <div className="p-5 space-y-2 max-h-[400px] overflow-y-auto">
                 {collections.map((col) => {
-                  const isSaved = savedProjectIds.has(collectionModalProject.postId);
+                  const isSaved = (collectionPostIdsByFolder[col.folderId] ?? []).includes(collectionModalProject?.id ?? -1);
 
                   return (
                     <button
                       key={col.folderId}
                       onClick={() => saveToCollection(col.folderId)}
                       className={`w-full p-3 rounded-lg border flex items-center justify-between gap-3 text-left transition-all ${
-                        isSaved ? "bg-[#E7FAF6] border-[#00C9A7] text-[#007D69]" : "bg-white border-gray-200 hover:border-[#00C9A7] hover:bg-[#F2FFFC]"
+                        isSaved ? "bg-[#F5FFFB] border-[#00C9A7] text-[#007E68]" : "bg-white border-gray-200 hover:border-[#00C9A7] hover:bg-[#F5FFFB]"
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
@@ -1138,7 +1204,7 @@ export default function Explore() {
                     type="text"
                     value={newCollectionName}
                     onChange={(e) => setNewCollectionName(e.target.value)}
-                    placeholder="예: 메인 페이지 레퍼런스"
+                    placeholder="예) 메인 페이지 레퍼런스"
                     className="flex-1 px-3 py-2.5 rounded-lg bg-[#F7F7F5] border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7]"
                   />
                   <button
