@@ -1450,9 +1450,6 @@ export default function Profile() {
     try {
       await deleteFeedApi(projectToDelete.id);
       removeDeletedFeedProject(projectToDelete.id);
-      removeSavedFeedTags(projectToDelete.id);
-      await deleteFeedApi(project.id);
-      removeDeletedFeedProject(project.id);
       setProfileError("");
       setIsDeleteModalOpen(false);
       setProjectToDelete(null);

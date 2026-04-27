@@ -444,13 +444,21 @@ export default function Explore() {
     }
   };
 
+  // 레이스 컨디션 방지를 위한 요청 ID 관리
+  const lastFeedsRequestId = useRef(0);
+  const lastDesignersRequestId = useRef(0);
+
   // 피드 목록 조회 (초기화 및 무한 스크롤 병합)
   const fetchFeeds = useCallback(async (pageNum: number, isInitial: boolean = false) => {
+    const requestId = ++lastFeedsRequestId.current;
     try {
       if (isInitial) setIsFeedsLoading(true);
       else setIsFetchingMoreFeeds(true);
 
       const data = await getExploreFeedsApi(selectedCategory || "all", debouncedSearchQuery, pageNum, 20);
+      
+      // 최신 요청이 아니면 상태 업데이트 무시
+      if (requestId !== lastFeedsRequestId.current) return;
 
       const mappedFeeds: FeedCardItem[] = data.map(item => ({
         id: item.postId,
@@ -490,20 +498,28 @@ export default function Explore() {
 
       setHasMoreFeeds(data.length === 20);
     } catch (error) {
-      console.error("피드 로딩 중 오류:", error);
+      if (requestId === lastFeedsRequestId.current) {
+        console.error("피드 로딩 중 오류:", error);
+      }
     } finally {
-      setIsFeedsLoading(false);
-      setIsFetchingMoreFeeds(false);
+      if (requestId === lastFeedsRequestId.current) {
+        setIsFeedsLoading(false);
+        setIsFetchingMoreFeeds(false);
+      }
     }
   }, [selectedCategory, debouncedSearchQuery]);
 
   // 디자이너 목록 조회
   const fetchDesigners = useCallback(async (pageNum: number, isInitial: boolean = false) => {
+    const requestId = ++lastDesignersRequestId.current;
     try {
       if (isInitial) setIsDesignersLoading(true);
       else setIsFetchingMoreDesigners(true);
 
       const data = await getExploreDesignersApi(debouncedSearchQuery, pageNum, 20);
+      
+      // 최신 요청이 아니면 상태 업데이트 무시
+      if (requestId !== lastDesignersRequestId.current) return;
 
       if (isInitial) {
         setDesigners(data);
@@ -513,10 +529,14 @@ export default function Explore() {
 
       setHasMoreDesigners(data.length === 20);
     } catch (error) {
-      console.error("디자이너 로딩 중 오류:", error);
+      if (requestId === lastDesignersRequestId.current) {
+        console.error("디자이너 로딩 중 오류:", error);
+      }
     } finally {
-      setIsDesignersLoading(false);
-      setIsFetchingMoreDesigners(false);
+      if (requestId === lastDesignersRequestId.current) {
+        setIsDesignersLoading(false);
+        setIsFetchingMoreDesigners(false);
+      }
     }
   }, [debouncedSearchQuery]);
 

@@ -33,6 +33,7 @@ import {
   type MessagePresenceState,
 } from "../api/messageSocket";
 import { getCurrentUser } from "../utils/auth";
+import { DEFAULT_AVATAR } from "../utils/avatar";
 
 type AttachmentUploadStatus = "uploading" | "ready" | "failed";
 type IntegrationProvider = "figma" | "adobe" | "photoshop" | "pinterest";
