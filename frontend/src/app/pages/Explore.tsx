@@ -1011,7 +1011,7 @@ export default function Explore() {
                         <div className="px-4 pb-4 pt-0 -mt-8 relative">
                           {/* 프로필 아바타 */}
                           <ImageWithFallback
-                            src={profile.profileImage || `https://i.pravatar.cc/150?u=${profile.userId}`}
+                            src={getUserAvatar(profile.profileImage, profile.userId, profile.nickname)}
                             alt={profile.nickname}
                             className="size-16 rounded-full ring-4 ring-white shadow-md object-cover mb-3"
                           />

@@ -479,7 +479,7 @@ export default function Feed() {
 
             {!isFeedLoading && !hasNext && visibleFeedItems.length > 0 && (
               <div className="py-6 text-center text-sm text-gray-400">
-                모든 피드를 불러왔습니다.
+                모든 피드를 확인했습니다 ✨
               </div>
             )}
 
