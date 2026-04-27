@@ -917,7 +917,7 @@ export default function Explore() {
                     </div>
                   )}
                   {!hasMoreFeeds && filteredProjects.length > 0 && (
-                    <p className="text-sm text-gray-400 font-medium">모든 피드를 확인했습니다 ✨</p>
+                    <p className="text-sm text-gray-400">모든 피드를 확인했습니다 ✨</p>
                   )}
                 </div>
               </>
@@ -993,7 +993,7 @@ export default function Explore() {
                         <div className="px-4 pb-4 pt-0 -mt-8 relative">
                           {/* 큰 아바타 (배너에 걸침) */}
                           <ImageWithFallback
-                            src={profile.profileImage || `https://i.pravatar.cc/150?u=${profile.userId}`}
+                            src={getUserAvatar(profile.profileImage, profile.userId, profile.nickname)}
                             alt={profile.nickname}
                             className="size-16 rounded-full ring-4 ring-white shadow-md object-cover mb-3"
                           />
@@ -1037,7 +1037,7 @@ export default function Explore() {
                     </div>
                   )}
                   {!hasMoreDesigners && filteredDesigners.length > 0 && (
-                    <p className="text-sm text-gray-400 font-medium">모든 디자이너를 확인했습니다 ✨</p>
+                    <p className="text-sm text-gray-400">모든 디자이너를 확인했습니다 ✨</p>
                   )}
                 </div>
               </>
