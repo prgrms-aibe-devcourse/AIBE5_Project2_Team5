@@ -33,6 +33,7 @@ import {
   fetchUnreadCount,
   markAllNotificationsRead,
   markNotificationRead,
+  subscribeNotificationState,
 } from "../utils/notificationState";
 
 type NotificationTab = "all" | NotificationCategory;
@@ -272,6 +273,12 @@ export default function Notifications() {
 
   useEffect(() => {
     loadNotifications();
+  }, []);
+
+  useEffect(() => {
+    return subscribeNotificationState(() => {
+      void loadNotifications();
+    });
   }, []);
 
   const visibleNotifications = useMemo(() => {

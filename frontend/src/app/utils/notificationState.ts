@@ -35,6 +35,11 @@ const emitNotificationStateChange = () => {
   window.dispatchEvent(new Event(NOTIFICATION_STATE_CHANGE_EVENT));
 };
 
+const setUnreadNotificationFlag = (hasUnread: boolean) => {
+  if (!canUseStorage()) return;
+  window.localStorage.setItem(UNREAD_NOTIFICATIONS_KEY, String(hasUnread));
+};
+
 // 백엔드의 Date를 파싱하여 n시간 전 등으로 변환하는 유틸
 const timeAgo = (dateString: string) => {
   const date = new Date(dateString);
@@ -180,6 +185,16 @@ export const markNotificationRead = async (notificationId: number) => {
 
 export const markAllNotificationsRead = async () => {
   await notificationApi.markAllAsRead();
+};
+
+export const applyLiveNotificationCreated = (
+  notification: NotificationResponse,
+  unreadCount: number,
+) => {
+  if (!notification) return;
+
+  setUnreadNotificationFlag(unreadCount > 0);
+  emitNotificationStateChange();
 };
 
 // --- 아래 함수들은 기존 Messages.tsx 에서 의존하고 있는 함수들입니다 (하얀 화면 방지용) ---

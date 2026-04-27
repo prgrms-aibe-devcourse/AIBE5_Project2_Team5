@@ -14,7 +14,10 @@ import com.example.pixel_project2.common.entity.enums.PostType;
 import com.example.pixel_project2.common.entity.enums.ProjectState;
 import com.example.pixel_project2.common.entity.enums.UserRole;
 import com.example.pixel_project2.common.repository.ApplicationRepository;
+import com.example.pixel_project2.common.repository.CollectionRepository;
+import com.example.pixel_project2.common.repository.CommentRepository;
 import com.example.pixel_project2.common.repository.PostRepository;
+import com.example.pixel_project2.common.repository.PickCountRepository;
 import com.example.pixel_project2.common.repository.UserRepository;
 import com.example.pixel_project2.config.jwt.AuthenticatedUser;
 import com.example.pixel_project2.matching.dto.ApplyProjectRequest;
@@ -28,6 +31,7 @@ import com.example.pixel_project2.matching.dto.ProjectListItemResponse;
 import com.example.pixel_project2.matching.dto.UpdateProjectRequest;
 import com.example.pixel_project2.matching.repository.JobSkillRepository;
 import com.example.pixel_project2.matching.repository.ProjectRepository;
+import com.example.pixel_project2.notification.repository.NotificationRepository;
 import com.example.pixel_project2.notification.service.NotificationService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +55,10 @@ public class MatchingServiceImpl implements MatchingService {
     private final PostRepository postRepository;
     private final UserRepository userRepository;
     private final ApplicationRepository applicationRepository;
+    private final CommentRepository commentRepository;
+    private final CollectionRepository collectionRepository;
+    private final PickCountRepository pickCountRepository;
+    private final NotificationRepository notificationRepository;
     private final NotificationService notificationService;
 
     @Override
@@ -74,6 +82,7 @@ public class MatchingServiceImpl implements MatchingService {
 
                     return new ProjectListItemResponse(
                             project.getPost_id(),
+                            user != null ? user.getId() : null,
                             nickname,
                             user != null ? user.getProfileImage() : null,
                             companyName,
@@ -159,6 +168,7 @@ public class MatchingServiceImpl implements MatchingService {
 
         return new ProjectDetailResponse(
                 project.getPost_id(),
+                project.getPost().getUser() != null ? project.getPost().getUser().getId() : null,
                 project.getPost().getPostType().name(),
                 project.getPost().getUser() != null ? project.getPost().getUser().getProfileImage() : null,
                 primaryCategory,
@@ -355,6 +365,35 @@ public class MatchingServiceImpl implements MatchingService {
     }
 
     @Override
+    @Transactional
+    public String updateProjectApplication(Long postId, ApplyProjectRequest request) {
+        AuthenticatedUser currentUser = getCurrentUser();
+        Application application = applicationRepository.findByApplicantIdAndPostIdWithDetails(currentUser.id(), postId)
+                .orElseThrow(() -> new EntityNotFoundException("Application not found for post: " + postId));
+
+        validateApplicationRequest(request);
+
+        application.setCoverLetter(normalizeNullableText(request.coverLetter()));
+        application.setSummary(normalizeNullableText(request.summary()));
+        application.setExpectedBudget(request.expectedBudget());
+        application.setPortfolioUrl(normalizeNullableText(request.portfolioUrl()));
+        application.setStartDate(request.startDate() == null ? null : request.startDate().atStartOfDay());
+
+        return "postId=" + postId + " application updated.";
+    }
+
+    @Override
+    @Transactional
+    public String deleteProjectApplication(Long postId) {
+        AuthenticatedUser currentUser = getCurrentUser();
+        Application application = applicationRepository.findByApplicantIdAndPostIdWithDetails(currentUser.id(), postId)
+                .orElseThrow(() -> new EntityNotFoundException("Application not found for post: " + postId));
+
+        applicationRepository.delete(application);
+        return "postId=" + postId + " application deleted.";
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public List<MyApplicationItemResponse> getMyApplications() {
         AuthenticatedUser currentUser = getCurrentUser();
@@ -369,10 +408,15 @@ public class MatchingServiceImpl implements MatchingService {
                     return new MyApplicationItemResponse(
                             application.getApplication_id(),
                             post.getId(),
+                            post.getUser() != null ? post.getUser().getId() : null,
                             post.getTitle(),
                             project != null ? project.getOverview() : null,
                             post.getUser() != null ? post.getUser().getProfileImage() : null,
                             application.getExpectedBudget(),
+                            application.getSummary(),
+                            application.getCoverLetter(),
+                            application.getPortfolioUrl(),
+                            application.getStartDate() != null ? application.getStartDate().toLocalDate().toString() : null,
                             project != null ? project.getProjectState().name() : null,
                             project != null && project.getJobState() != null ? project.getJobState().getLabel() : null,
                             categoryLabels.isEmpty() ? null : categoryLabels.get(0),
@@ -400,6 +444,7 @@ public class MatchingServiceImpl implements MatchingService {
                     List<String> categoryLabels = getProjectCategories(project);
                     return new MyPostItemResponse(
                             project.getPost_id(),
+                            project.getPost().getUser() != null ? project.getPost().getUser().getId() : null,
                             project.getPost().getTitle(),
                             project.getOverview(),
                             project.getPost().getUser() != null ? project.getPost().getUser().getProfileImage() : null,
@@ -421,12 +466,104 @@ public class MatchingServiceImpl implements MatchingService {
     }
 
     @Override
-    public String updateProject(Long postId, UpdateProjectRequest request) {
-        return "postId=" + postId + " updated.";
+    @Transactional
+    public ProjectDetailResponse updateProject(Long postId, UpdateProjectRequest request) {
+        AuthenticatedUser currentUser = getCurrentUser();
+        Project project = projectRepository.findByPostIdWithDetails(postId)
+                .orElseThrow(() -> new EntityNotFoundException("Project not found: " + postId));
+        User poster = project.getPost() != null ? project.getPost().getUser() : null;
+
+        if (poster == null || !Objects.equals(poster.getId(), currentUser.id())) {
+            throw new IllegalArgumentException("본인 공고만 수정할 수 있습니다.");
+        }
+
+        if (poster.getRole() != UserRole.CLIENT) {
+            throw new IllegalArgumentException("클라이언트만 프로젝트를 수정할 수 있습니다.");
+        }
+
+        Post post = project.getPost();
+        if (request.title() != null && !request.title().isBlank()) {
+            post.setTitle(request.title().trim());
+        }
+
+        List<String> categories = request.categories() != null || (request.category() != null && !request.category().isBlank())
+                ? normalizeProjectCategories(request.categories(), request.category())
+                : getProjectCategories(project);
+        if (!categories.isEmpty()) {
+            post.setCategory(parseCategory(categories.get(0)));
+            project.setCategories(categories);
+        }
+
+        if (request.jobState() != null && !request.jobState().isBlank()) {
+            project.setJobState(parseJobState(request.jobState()));
+        }
+        if (request.experienceLevel() != null && !request.experienceLevel().isBlank()) {
+            project.setExperienceLevel(parseExperienceLevel(request.experienceLevel()));
+        }
+        if (request.budget() != null) {
+            project.setBudget(request.budget());
+        }
+        if (request.overview() != null) {
+            project.setOverview(normalizeNullableText(request.overview()));
+        }
+        if (request.fullDescription() != null) {
+            project.setFullDescription(normalizeNullableText(request.fullDescription()));
+        }
+        if (request.responsibilities() != null) {
+            project.setResponsibilities(sanitizeStringList(request.responsibilities()));
+        }
+        if (request.qualifications() != null) {
+            project.setQualifications(sanitizeStringList(request.qualifications()));
+        }
+        if (request.state() != null && !request.state().isBlank()) {
+            project.setProjectState(parseProjectState(request.state()));
+        }
+        if (request.deadline() != null) {
+            project.setDeadline(request.deadline());
+        }
+
+        if (request.skills() != null) {
+            jobSkillRepository.deleteByProjectPostId(postId);
+            List<String> sanitizedSkills = sanitizeStringList(request.skills());
+            if (!sanitizedSkills.isEmpty()) {
+                jobSkillRepository.saveAll(sanitizedSkills.stream()
+                        .map(skill -> JobSkill.builder()
+                                .project(project)
+                                .skillName(skill)
+                                .build())
+                        .toList());
+            }
+        }
+
+        return toProjectDetailResponse(project);
     }
 
     @Override
+    @Transactional
     public String deleteProject(Long postId) {
+        AuthenticatedUser currentUser = getCurrentUser();
+        Project project = projectRepository.findByPostIdWithDetails(postId)
+                .orElseThrow(() -> new EntityNotFoundException("Project not found: " + postId));
+        Post post = project.getPost();
+        User poster = post != null ? post.getUser() : null;
+
+        if (poster == null || !Objects.equals(poster.getId(), currentUser.id())) {
+            throw new IllegalArgumentException("본인 공고만 삭제할 수 있습니다.");
+        }
+
+        if (poster.getRole() != UserRole.CLIENT) {
+            throw new IllegalArgumentException("클라이언트만 프로젝트를 삭제할 수 있습니다.");
+        }
+
+        applicationRepository.deleteByPostId(postId);
+        jobSkillRepository.deleteByProjectPostId(postId);
+        commentRepository.deleteByPostId(postId);
+        collectionRepository.deleteByPostId(postId);
+        pickCountRepository.deleteByPostId(postId);
+        notificationRepository.deleteByReferenceIdAndType(postId, NotificationType.PROJECT_APPLY);
+        projectRepository.delete(project);
+        postRepository.delete(post);
+
         return "postId=" + postId + " deleted.";
     }
 

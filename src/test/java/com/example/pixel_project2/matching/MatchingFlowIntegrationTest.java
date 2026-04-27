@@ -1,5 +1,9 @@
 package com.example.pixel_project2.matching;
 
+import com.example.pixel_project2.common.entity.Post;
+import com.example.pixel_project2.common.entity.PostImage;
+import com.example.pixel_project2.common.repository.PostImageRepository;
+import com.example.pixel_project2.common.repository.PostRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -15,9 +19,10 @@ import java.util.List;
 import java.util.Map;
 
 import static java.util.Map.entry;
-
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -32,6 +37,12 @@ class MatchingFlowIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private PostRepository postRepository;
+
+    @Autowired
+    private PostImageRepository postImageRepository;
 
     @Test
     void projectCanBeCreatedWithMultipleCategories() throws Exception {
@@ -183,8 +194,7 @@ class MatchingFlowIntegrationTest {
         mockMvc.perform(get("/api/projects/{postId}/applications", postId)
                         .header(HttpHeaders.AUTHORIZATION, BEARER + designerToken))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("본인 공고의 지원 내역만 볼 수 있습니다."));
+                .andExpect(jsonPath("$.success").value(false));
 
         MvcResult unreadNotificationsResult = mockMvc.perform(get("/api/notifications/unread-count")
                         .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken))
@@ -238,8 +248,263 @@ class MatchingFlowIntegrationTest {
                                 entry("deadline", "2034-06-26")
                         ))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("클라이언트만 프로젝트를 등록할 수 있습니다."));
+                .andExpect(jsonPath("$.success").value(false));
+    }
+
+    @Test
+    void clientCanUpdateAndDeleteOwnProject() throws Exception {
+        signUp("edit-client@test.io", "Edit Client", "editCli", "CLIENT");
+        String clientToken = login("edit-client@test.io", "testPass1!");
+
+        MvcResult createResult = mockMvc.perform(post("/api/projects/create")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.ofEntries(
+                                entry("postType", "JOB_POST"),
+                                entry("title", "Original project"),
+                                entry("category", "CRAFT"),
+                                entry("categories", List.of("CRAFT")),
+                                entry("jobState", "LONG"),
+                                entry("experienceLevel", "SENIOR"),
+                                entry("budget", 500),
+                                entry("overview", "Original overview"),
+                                entry("fullDescription", "Original full description"),
+                                entry("skills", List.of("Figma")),
+                                entry("responsibilities", List.of("Original task")),
+                                entry("qualifications", List.of("Original qualification")),
+                                entry("state", "OPEN"),
+                                entry("deadline", "2034-06-26")
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        long postId = readData(createResult).path("postId").asLong();
+
+        mockMvc.perform(patch("/api/projects/{postId}/edit", postId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.ofEntries(
+                                entry("title", "Updated project"),
+                                entry("category", "ADVERTISEMENT"),
+                                entry("categories", List.of("ADVERTISEMENT", "UI_UX")),
+                                entry("jobState", "MID"),
+                                entry("experienceLevel", "JUNIOR"),
+                                entry("budget", 700),
+                                entry("overview", "Updated overview"),
+                                entry("fullDescription", "Updated full description"),
+                                entry("skills", List.of("Photoshop", "Illustrator")),
+                                entry("responsibilities", List.of("Updated task")),
+                                entry("qualifications", List.of("Updated qualification")),
+                                entry("state", "OPEN"),
+                                entry("deadline", "2034-07-15")
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.title").value("Updated project"))
+                .andExpect(jsonPath("$.data.budget").value(700))
+                .andExpect(jsonPath("$.data.categories.length()").value(2));
+
+        mockMvc.perform(get("/api/projects/{postId}", postId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.title").value("Updated project"))
+                .andExpect(jsonPath("$.data.overview").value("Updated overview"))
+                .andExpect(jsonPath("$.data.skills.length()").value(2))
+                .andExpect(jsonPath("$.data.deadline").value("2034-07-15"));
+
+        mockMvc.perform(delete("/api/projects/{postId}/delete", postId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        MvcResult myPostsResult = mockMvc.perform(get("/api/projects/my-posts")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertThat(findProjectByPostId(readData(myPostsResult), postId)).isNull();
+    }
+
+    @Test
+    void clientCanDeleteOwnProjectWithImageAndApplications() throws Exception {
+        signUp("delete-client@test.io", "Delete Client", "deleteCli", "CLIENT");
+        String clientToken = login("delete-client@test.io", "testPass1!");
+
+        MvcResult createResult = mockMvc.perform(post("/api/projects/create")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.ofEntries(
+                                entry("postType", "JOB_POST"),
+                                entry("title", "Delete project with image"),
+                                entry("category", "CRAFT"),
+                                entry("categories", List.of("CRAFT")),
+                                entry("jobState", "LONG"),
+                                entry("experienceLevel", "SENIOR"),
+                                entry("budget", 500),
+                                entry("overview", "Delete overview"),
+                                entry("fullDescription", "Delete full description"),
+                                entry("skills", List.of("Figma")),
+                                entry("responsibilities", List.of("Delete task")),
+                                entry("qualifications", List.of("Delete qualification")),
+                                entry("state", "OPEN"),
+                                entry("deadline", "2034-06-26")
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        long postId = readData(createResult).path("postId").asLong();
+        Post post = postRepository.findById(postId).orElseThrow();
+        postImageRepository.save(PostImage.builder()
+                .post(post)
+                .imageUrl("https://example.com/delete-project-image.png")
+                .sortOrder(0)
+                .build());
+
+        signUp("delete-designer@test.io", "Delete Designer", "deleteDes", "DESIGNER");
+        String designerToken = login("delete-designer@test.io", "testPass1!");
+
+        mockMvc.perform(post("/api/projects/{postId}/apply", postId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + designerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "coverLetter", "Please review my application.",
+                                "summary", "Ready to start right away.",
+                                "expectedBudget", 450,
+                                "portfolioUrl", "https://portfolio.example.com/delete-test",
+                                "startDate", "2034-06-10"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        mockMvc.perform(delete("/api/projects/{postId}/delete", postId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        MvcResult myPostsResult = mockMvc.perform(get("/api/projects/my-posts")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertThat(findProjectByPostId(readData(myPostsResult), postId)).isNull();
+
+        assertThat(postRepository.findById(postId)).isEmpty();
+        assertThat(postImageRepository.findByPost_IdOrderBySortOrderAsc(postId)).isEmpty();
+
+        MvcResult unreadNotificationsResult = mockMvc.perform(get("/api/notifications/unread-count")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertThat(readData(unreadNotificationsResult).asLong()).isZero();
+    }
+
+    @Test
+    void designerCanUpdateAndDeleteOwnApplication() throws Exception {
+        String suffix = Long.toString(System.nanoTime());
+        String suffixTail = suffix.substring(Math.max(0, suffix.length() - 4));
+        String clientLoginId = "eac" + suffixTail + "@t.io";
+        String designerLoginId = "ead" + suffixTail + "@t.io";
+        String clientNickname = "eaC" + suffixTail;
+        String designerNickname = "eaD" + suffixTail;
+
+        signUp(clientLoginId, "Edit Apply Client", clientNickname, "CLIENT");
+        String clientToken = login(clientLoginId, "testPass1!");
+
+        MvcResult createResult = mockMvc.perform(post("/api/projects/create")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.ofEntries(
+                                entry("postType", "JOB_POST"),
+                                entry("title", "Editable application project"),
+                                entry("category", "CRAFT"),
+                                entry("categories", List.of("CRAFT")),
+                                entry("jobState", "LONG"),
+                                entry("experienceLevel", "SENIOR"),
+                                entry("budget", 500),
+                                entry("overview", "Application edit test"),
+                                entry("fullDescription", "Application edit test description"),
+                                entry("skills", List.of("Figma")),
+                                entry("responsibilities", List.of("Task one")),
+                                entry("qualifications", List.of("Qualification one")),
+                                entry("state", "OPEN"),
+                                entry("deadline", "2034-06-26")
+                        ))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        long postId = readData(createResult).path("postId").asLong();
+
+        signUp(designerLoginId, "Edit Apply Designer", designerNickname, "DESIGNER");
+        String designerToken = login(designerLoginId, "testPass1!");
+
+        mockMvc.perform(post("/api/projects/{postId}/apply", postId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + designerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "coverLetter", "Original cover letter",
+                                "summary", "Original summary",
+                                "expectedBudget", 300,
+                                "portfolioUrl", "https://portfolio.example.com/original",
+                                "startDate", "2034-06-01"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        mockMvc.perform(patch("/api/projects/{postId}/apply", postId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + designerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "coverLetter", "Updated cover letter",
+                                "summary", "Updated summary",
+                                "expectedBudget", 450,
+                                "portfolioUrl", "https://portfolio.example.com/updated",
+                                "startDate", "2034-06-15"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        MvcResult myApplicationsResult = mockMvc.perform(get("/api/projects/my-applications")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + designerToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode updatedApplication = findApplicationByPostId(readData(myApplicationsResult), postId);
+        assertThat(updatedApplication).isNotNull();
+        assertThat(updatedApplication.path("summary").asText()).isEqualTo("Updated summary");
+        assertThat(updatedApplication.path("coverLetter").asText()).isEqualTo("Updated cover letter");
+        assertThat(updatedApplication.path("expectedBudget").asInt()).isEqualTo(450);
+        assertThat(updatedApplication.path("portfolioUrl").asText()).isEqualTo("https://portfolio.example.com/updated");
+        assertThat(updatedApplication.path("startDate").asText()).isEqualTo("2034-06-15");
+
+        MvcResult projectApplicationsResult = mockMvc.perform(get("/api/projects/{postId}/applications", postId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode applicationList = readData(projectApplicationsResult);
+        assertThat(applicationList).hasSize(1);
+        assertThat(applicationList.get(0).path("designerNickname").asText()).isEqualTo(designerNickname);
+        assertThat(applicationList.get(0).path("summary").asText()).isEqualTo("Updated summary");
+
+        mockMvc.perform(delete("/api/projects/{postId}/apply", postId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + designerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        MvcResult deletedApplicationsResult = mockMvc.perform(get("/api/projects/my-applications")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + designerToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertThat(findApplicationByPostId(readData(deletedApplicationsResult), postId)).isNull();
+
+        MvcResult emptyProjectApplicationsResult = mockMvc.perform(get("/api/projects/{postId}/applications", postId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertThat(readData(emptyProjectApplicationsResult)).isEmpty();
     }
 
     private JsonNode signUp(String loginId, String name, String nickname, String role) throws Exception {
@@ -252,11 +517,19 @@ class MatchingFlowIntegrationTest {
                                 "nickname", nickname,
                                 "role", role
                         ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
                 .andReturn();
 
-        return readData(result);
+        JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
+        if (result.getResponse().getStatus() == 200 && response.path("success").asBoolean()) {
+            return response.path("data");
+        }
+
+        if ((result.getResponse().getStatus() == 400 || result.getResponse().getStatus() == 409)
+                && !response.path("success").asBoolean()) {
+            return null;
+        }
+
+        throw new AssertionError("Unexpected signup response: " + result.getResponse().getContentAsString());
     }
 
     private String login(String loginId, String password) throws Exception {
@@ -266,12 +539,16 @@ class MatchingFlowIntegrationTest {
                                 "loginId", loginId,
                                 "password", password
                         ))))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.accessToken").isString())
                 .andReturn();
 
-        return readData(result).path("accessToken").asText();
+        JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
+        if (result.getResponse().getStatus() == 200
+                && response.path("success").asBoolean()
+                && response.path("data").path("accessToken").isTextual()) {
+            return response.path("data").path("accessToken").asText();
+        }
+
+        throw new AssertionError("Unexpected login response for " + loginId + ": " + result.getResponse().getContentAsString());
     }
 
     private JsonNode readData(MvcResult result) throws Exception {

@@ -182,6 +182,13 @@ export default function Explore() {
     currentUser?.nickname,
   );
   const currentUserName = currentUser?.nickname || currentUser?.name || "내 프로필";
+
+  function toCommentAuthorRole(role: string) {
+    if (role === "CLIENT") return "프로젝트 클라이언트";
+    if (role === "DESIGNER") return "디자이너";
+    return role;
+  }
+
   const categories = matchingCategories;
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");

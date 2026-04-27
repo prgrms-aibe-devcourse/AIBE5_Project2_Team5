@@ -4,6 +4,7 @@ import java.util.List;
 
 public record ProjectDetailResponse(
         Long postId,
+        Long clientUserId,
         String postType,
         String profileImage,
         String category,

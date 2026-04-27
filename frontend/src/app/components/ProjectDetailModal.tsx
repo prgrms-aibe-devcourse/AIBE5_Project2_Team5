@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
 import {
@@ -8,8 +9,10 @@ import {
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import CompletionModal from "./CompletionModal";
-import { applyProjectApi } from "../api/projectApi";
+import { applyProjectApi, deleteProjectApi, deleteProjectApplicationApi, updateProjectApplicationApi } from "../api/projectApi";
+import { createMessageConversationApi } from "../api/messageApi";
 import { uploadProjectApplicationPortfolioApi } from "../api/uploadApi";
+import { getCurrentUser } from "../utils/auth";
 
 export interface ProjectMilestone {
   label: string;
@@ -22,6 +25,7 @@ export interface ProjectCompanyInfo {
 }
 
 export interface ProjectClient {
+  userId?: number | null;
   name: string;
   avatar: string;
   verified: boolean;
@@ -66,6 +70,7 @@ export interface ProjectData {
   companyInfo?: ProjectCompanyInfo;
   ownerView?: boolean;
   applications?: ProjectApplicant[];
+  myApplication?: ProjectApplicant;
 }
 
 interface Props {
@@ -73,6 +78,10 @@ interface Props {
   onClose: () => void;
   bookmarked?: boolean;
   onBookmark?: () => void;
+  openApplyFormOnMount?: boolean;
+  onApplicationChanged?: (postId: number) => void;
+  onProjectDeleted?: (postId: number) => void;
+  onRequestProjectEdit?: (postId: number) => void;
 }
 
 function getDday(deadline: string) {
@@ -95,7 +104,7 @@ function formatApplicantBudgetLabel(budget?: number | null) {
 
 function DdayBadge({ deadline }: { deadline: string }) {
   const d = getDday(deadline);
-  const label = d <= 0 ? "마감됨" : `D-${d}`;
+  const label = d <= 0 ? "마감" : `D-${d}`;
   const colorClass =
     d <= 0 ? "text-gray-400 bg-gray-100 border-gray-200" :
     d <= 7 ? "text-red-500 bg-red-50 border-red-200" :
@@ -104,7 +113,7 @@ function DdayBadge({ deadline }: { deadline: string }) {
   return (
     <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-bold ${colorClass}`}>
       {d > 0 && d <= 3 && <AlertTriangle className="size-3.5" />}
-      마감 {label}
+      {label}
     </span>
   );
 }
@@ -114,7 +123,7 @@ function DdayBarSidebar({ deadline }: { deadline: string }) {
   const pct = d <= 0 ? 0 : Math.min(d, 30) / 30 * 100;
   const barColor = d <= 0 ? "bg-gray-300" : d <= 7 ? "bg-red-400" : d <= 14 ? "bg-orange-400" : "bg-[#00C9A7]";
   const labelColor = d <= 0 ? "text-gray-400" : d <= 7 ? "text-red-500" : d <= 14 ? "text-orange-500" : "text-[#00A88C]";
-  const label = d <= 0 ? "마감됨" : `D-${d}`;
+  const label = d <= 0 ? "마감" : `D-${d}`;
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
@@ -158,7 +167,19 @@ function ApplicantDotsSidebar({ count }: { count: number }) {
   );
 }
 
-export default function ProjectDetailModal({ project, onClose, bookmarked = false, onBookmark }: Props) {
+export default function ProjectDetailModal({
+  project,
+  onClose,
+  bookmarked = false,
+  onBookmark,
+  openApplyFormOnMount = false,
+  onApplicationChanged,
+  onProjectDeleted,
+  onRequestProjectEdit,
+}: Props) {
+  const navigate = useNavigate();
+  const currentUser = getCurrentUser();
+  const isOwnProject = Boolean(project?.client.userId && currentUser?.userId && project.client.userId === currentUser.userId);
   const [applied, setApplied] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [showApplyForm, setShowApplyForm] = useState(false);
@@ -177,21 +198,21 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
 
   useEffect(() => {
     if (!project) return;
-    setApplied(false);
     setLightboxIndex(null);
-    setShowApplyForm(false);
-    setApplyMsg("");
-    setApplyExp("");
-    setApplyPortfolioTab("url");
-    setApplyPortfolioUrl("");
+    setApplied(Boolean(project.myApplication));
+    setShowApplyForm(Boolean(project.myApplication) && openApplyFormOnMount);
+    setApplyMsg(project.myApplication?.coverLetter ?? "");
+    setApplyExp(project.myApplication?.summary ?? "");
+    setApplyPortfolioTab(project.myApplication?.portfolioUrl ? "url" : "url");
+    setApplyPortfolioUrl(project.myApplication?.portfolioUrl ?? "");
     setApplyPortfolioFile(null);
-    setApplyBudget("");
-    setApplyStartDate("");
+    setApplyBudget(project.myApplication?.expectedBudget != null ? String(project.myApplication.expectedBudget) : "");
+    setApplyStartDate(project.myApplication?.startDate ?? "");
     setIsSubmittingApply(false);
     setShowApplyCompletionModal(false);
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = ""; };
-  }, [project]);
+  }, [project, openApplyFormOnMount]);
 
   useEffect(() => {
     if (!project) return;
@@ -213,8 +234,8 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
     if (!applyMsg.trim() || !applyExp.trim()) return;
     setApplied(true);
     setShowApplyForm(false);
-    toast.success("지원이 완료되었습니다! 🎉", {
-      description: "클라이언트가 검토 후 연락드립니다.",
+    toast.success("지원이 완료되었어요.", {
+      description: "클라이언트가 내용을 확인한 뒤 연락드릴 예정이에요.",
       duration: 4000,
     });
   }
@@ -246,21 +267,63 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
         portfolioUrl = uploadResult.fileUrl;
       }
 
-      await applyProjectApi(project.id, {
+      const payload = {
         coverLetter: applyMsg.trim(),
         summary: applyExp.trim(),
         expectedBudget: parseApplyBudgetValue(applyBudget),
         portfolioUrl: portfolioUrl || undefined,
         startDate: applyStartDate || undefined,
-      });
+      };
 
-      setApplied(true);
-      setShowApplyForm(false);
-      setShowApplyCompletionModal(true);
+      if (project.myApplication) {
+        await updateProjectApplicationApi(project.id, payload);
+        setApplied(true);
+        setShowApplyForm(false);
+        onApplicationChanged?.(project.id);
+        toast.success("지원서를 수정했어요.");
+      } else {
+        await applyProjectApi(project.id, payload);
+        setApplied(true);
+        setShowApplyForm(false);
+        setShowApplyCompletionModal(true);
+        onApplicationChanged?.(project.id);
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "지원서를 제출하지 못했어요.");
     } finally {
       setIsSubmittingApply(false);
+    }
+  }
+
+  async function handleDeleteApplication() {
+    if (!project || !project.myApplication) return;
+    if (!window.confirm("지원 내역을 삭제할까요?")) {
+      return;
+    }
+
+    try {
+      await deleteProjectApplicationApi(project.id);
+      toast.success("지원 내역을 삭제했어요.");
+      onApplicationChanged?.(project.id);
+      onClose();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "지원 내역을 삭제하지 못했어요.");
+    }
+  }
+
+  async function handleDeleteProject() {
+    if (!project) return;
+    if (!window.confirm("등록한 공고를 삭제할까요?")) {
+      return;
+    }
+
+    try {
+      await deleteProjectApi(project.id);
+      toast.success("공고를 삭제했어요.");
+      onProjectDeleted?.(project.id);
+      onClose();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "공고를 삭제하지 못했어요.");
     }
   }
 
@@ -270,12 +333,28 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
 
   function handleShare() {
     navigator.clipboard.writeText(window.location.href).then(() => {
-      toast.info("링크가 복사되었습니다 🔗");
+      toast.info("링크가 복사되었습니다.");
     });
   }
 
-  function handleMessage() {
-    toast.info("문의 기능은 준비 중입니다.", { description: "백엔드 연동 후 이용 가능합니다." });
+  async function handleMessage() {
+    if (isOwnProject) {
+      toast.info("자기 자신에게는 문의할 수 없어요.");
+      return;
+    }
+
+    if (!project?.client.userId) {
+      toast.error("문의할 클라이언트 정보를 찾지 못했어요.");
+      return;
+    }
+
+    try {
+      const conversation = await createMessageConversationApi(project.client.userId);
+      onClose();
+      navigate(`/messages?conversationId=${conversation.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "메시지방을 열지 못했어요.");
+    }
   }
 
   const badgePriorityStyle =
@@ -305,7 +384,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
             className="relative bg-white rounded-3xl w-full max-h-[92vh] overflow-hidden shadow-2xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* ── HERO ── */}
+            {/* ?? HERO ?? */}
             <div className="relative h-56 shrink-0 overflow-hidden">
               <ImageWithFallback
                 src={project.imageUrl}
@@ -359,7 +438,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
               </div>
             </div>
 
-            {/* ── STATS BAR ── */}
+            {/* ?? STATS BAR ?? */}
             <div className="flex items-center gap-5 px-6 py-3.5 bg-[#FAFBFC] border-b border-gray-100 shrink-0 overflow-x-auto">
               <div className="shrink-0">
                 <p className="text-[10px] text-gray-400 mb-0.5">예산</p>
@@ -370,7 +449,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                 <p className="text-[10px] text-gray-400 mb-0.5">프로젝트 기간</p>
                 <p className="text-sm font-bold text-gray-700 flex items-center gap-1">
                   <Clock className="size-3 text-gray-400" />{project.duration}
-                  {/* 💡 기간 값에 따른 설명 추가 로직 */}
+                  {/* ?뮕 湲곌컙 媛믪뿉 ?곕Ⅸ ?ㅻ챸 異붽? 濡쒖쭅 */}
                   <span className="text-[11px] font-medium text-gray-500 ml-1">
                     {project.duration === "단기" && "(1~3개월)"}
                     {project.duration === "중기" && "(3~6개월)"}
@@ -400,13 +479,13 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
               </div>
             </div>
 
-            {/* ── BODY (scrollable, 2-col) ── */}
+            {/* ?? BODY (scrollable, 2-col) ?? */}
             <div className="flex flex-1 overflow-hidden">
 
               {/* Left: main content */}
               <div className="flex-1 overflow-y-auto p-6 space-y-7 min-w-0">
 
-                {/* 프로젝트 개요 */}
+                {/* ?꾨줈?앺듃 媛쒖슂 */}
                 <section>
                   <SectionHeading color="mint">프로젝트 개요</SectionHeading>
                   <p className="text-sm text-gray-600 leading-relaxed">{project.description}</p>
@@ -418,7 +497,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                   </section>
                 )}
 
-                {/* 담당 업무 */}
+                {/* ?대떦 ?낅Т */}
                 {project.responsibilities && project.responsibilities.length > 0 && (
                   <section>
                     <SectionHeading color="mint">담당 업무</SectionHeading>
@@ -433,7 +512,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                   </section>
                 )}
 
-                {/* 지원 자격 */}
+                {/* 吏???먭꺽 */}
                 {project.requirements && project.requirements.length > 0 && (
                   <section>
                     <SectionHeading color="coral">지원 자격</SectionHeading>
@@ -448,7 +527,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                   </section>
                 )}
 
-                {/* 요구 스킬 */}
+                {/* ?붽뎄 ?ㅽ궗 */}
                 <section>
                   <SectionHeading color="mint">요구 스킬</SectionHeading>
                   <div className="flex flex-wrap gap-2">
@@ -467,7 +546,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                   </div>
                 </section>
 
-                {/* 레퍼런스 이미지 갤러리 */}
+                {/* ?덊띁?곗뒪 ?대?吏 媛ㅻ윭由?*/}
                 {refImages.length > 0 && (
                   <section>
                     <div className="flex items-center justify-between mb-3">
@@ -510,7 +589,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                   </section>
                 )}
 
-                {/* 마일스톤 타임라인 */}
+                {/* 留덉씪?ㅽ넠 ??꾨씪??*/}
                 {project.milestones && project.milestones.length > 0 && (
                   <section className="pb-4">
                     <SectionHeading color="mint">프로젝트 일정</SectionHeading>
@@ -538,11 +617,42 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
               <div className="w-60 shrink-0 border-l border-gray-100 overflow-y-auto">
                 <div className="p-4 space-y-3">
 
-                  {/* 지원하기 */}
+                  {/* 吏?먰븯湲?*/}
                   {project.ownerView ? (
-                    <div className="w-full rounded-2xl border border-[#00C9A7]/20 bg-[#00C9A7]/8 px-4 py-3 text-center">
-                      <p className="text-sm font-bold text-[#00A88C]">내가 등록한 공고</p>
-                      <p className="mt-1 text-xs text-gray-500">아래에서 디자이너 지원 내역을 바로 확인할 수 있어요.</p>
+                    <>
+                      <div className="w-full rounded-2xl border border-[#00C9A7]/20 bg-[#00C9A7]/8 px-4 py-3 text-center">
+                        <p className="text-sm font-bold text-[#00A88C]">내가 등록한 공고</p>
+                        <p className="mt-1 text-xs text-gray-500">아래에서 디자이너 지원 내역을 바로 확인할 수 있어요.</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => onRequestProjectEdit?.(project.id)}
+                          className="w-full rounded-2xl border border-gray-200 py-3 text-sm font-bold text-gray-700 transition hover:border-[#00C9A7] hover:text-[#00A88C]"
+                        >
+                          공고 수정
+                        </button>
+                        <button
+                          onClick={handleDeleteProject}
+                          className="w-full rounded-2xl border border-red-200 py-3 text-sm font-bold text-red-500 transition hover:bg-red-50"
+                        >
+                          공고 삭제
+                        </button>
+                      </div>
+                    </>
+                  ) : project.myApplication ? (
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => setShowApplyForm(true)}
+                        className="w-full rounded-2xl bg-gradient-to-r from-[#00C9A7] to-[#00A88C] py-3.5 text-sm font-bold text-white transition-all hover:shadow-[0_0_24px_rgba(0,201,167,0.4)] hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        지원서 수정
+                      </button>
+                      <button
+                        onClick={handleDeleteApplication}
+                        className="w-full rounded-2xl border border-red-200 py-3 text-sm font-bold text-red-500 transition hover:bg-red-50"
+                      >
+                        지원 내역 삭제
+                      </button>
                     </div>
                   ) : (
                     <button
@@ -554,11 +664,10 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                           : "bg-gradient-to-r from-[#00C9A7] to-[#00A88C] text-white hover:shadow-[0_0_24px_rgba(0,201,167,0.4)] hover:scale-[1.02] active:scale-[0.98]"
                       }`}
                     >
-                      {applied ? "✓ 지원 완료" : "지원하기"}
+                      {applied ? "이미 지원 완료" : "지원하기"}
                     </button>
                   )}
-
-                  {/* 북마크 / 공유 */}
+                  {/* 遺곷쭏??/ 怨듭쑀 */}
                   <div className="flex gap-2">
                     <button
                       onClick={onBookmark}
@@ -580,14 +689,14 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                     </button>
                   </div>
 
-                  {/* D-Day + 지원 현황 */}
+                  {/* D-Day + 吏???꾪솴 */}
                   <div className="bg-[#FAFBFC] rounded-2xl p-3.5 space-y-3">
                     <DdayBarSidebar deadline={project.deadline} />
                     <div className="w-full h-px bg-gray-100" />
                     <ApplicantDotsSidebar count={project.applicants} />
                   </div>
 
-                  {/* 클라이언트 카드 */}
+                  {/* ?대씪?댁뼵??移대뱶 */}
                   <div className="bg-[#FAFBFC] rounded-2xl p-3.5">
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">클라이언트</p>
                     <div className="flex items-center gap-2 mb-3">
@@ -617,9 +726,10 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                     )}
                     <button
                       onClick={handleMessage}
-                      className="w-full flex items-center justify-center gap-1 text-xs text-[#00A88C] font-semibold py-2 border border-[#00C9A7]/30 rounded-xl hover:bg-[#00C9A7]/5 transition-all"
+                      disabled={isOwnProject}
+                      className={`w-full flex items-center justify-center gap-1 text-xs font-semibold py-2 border rounded-xl transition-all ${isOwnProject ? "border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed" : "text-[#00A88C] border-[#00C9A7]/30 hover:bg-[#00C9A7]/5"}`}
                     >
-                      <MessageCircle className="size-3.5" /> 문의하기
+                      <MessageCircle className="size-3.5" /> {isOwnProject ? "본인 공고" : "문의하기"}
                     </button>
                   </div>
 
@@ -692,7 +802,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                 </div>
               </div>
 
-              {/* ── 지원서 폼 패널 (3열) ── */}
+              {/* ?? 吏?먯꽌 ???⑤꼸 (3?? ?? */}
               <motion.div
                 animate={{
                   width: showApplyForm ? 320 : 0,
@@ -702,7 +812,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                 transition={{ type: "spring", damping: 30, stiffness: 280 }}
                 className="shrink-0 border-l border-gray-100 flex flex-col overflow-hidden"
               >
-                    {/* 폼 헤더 */}
+                    {/* ???ㅻ뜑 */}
                     <div className="px-5 pt-5 pb-4 border-b border-gray-100 shrink-0 flex items-start justify-between">
                       <div>
                         <p className="text-sm font-bold text-[#0F0F0F]">지원서 작성</p>
@@ -716,43 +826,43 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                       </button>
                     </div>
 
-                    {/* 폼 필드 */}
+                    {/* ???꾨뱶 */}
                     <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
 
-                      {/* 지원 메시지 */}
+                      {/* 吏??硫붿떆吏 */}
                       <div>
                         <label className="block text-xs font-bold text-gray-600 mb-2">
-                          지원 메시지 <span className="text-[#FF5C3A]">*</span>
+                           지원 메시지 <span className="text-[#FF5C3A]">*</span>
                         </label>
                         <textarea
                           value={applyMsg}
                           onChange={(e) => setApplyMsg(e.target.value.slice(0, 200))}
                           rows={4}
-                          placeholder="이 프로젝트에 지원하는 이유와 강점을 간단히 소개해 주세요."
+                           placeholder="이 프로젝트에 지원하는 이유와 강점을 간단하게 소개해주세요"
                           className="w-full text-sm rounded-xl border border-gray-200 px-3.5 py-3 focus:outline-none focus:border-[#00C9A7] transition-colors resize-none leading-relaxed placeholder:text-gray-300"
                         />
                         <p className="text-xs text-gray-300 text-right mt-1">{applyMsg.length}/200</p>
                       </div>
 
-                      {/* 관련 경험 */}
+                      {/* 愿??寃쏀뿕 */}
                       <div>
                         <label className="block text-xs font-bold text-gray-600 mb-2">
-                          관련 경험 요약 <span className="text-[#FF5C3A]">*</span>
+                           관련 경험 요약 <span className="text-[#FF5C3A]">*</span>
                         </label>
                         <textarea
                           value={applyExp}
                           onChange={(e) => setApplyExp(e.target.value.slice(0, 150))}
                           rows={3}
-                          placeholder="관련 프로젝트 경험을 간략히 정리해 주세요."
+                           placeholder="관련 프로젝트 경험을 간단하게 정리해주세요"
                           className="w-full text-sm rounded-xl border border-gray-200 px-3.5 py-3 focus:outline-none focus:border-[#00C9A7] transition-colors resize-none leading-relaxed placeholder:text-gray-300"
                         />
                         <p className="text-xs text-gray-300 text-right mt-1">{applyExp.length}/150</p>
                       </div>
 
-                      {/* 포트폴리오 */}
+                      {/* ?ы듃?대━??*/}
                       <div>
                         <label className="block text-xs font-bold text-gray-600 mb-2">
-                          포트폴리오 <span className="text-xs text-gray-400 font-normal">(선택)</span>
+                           포트폴리오 <span className="text-xs text-gray-400 font-normal">(선택)</span>
                         </label>
                         <div className="flex mb-2.5 rounded-xl overflow-hidden border border-gray-200">
                           <button
@@ -810,10 +920,10 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                         )}
                       </div>
 
-                      {/* 희망 예산 */}
+                      {/* ?щ쭩 ?덉궛 */}
                       <div>
                         <label className="block text-xs font-bold text-gray-600 mb-2">
-                          희망 예산 <span className="text-xs text-gray-400 font-normal">(선택)</span>
+                           희망 예산 <span className="text-xs text-gray-400 font-normal">(선택)</span>
                         </label>
                         <input
                           type="text"
@@ -824,11 +934,11 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                         />
                       </div>
 
-                      {/* 시작 가능일 */}
+                      {/* ?쒖옉 媛?μ씪 */}
                       <div>
                         <label className="block text-xs font-bold text-gray-600 mb-2">
                           <Calendar className="size-3.5 inline mr-1" />
-                          작업 시작 가능일 <span className="text-xs text-gray-400 font-normal">(선택)</span>
+                           작업 시작 가능일 <span className="text-xs text-gray-400 font-normal">(선택)</span>
                         </label>
                         <input
                           type="date"
@@ -840,7 +950,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
 
                     </div>
 
-                    {/* 제출 버튼 */}
+                    {/* ?쒖텧 踰꾪듉 */}
                     <div className="px-5 py-4 border-t border-gray-100 shrink-0 bg-white">
                       <button
                         onClick={handleSubmitApply}
@@ -853,7 +963,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
                       >
                         지원서 제출
                       </button>
-                      <p className="text-xs text-gray-300 text-center mt-2">* 표시 항목은 필수입니다</p>
+                      <p className="text-xs text-gray-300 text-center mt-2">* 표시된 항목은 필수입니다.</p>
                     </div>
               </motion.div>
 
@@ -861,7 +971,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
           </motion.div>
         </motion.div>
 
-        {/* ── 라이트박스 ── */}
+        {/* ?? ?쇱씠?몃컯???? */}
         {lightboxIndex !== null && refImages[lightboxIndex] && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -872,7 +982,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
           >
             <div className="absolute inset-0 bg-black/92" />
 
-            {/* 닫기 */}
+            {/* ?リ린 */}
             <button
               onClick={() => setLightboxIndex(null)}
               className="absolute top-5 right-5 bg-white/15 border border-white/25 rounded-full p-2 hover:bg-white/30 transition-all z-10"
@@ -880,12 +990,12 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
               <X className="size-5 text-white" />
             </button>
 
-            {/* 카운터 */}
+            {/* 移댁슫??*/}
             <div className="absolute top-5 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm text-white text-sm font-semibold px-4 py-1.5 rounded-full z-10">
               {lightboxIndex + 1} / {refImages.length}
             </div>
 
-            {/* 이전 */}
+            {/* ?댁쟾 */}
             {lightboxIndex > 0 && (
               <button
                 onClick={(e) => { e.stopPropagation(); setLightboxIndex((i) => i! - 1); }}
@@ -895,7 +1005,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
               </button>
             )}
 
-            {/* 이미지 */}
+            {/* ?대?吏 */}
             <AnimatePresence mode="wait">
               <motion.img
                 key={lightboxIndex}
@@ -910,7 +1020,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
               />
             </AnimatePresence>
 
-            {/* 다음 */}
+            {/* ?ㅼ쓬 */}
             {lightboxIndex < refImages.length - 1 && (
               <button
                 onClick={(e) => { e.stopPropagation(); setLightboxIndex((i) => i! + 1); }}
@@ -920,7 +1030,7 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
               </button>
             )}
 
-            {/* 하단 썸네일 스트립 (4장 이상일 때) */}
+            {/* ?섎떒 ?몃꽕???ㅽ듃由?(4???댁긽???? */}
             {refImages.length > 3 && (
               <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex gap-2 z-10">
                 {refImages.map((src, i) => (
@@ -941,8 +1051,8 @@ export default function ProjectDetailModal({ project, onClose, bookmarked = fals
         <CompletionModal
           open={showApplyCompletionModal}
           eyebrow="프로젝트 지원 완료"
-          title="지원서 제출이 완료되었습니다"
-          description={`${project.title} 공고에 지원이 등록되었어요.\n클라이언트가 지원 내용을 확인한 뒤 연락할 거예요.`}
+          title="지원서 제출이 완료되었습니다."
+          description={`${project.title} 공고에 지원서를 등록했어요.\n클라이언트가 지원 내용을 확인한 뒤 연락할 거예요.`}
           primaryActionLabel="확인"
           onPrimaryAction={handleApplyCompletionClose}
           onClose={handleApplyCompletionClose}
@@ -962,3 +1072,8 @@ function SectionHeading({ children, color }: { children: React.ReactNode; color:
     </h3>
   );
 }
+
+
+
+
+

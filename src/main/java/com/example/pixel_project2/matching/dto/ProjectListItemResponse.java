@@ -4,6 +4,7 @@ import java.util.List;
 
 public record ProjectListItemResponse(
         Long id,
+        Long clientUserId,
         String nickname,
         String profileImage,
         String companyName,

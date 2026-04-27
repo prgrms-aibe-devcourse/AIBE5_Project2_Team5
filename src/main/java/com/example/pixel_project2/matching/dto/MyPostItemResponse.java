@@ -4,6 +4,7 @@ import java.util.List;
 
 public record MyPostItemResponse(
         Long postId,
+        Long clientUserId,
         String title,
         String overview,
         String profileImage,

@@ -62,13 +62,23 @@ public class MatchingController {
         return ApiResponse.ok("프로젝트 지원이 완료되었습니다.", matchingService.applyProject(postId, request));
     }
 
+    @PatchMapping("/{postId}/apply")
+    public ApiResponse<String> updateProjectApplication(@PathVariable Long postId, @RequestBody ApplyProjectRequest request) {
+        return ApiResponse.ok("지원서를 수정했습니다.", matchingService.updateProjectApplication(postId, request));
+    }
+
+    @DeleteMapping("/{postId}/apply")
+    public ApiResponse<String> deleteProjectApplication(@PathVariable Long postId) {
+        return ApiResponse.ok("지원을 취소했습니다.", matchingService.deleteProjectApplication(postId));
+    }
+
     @PostMapping("/{postId}/close")
     public ApiResponse<String> closeProject(@PathVariable Long postId) {
         return ApiResponse.ok("프로젝트 모집 상태를 변경했습니다.", matchingService.closeProject(postId));
     }
 
     @PatchMapping("/{postId}/edit")
-    public ApiResponse<String> updateProject(@PathVariable Long postId, @RequestBody UpdateProjectRequest request) {
+    public ApiResponse<ProjectDetailResponse> updateProject(@PathVariable Long postId, @RequestBody UpdateProjectRequest request) {
         return ApiResponse.ok("프로젝트를 수정했습니다.", matchingService.updateProject(postId, request));
     }
 

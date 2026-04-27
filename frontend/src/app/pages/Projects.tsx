@@ -1,5 +1,5 @@
-import {useEffect, useMemo, useState} from "react";
-import {Link} from "react-router";
+﻿import {useEffect, useMemo, useState} from "react";
+import {Link, useNavigate} from "react-router";
 import { toast } from "sonner";
 import {
     AlertTriangle,
@@ -9,7 +9,7 @@ import {
     LayoutGrid,
     LayoutList,
     Search,
-    BadgeCheck, // 추가
+    BadgeCheck, // 異붽?
 } from "lucide-react";
 import Navigation from "../components/Navigation";
 import Footer from "../components/Footer";
@@ -24,12 +24,15 @@ import {
     getMyPostsApi,
     getMyApplicationsApi,
     getProjectApplicationsApi,
+    deleteProjectApi,
+    deleteProjectApplicationApi,
     type ProjectApplicationItemResponse
 } from "../api/projectApi";
 import { getCurrentUser } from "../utils/auth";
 
 type ProjectApiItem = {
     id: number;
+    clientUserId?: number | null;
     nickname: string;
     profileImage?: string | null;
     companyName: string | null;
@@ -51,7 +54,7 @@ type FilterOptions = {
     categories: string[];
 };
 
-// 💡 신규 타입 추가
+// ?뮕 ?좉퇋 ???異붽?
 type MyActivityTab = "posts" | "applications";
 
 const API_BASE_URL = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "").replace(/\/$/, "");
@@ -86,7 +89,7 @@ function getPriority(deadline: string): ProjectData["priority"] {
 function getBadge(deadline: string): string {
     const dday = getDday(deadline);
     if (dday <= 0) return "마감";
-    if (dday <= 3) return "급마감";
+    if (dday <= 3) return "긴급마감";
     return "모집중";
 }
 
@@ -111,11 +114,12 @@ function toProjectData(project: ProjectApiItem): ProjectData {
         description: project.overview,
         fullDescription: "",
         client: {
+            userId: project.clientUserId ?? null,
             name: project.nickname,
             avatar: project.profileImage || DEFAULT_AVATAR,
             verified: true,
         },
-        category: project.category ?? categories[0] ?? "Uncategorized",
+        category: project.category ?? categories[0] ?? "미분류",
         categories,
         skills: [],
         budget: parseBudgetToManwon(project.budget).toString(),
@@ -131,7 +135,7 @@ function toProjectData(project: ProjectApiItem): ProjectData {
         experienceLevel: project.experienceLevel,
         companyInfo: {
             size: project.companyName ?? "",
-            industry: project.category ?? categories[0] ?? "Client",
+            industry: project.category ?? categories[0] ?? "클라이언트",
         },
     };
 }
@@ -186,6 +190,7 @@ function Thumbnail({project, mode}: { project: ProjectData; mode: "list" | "grid
 }
 
 export default function Projects() {
+    const navigate = useNavigate();
     const currentUser = getCurrentUser();
     const [apiProjects, setApiProjects] = useState<ProjectApiItem[]>([]);
     const [filterOptions, setFilterOptions] = useState<FilterOptions>({
@@ -199,18 +204,24 @@ export default function Projects() {
     const [sortBy, setSortBy] = useState<(typeof SORT_OPTIONS)[number]>("최신순");
     const [viewMode, setViewMode] = useState<"list" | "grid">("list");
     const [selectedProject, setSelectedProject] = useState<ProjectData | null>(null);
+    const [openApplyEditorOnModal, setOpenApplyEditorOnModal] = useState(false);
     const [bookmarked, setBookmarked] = useState<number[]>([]);
     const [loading, setLoading] = useState(true);
     const [detailLoading, setDetailLoading] = useState<number | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    // 💡 신규 상태 추가 (활동 내역)
+    // ?뮕 ?좉퇋 ?곹깭 異붽? (?쒕룞 ?댁뿭)
     const [activeTab, setActiveTab] = useState<MyActivityTab>("posts");
     const [myPosts, setMyPosts] = useState<any[]>([]);
     const [myApplications, setMyApplications] = useState<any[]>([]);
     const [isActivityLoading, setIsActivityLoading] = useState(false);
 
-    // 1. 초기 데이터 로드 (메인 목록 및 필터) - 마운트 시 1회 실행
+    async function reloadMyApplications() {
+        const response = await getMyApplicationsApi();
+        setMyApplications(Array.isArray(response) ? response : (response as any).data || []);
+    }
+
+    // 1. 珥덇린 ?곗씠??濡쒕뱶 (硫붿씤 紐⑸줉 諛??꾪꽣) - 留덉슫????1???ㅽ뻾
     useEffect(() => {
         let mounted = true;
 
@@ -226,7 +237,7 @@ export default function Projects() {
                 setApiProjects(projectsData ?? []);
                 setFilterOptions(filtersData ?? { jobStates: [], experienceLevels: [], categories: [] });
             } catch (err) {
-                if (mounted) setError(err instanceof Error ? err.message : "데이터 로드 실패");
+                if (mounted) setError(err instanceof Error ? err.message : "데이터를 불러오지 못했어요.");
             } finally {
                 if (mounted) setLoading(false);
             }
@@ -234,16 +245,16 @@ export default function Projects() {
 
         void loadInitialData();
         return () => { mounted = false; };
-    }, []); // 💡 의존성 배열을 비워 처음에만 실행
+    }, []); // ?뮕 ?섏〈??諛곗뿴??鍮꾩썙 泥섏쓬?먮쭔 ?ㅽ뻾
 
-// 2. 사이드바 활동 데이터 로드 - 탭 변경 시 실행
+// 2. ?ъ씠?쒕컮 ?쒕룞 ?곗씠??濡쒕뱶 - ??蹂寃????ㅽ뻾
     useEffect(() => {
         let mounted = true;
 
         const fetchActivityData = async () => {
             setIsActivityLoading(true);
             try {
-                // 현재 활성화된 탭의 데이터만 패칭
+                // ?꾩옱 ?쒖꽦?붾맂 ??쓽 ?곗씠?곕쭔 ?⑥묶
                 if (activeTab === "posts") {
                     const response = await getMyPostsApi();
                     if (!mounted) return;
@@ -262,7 +273,7 @@ export default function Projects() {
 
         void fetchActivityData();
         return () => { mounted = false; };
-    }, [activeTab]); // 💡 탭이 바뀔 때만 실행
+    }, [activeTab]); // ?뮕 ??씠 諛붾??뚮쭔 ?ㅽ뻾
 
     const projectsData = useMemo(() => apiProjects.map(toProjectData), [apiProjects]);
 
@@ -299,8 +310,9 @@ export default function Projects() {
         return list;
     }, [projectsData, selectedCategory, selectedExperience, selectedProjectType, sortBy]);
 
-    async function handleOpenProject(project: ProjectData) {
+    async function handleOpenProject(project: ProjectData, options?: { openApplyEditor?: boolean }) {
         setSelectedProject(project);
+        setOpenApplyEditorOnModal(Boolean(options?.openApplyEditor));
         setDetailLoading(project.id);
 
         try {
@@ -320,6 +332,7 @@ export default function Projects() {
                     ...current,
                     client: {
                         ...current.client,
+                        userId: detail.clientUserId ?? current.client.userId ?? null,
                         avatar: detail.profileImage || current.client.avatar,
                     },
                     category: detail.categories && detail.categories.length > 0
@@ -358,8 +371,8 @@ export default function Projects() {
         setBookmarked((prev) => (prev.includes(projectId) ? prev.filter((id) => id !== projectId) : [...prev, projectId]));
     }
 
-    // 💡 신규: 사이드바 활동 내역 아이템 클릭 핸들러
-    function handleActivityItemClick(item: any) {
+    // ?뮕 ?좉퇋: ?ъ씠?쒕컮 ?쒕룞 ?댁뿭 ?꾩씠???대┃ ?몃뱾??
+    function handleActivityItemClick(item: any, options?: { openApplyEditor?: boolean }) {
         const ownerView = activeTab === "posts";
         const projectData: ProjectData = {
             id: item.postId,
@@ -369,11 +382,12 @@ export default function Projects() {
             description: item.overview,
             fullDescription: "",
             client: {
-                name: "나의 프로젝트",
+                userId: item.clientUserId ?? null,
+                name: "프로젝트 작성자",
                 avatar: item.profileImage || DEFAULT_AVATAR,
                 verified: true,
             },
-            category: item.category || "Uncategorized",
+            category: item.category || "미분류",
             categories: item.categories ?? (item.category ? [item.category] : []),
             skills: [],
             budget: "0",
@@ -392,12 +406,67 @@ export default function Projects() {
             experienceLevel: "",
             ownerView,
             applications: ownerView ? [] : undefined,
+            myApplication: ownerView ? undefined : {
+                applicationId: item.applicationId,
+                designerId: currentUser?.userId ?? 0,
+                designerName: currentUser?.name ?? currentUser?.nickname ?? "",
+                designerNickname: currentUser?.nickname ?? null,
+                designerProfileImage: currentUser?.profileImage ?? null,
+                expectedBudget: item.expectedBudget,
+                summary: item.summary,
+                coverLetter: item.coverLetter,
+                portfolioUrl: item.portfolioUrl,
+                startDate: item.startDate,
+            },
             companyInfo: {
                 size: "",
                 industry: item.category || "",
             },
         };
-        handleOpenProject(projectData);
+        handleOpenProject(projectData, options);
+    }
+
+    async function handleDeleteMyPost(postId: number, event: React.MouseEvent) {
+        event.stopPropagation();
+        if (!window.confirm("등록한 공고를 삭제할까요?")) {
+            return;
+        }
+
+        try {
+            await deleteProjectApi(postId);
+            setApiProjects((current) => current.filter((project) => project.id !== postId));
+            setMyPosts((current) => current.filter((item) => item.postId !== postId));
+            setSelectedProject((current) => current?.id === postId ? null : current);
+            toast.success("공고를 삭제했어요.");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "공고를 삭제하지 못했어요.");
+        }
+    }
+
+    async function handleDeleteMyApplication(postId: number, event: React.MouseEvent) {
+        event.stopPropagation();
+        if (!window.confirm("지원 내역을 삭제할까요?")) {
+            return;
+        }
+
+        try {
+            await deleteProjectApplicationApi(postId);
+            setMyApplications((current) => current.filter((item) => item.postId !== postId));
+            setSelectedProject((current) => current?.id === postId ? null : current);
+            toast.success("지원 내역을 삭제했어요.");
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : "지원 내역을 삭제하지 못했어요.");
+        }
+    }
+
+    function handleEditMyPost(postId: number, event: React.MouseEvent) {
+        event.stopPropagation();
+        navigate(`/projects/new?edit=${postId}`);
+    }
+
+    function handleEditMyApplication(item: any, event: React.MouseEvent) {
+        event.stopPropagation();
+        handleActivityItemClick(item, { openApplyEditor: true });
     }
 
     return (
@@ -421,7 +490,7 @@ export default function Projects() {
                             <span className="text-white">ell</span>
                         </h1>
                         <p className="mt-3 max-w-2xl text-sm text-gray-300">
-                            원하는 프로젝트 고르고<span className="text-[#FF5C3A]">(Pick)</span>, 크리에이티브를 판매합니다<span className="text-[#00C9A7]">(Sell)</span> <br />
+                            원하는 프로젝트를 고르고 <span className="text-[#FF5C3A]">(Pick)</span>, 크리에이티브를 판매합니다 <span className="text-[#00C9A7]">(Sell)</span> <br />
                             클라이언트와 디자이너를 잇는 새로운 방식의 프로젝트 매칭 플랫폼
                         </p>
                     </div>
@@ -437,7 +506,7 @@ export default function Projects() {
                             <div className="h-8 w-px bg-white/10"/>
                             <div className="text-center">
                                 <p className="text-2xl font-bold text-[#FF5C3A]">{projectsData.filter((p) => p.priority === "high").length}</p>
-                                <p className="mt-0.5 text-[11px] text-gray-400">급한 공고</p>
+                                <p className="mt-0.5 text-[11px] text-gray-400">긴급 공고</p>
                             </div>
                         </div>
 
@@ -462,7 +531,7 @@ export default function Projects() {
             <div className="mx-auto flex w-full max-w-[1400px] flex-1 gap-6 px-6 py-8 xl:flex-row flex-col">
                 <aside className="w-full rounded-3xl border border-white/70 bg-white p-5 shadow-sm xl:w-72">
                     <div className="mb-6">
-                        <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-400">Filter</h2>
+                        <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-gray-400">필터</h2>
                     </div>
 
                     <div>
@@ -659,18 +728,18 @@ export default function Projects() {
                     )}
                 </main>
 
-                {/* 💡 신규 우측 사이드바 (My Activity) */}
+                {/* ?뮕 ?좉퇋 ?곗륫 ?ъ씠?쒕컮 (My Activity) */}
                 <aside className="hidden w-full shrink-0 space-y-6 lg:block xl:w-80">
                     <div className="rounded-3xl border border-white/70 bg-white p-5 shadow-sm">
-                        <h2 className="mb-4 text-sm font-bold uppercase tracking-[0.2em] text-gray-400">My Activity</h2>
+                        <h2 className="mb-4 text-sm font-bold uppercase tracking-[0.2em] text-gray-400">내 활동</h2>
 
-                        {/* 세그먼트 컨트롤 */}
+                        {/* ?멸렇癒쇳듃 而⑦듃濡?*/}
                         <div className="mb-5 flex rounded-2xl bg-gray-100 p-1">
                             <button
                                 onClick={() => setActiveTab("posts")}
                                 className={`flex-1 rounded-xl py-2 text-xs font-bold transition-all ${
                                     activeTab === "posts"
-                                        ? "bg-white text-[#007E68] shadow-sm" // 💡 색상 변경
+                                        ? "bg-white text-[#007E68] shadow-sm" // ?뮕 ?됱긽 蹂寃?
                                         : "text-gray-400 hover:text-gray-600"
                                 }`}
                             >
@@ -680,7 +749,7 @@ export default function Projects() {
                                 onClick={() => setActiveTab("applications")}
                                 className={`flex-1 rounded-xl py-2 text-xs font-bold transition-all ${
                                     activeTab === "applications"
-                                        ? "bg-white text-[#007E68] shadow-sm" // 💡 색상 변경
+                                        ? "bg-white text-[#007E68] shadow-sm" // ?뮕 ?됱긽 蹂寃?
                                         : "text-gray-400 hover:text-gray-600"
                                 }`}
                             >
@@ -688,7 +757,7 @@ export default function Projects() {
                             </button>
                         </div>
 
-                        {/* 리스트 영역 */}
+                        {/* 由ъ뒪???곸뿭 */}
                         <div className="space-y-3">
                             {isActivityLoading ? (
                                 <p className="py-10 text-center text-xs text-gray-400">불러오는 중...</p>
@@ -704,22 +773,22 @@ export default function Projects() {
                                         className="group relative cursor-pointer rounded-2xl border border-gray-50 bg-gray-50/50 p-4 transition hover:border-[#BDEFD8] hover:bg-white"
                                     >
                                         <div className="flex items-center justify-between gap-2">
-                                            {/* projectState 표시 */}
+                                            {/* projectState ?쒖떆 */}
                                             <span className={`text-[10px] font-bold ${item.projectState === 'OPEN' ? 'text-[#00C9A7]' : 'text-gray-400'}`}>
-                                ● {item.projectState === 'OPEN' ? '모집중' : '마감'}
+                                {item.projectState === 'OPEN' ? '모집중' : '마감'}
                             </span>
                                             <span className="text-[10px] text-gray-400">{item.deadline?.split('T')[0]}</span>
                                         </div>
-                                        {/* title (주된 컨텐츠 1) */}
+                                        {/* title (二쇰맂 而⑦뀗痢?1) */}
                                         <p className="mt-1 line-clamp-1 text-sm font-black text-[#0F0F0F] group-hover:text-[#00A88C]">
                                             {item.title}
                                         </p>
-                                        {/* overview (주된 컨텐츠 2) */}
+                                        {/* overview (二쇰맂 而⑦뀗痢?2) */}
                                         <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-gray-500">
                                             {item.overview}
                                         </p>
                                         <div className="mt-3 flex items-center justify-between">
-                                            {/* 하단 정보: jobState 및 category */}
+                                            {/* ?섎떒 ?뺣낫: jobState 諛?category */}
                                             <div className="flex gap-1.5">
                                 <span className="rounded-md bg-[#F1F1EE] px-1.5 py-0.5 text-[10px] font-semibold text-gray-600">
                                     {item.jobState}
@@ -729,6 +798,43 @@ export default function Projects() {
                                 </span>
                                             </div>
                                             <ArrowRight className="size-3 text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-[#00C9A7]" />
+                                        </div>
+                                        <div className="mt-3 flex gap-2">
+                                            {activeTab === "posts" ? (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(event) => handleEditMyPost(item.postId, event)}
+                                                        className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-[11px] font-semibold text-gray-600 transition hover:border-[#00C9A7] hover:text-[#00A88C]"
+                                                    >
+                                                        수정
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(event) => handleDeleteMyPost(item.postId, event)}
+                                                        className="flex-1 rounded-xl border border-red-200 px-3 py-2 text-[11px] font-semibold text-red-500 transition hover:bg-red-50"
+                                                    >
+                                                        삭제
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(event) => handleEditMyApplication(item, event)}
+                                                        className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-[11px] font-semibold text-gray-600 transition hover:border-[#00C9A7] hover:text-[#00A88C]"
+                                                    >
+                                                        지원서 수정
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={(event) => handleDeleteMyApplication(item.postId, event)}
+                                                        className="flex-1 rounded-xl border border-red-200 px-3 py-2 text-[11px] font-semibold text-red-500 transition hover:bg-red-50"
+                                                    >
+                                                        지원 삭제
+                                                    </button>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                 ))
@@ -740,15 +846,15 @@ export default function Projects() {
                         </button>
                     </div>
 
-                    {/* 하단 홍보 배너 */}
+                    {/* ?섎떒 ?띾낫 諛곕꼫 */}
                     <div className="rounded-3xl bg-gradient-to-br from-[#0F0F0F] to-[#1a1a1a] p-6 text-white shadow-lg">
                         <div className="flex items-center gap-2 text-[#00C9A7]">
                             <BadgeCheck className="size-4" />
                             <span className="text-[10px] font-bold uppercase">Pro Verified</span>
                         </div>
                         <p className="mt-3 text-sm font-bold leading-relaxed">
-                            매칭 성공률을 높이고 싶다면?<br />
-                            포트폴리오를 업데이트 하세요!
+                            매칭 성과를 더 높이고 싶다면<br />
+                            프로필을 업데이트 해보세요
                         </p>
                         <Link to="/profile/me" className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-[#00C9A7] hover:underline">
                             프로필 수정하기 <ArrowRight className="size-3" />
@@ -761,7 +867,10 @@ export default function Projects() {
 
             <ProjectDetailModal
                 project={selectedProject}
-                onClose={() => setSelectedProject(null)}
+                onClose={() => {
+                    setSelectedProject(null);
+                    setOpenApplyEditorOnModal(false);
+                }}
                 bookmarked={selectedProject ? bookmarked.includes(selectedProject.id) : false}
                 onBookmark={() => {
                     if (!selectedProject) return;
@@ -771,7 +880,20 @@ export default function Projects() {
                             : [...prev, selectedProject.id],
                     );
                 }}
+                openApplyFormOnMount={openApplyEditorOnModal}
+                onApplicationChanged={() => {
+                    void reloadMyApplications();
+                    setOpenApplyEditorOnModal(false);
+                }}
+                onProjectDeleted={(projectId) => {
+                    setApiProjects((current) => current.filter((project) => project.id !== projectId));
+                    setMyPosts((current) => current.filter((item) => item.postId !== projectId));
+                    setSelectedProject(null);
+                }}
+                onRequestProjectEdit={(projectId) => navigate(`/projects/new?edit=${projectId}`)}
             />
         </div>
     );
 }
+
+

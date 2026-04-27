@@ -6,6 +6,7 @@ import com.example.pixel_project2.common.entity.enums.NotificationType;
 import com.example.pixel_project2.common.repository.UserRepository;
 import com.example.pixel_project2.notification.dto.NotificationResponseDto;
 import com.example.pixel_project2.notification.repository.NotificationRepository;
+import com.example.pixel_project2.notification.websocket.NotificationSocketHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -19,6 +20,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
     private final com.example.pixel_project2.message.repository.ChatMessageRepository chatMessageRepository;
+    private final NotificationSocketHandler notificationSocketHandler;
 
     @Override
     @Transactional
@@ -45,7 +47,13 @@ public class NotificationServiceImpl implements NotificationService {
                 .isRead(false)
                 .build();
 
-        notificationRepository.save(notification);
+        Notification savedNotification = notificationRepository.save(notification);
+        long unreadCount = notificationRepository.countByReceiverIdAndIsReadFalse(receiverId);
+        notificationSocketHandler.broadcastNotification(
+                receiverId,
+                NotificationResponseDto.from(savedNotification),
+                unreadCount
+        );
     }
 
     @Override

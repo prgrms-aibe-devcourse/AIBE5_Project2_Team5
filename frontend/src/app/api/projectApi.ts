@@ -31,8 +31,11 @@ export type ApplyProjectPayload = {
   startDate?: string;
 };
 
+export type UpdateProjectPayload = CreateProjectPayload;
+
 export type ProjectDetailResponse = {
   postId: number;
+  clientUserId?: number | null;
   postType: string;
   profileImage?: string | null;
   category: string;
@@ -53,6 +56,7 @@ export type ProjectDetailResponse = {
 
 export type MyActivityItemResponse = {
   postId: number;
+  clientUserId?: number | null;
   title: string;
   overview: string;
   profileImage?: string | null;
@@ -68,10 +72,15 @@ export type MyActivityItemResponse = {
 export type MyApplicationItemResponse = {
   applicationId: number;
   postId: number;
+  clientUserId?: number | null;
   title: string;
   overview?: string | null;
   profileImage?: string | null;
   expectedBudget?: number | null;
+  summary?: string | null;
+  coverLetter?: string | null;
+  portfolioUrl?: string | null;
+  startDate?: string | null;
   projectState?: string | null;
   jobState?: string | null;
   category?: string | null;
@@ -137,6 +146,48 @@ export function getMyApplicationsApi() {
     "/api/projects/my-applications",
     { method: "GET" },
     "Failed to load my applications.",
+  );
+}
+
+export function updateProjectApplicationApi(postId: number, payload: ApplyProjectPayload) {
+  return apiRequest<string>(
+    `/api/projects/${postId}/apply`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+    "Failed to update project application.",
+  );
+}
+
+export function deleteProjectApplicationApi(postId: number) {
+  return apiRequest<string>(
+    `/api/projects/${postId}/apply`,
+    {
+      method: "DELETE",
+    },
+    "Failed to delete project application.",
+  );
+}
+
+export function updateProjectApi(postId: number, payload: UpdateProjectPayload) {
+  return apiRequest<ProjectDetailResponse>(
+    `/api/projects/${postId}/edit`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+    "Failed to update project.",
+  );
+}
+
+export function deleteProjectApi(postId: number) {
+  return apiRequest<string>(
+    `/api/projects/${postId}/delete`,
+    {
+      method: "DELETE",
+    },
+    "Failed to delete project.",
   );
 }
 
