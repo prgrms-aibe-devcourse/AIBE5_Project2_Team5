@@ -54,6 +54,7 @@ type FeedDetailApiData = {
   imageUrls: string[];
   picked: boolean;
   mine: boolean;
+  tags: string[];
 };
 
 type Params<TFeed extends BaseFeedItem> = {
@@ -117,10 +118,9 @@ export function useFeedDetail<TFeed extends BaseFeedItem>({
           images: detailImages,
           likes: detail.pickCount,
           comments: detail.commentCount,
-          tags: [
-            normalizeCategoryLabel(detail.category),
-            normalizePostTypeLabel(detail.postType),
-          ].filter(Boolean),
+          tags: detail.tags?.length
+            ? detail.tags
+            : [normalizeCategoryLabel(detail.category)].filter(Boolean),
           category: normalizeCategoryLabel(detail.category),
           integrations: detail.portfolioUrl
             ? [{ provider: "figma" as const, label: "Portfolio", url: detail.portfolioUrl }]

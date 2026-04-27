@@ -699,7 +699,7 @@ export default function Explore() {
                 transition={{ duration: 0.3 }}
                 className="overflow-hidden"
               >
-                <div className="mt-3 p-5 bg-gradient-to-br from-white to-[#F0FDF9] rounded-2xl border border-[#00C9A7]/15 shadow-lg">
+                <div className="mt-3 p-5 bg-gradient-to-br from-white to-[#F5FFFB] rounded-2xl border border-[#00C9A7]/15 shadow-lg">
                   {aiLoading ? (
                     <div className="flex items-center gap-3">
                       <div className="relative size-8">
@@ -1108,7 +1108,7 @@ export default function Explore() {
                       key={col.folderId}
                       onClick={() => saveToCollection(col.folderId)}
                       className={`w-full p-3 rounded-lg border flex items-center justify-between gap-3 text-left transition-all ${
-                        isSaved ? "bg-[#E7FAF6] border-[#00C9A7] text-[#007D69]" : "bg-white border-gray-200 hover:border-[#00C9A7] hover:bg-[#F2FFFC]"
+                        isSaved ? "bg-[#F5FFFB] border-[#00C9A7] text-[#007E68]" : "bg-white border-gray-200 hover:border-[#00C9A7] hover:bg-[#F5FFFB]"
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
@@ -1149,7 +1149,7 @@ export default function Explore() {
                   </button>
                 </form>
                 {collectionNotice && (
-                  <motion.p initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="text-center text-sm font-semibold text-[#00C9A7] mt-4 bg-[#E7FAF6] py-2 rounded-lg">
+                  <motion.p initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="text-center text-sm font-semibold text-[#00C9A7] mt-4 bg-[#F5FFFB] py-2 rounded-lg">
                     {collectionNotice}
                   </motion.p>
                 )}

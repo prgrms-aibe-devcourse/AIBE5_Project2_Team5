@@ -25,4 +25,7 @@ public class Feed {
 
     @Column(name = "portfolio_url", length = 200)
     private String portfolioUrl;
+
+    @Column(name = "tags", length = 500)
+    private String tags;
 }

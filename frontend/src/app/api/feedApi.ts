@@ -17,6 +17,7 @@ export async function createFeedApi(params: {
   description: string;
   category: string;
   portfolioUrl?: string;
+  tags?: string[];
 }) {
   return apiRequest<CreateFeedResponse>(
     "/api/feeds/new",
@@ -35,6 +36,7 @@ export async function updateFeedApi(
     description: string;
     category: string;
     portfolioUrl?: string;
+    tags?: string[];
   },
 ) {
   return apiRequest<CreateFeedResponse>(

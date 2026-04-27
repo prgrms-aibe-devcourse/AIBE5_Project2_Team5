@@ -48,6 +48,7 @@ export type FeedApiItem = {
   postType: string;
   category: string;
   picked: boolean;
+  tags: string[];
 };
 
 export type FeedListApiData = {
