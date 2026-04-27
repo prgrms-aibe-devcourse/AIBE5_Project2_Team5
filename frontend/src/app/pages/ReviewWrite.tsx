@@ -8,24 +8,6 @@ import { createProfileReviewApi } from "../api/profileApi";
 import { useNightMode } from "../contexts/NightModeContext";
 import { matchingCategories } from "../utils/matchingCategories";
 
-const LEFT_CONVERSATIONS_STORAGE_KEY = "pickxel:left-message-conversations";
-
-const rememberHiddenConversation = (conversationId: number) => {
-  if (typeof window === "undefined" || !conversationId) return;
-
-  try {
-    const rawValue = window.localStorage.getItem(LEFT_CONVERSATIONS_STORAGE_KEY);
-    const currentIds = rawValue ? (JSON.parse(rawValue) as number[]) : [];
-    const nextIds = Array.from(new Set([...currentIds, conversationId]));
-    window.localStorage.setItem(
-      LEFT_CONVERSATIONS_STORAGE_KEY,
-      JSON.stringify(nextIds),
-    );
-  } catch {
-    // Hiding the conversation locally is best-effort only.
-  }
-};
-
 export default function ReviewWrite() {
   const { isNight } = useNightMode();
   const location = useLocation();
@@ -172,7 +154,6 @@ export default function ReviewWrite() {
           "후기는 저장되었습니다. 메시지 화면 작업 탭에서 「작업 종료」를 눌러 프로세스를 정리해 주세요.",
         );
       }
-      rememberHiddenConversation(conversationId);
       setIsThankYouOpen(true);
       return;
     } catch (error) {
