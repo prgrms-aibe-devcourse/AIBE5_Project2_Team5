@@ -1,16 +1,34 @@
-import { Link, useLocation } from "react-router";
-import { Bell } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router";
+import { Bell, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
-import { motion, LayoutGroup } from "motion/react";
-import {
-  hasUnreadNotifications,
-  subscribeNotificationState,
-} from "../utils/notificationState";
+import { toast } from "sonner";
+import { motion, LayoutGroup, AnimatePresence } from "motion/react";
+import { createNotificationSocket } from "../api/notificationSocket";
+import { applyLiveNotificationCreated, fetchUnreadCount, subscribeNotificationState, buildNotificationTitle } from "../utils/notificationState";
+import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { clearAuthenticated, getCurrentUser, subscribeCurrentUser } from "../utils/auth";
+import { DEFAULT_AVATAR } from "../utils/avatar";
+import { logoutApi } from "../api/authApi";
+import { DayNightSwitch } from "./DayNightSwitch";
+import { useNightMode } from "../contexts/NightModeContext";
 
-export default function Navigation() {
+type NavigationProps = {
+  isNight?: boolean;
+  onToggle?: () => void;
+};
+
+export default function Navigation({ isNight: isNightProp, onToggle: onToggleProp }: NavigationProps) {
+  const ctx = useNightMode();
+  const isNight = isNightProp ?? ctx.isNight;
+  const onToggle = onToggleProp ?? ctx.toggle;
   const location = useLocation();
-  const [hasUnread, setHasUnread] = useState(hasUnreadNotifications);
+  const navigate = useNavigate();
+  const [currentUser, setCurrentUserState] = useState(() => getCurrentUser());
+  const [hasUnread, setHasUnread] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [showMiniNotification, setShowMiniNotification] = useState(false);
+  const [lastNotificationTitle, setLastNotificationTitle] = useState("");
+  const profilePath = "/profile/me";
 
   const navItems = [
     { path: "/feed", label: "피드" },
@@ -22,35 +40,91 @@ export default function Navigation() {
 
   const isActive = (path: string) => location.pathname.startsWith(path);
 
+  const handleLogout = async () => {
+    try {
+      await logoutApi();
+    } catch {
+      // 클라이언트 인증 정보는 서버 로그아웃 실패와 무관하게 정리합니다.
+    } finally {
+      clearAuthenticated();
+      navigate("/", { replace: true });
+    }
+  };
+
   useEffect(() => {
-    const refreshUnreadState = () => setHasUnread(hasUnreadNotifications());
+    const refreshUnreadState = async () => {
+      try {
+        const unread = await fetchUnreadCount();
+        setHasUnread(unread);
+      } catch {
+        // ignore
+      }
+    };
     refreshUnreadState();
-    return subscribeNotificationState(refreshUnreadState);
+
+    const unsubscribe = subscribeNotificationState(() => {
+      void refreshUnreadState();
+    });
+
+    return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (!currentUser?.userId) {
+      return;
+    }
+
+    const notificationSocket = createNotificationSocket({
+      onEvent: (event) => {
+        if (event.type === "notification.created") {
+          applyLiveNotificationCreated(event.notification, event.unreadCount);
+          setHasUnread(event.unreadCount > 0);
+
+          // 종 아이콘 옆 미니 팝업 띄우기
+          const title = buildNotificationTitle(event.notification);
+          setLastNotificationTitle(title);
+          setShowMiniNotification(true);
+
+          // 5초 후 자동으로 닫기
+          setTimeout(() => setShowMiniNotification(false), 5000);
+        }
+      },
+    });
+
+    notificationSocket.connect();
+    return () => notificationSocket.close();
+  }, [currentUser?.userId, navigate]);
+
+  useEffect(() => {
+    const refreshCurrentUser = () => setCurrentUserState(getCurrentUser());
+    refreshCurrentUser();
+    return subscribeCurrentUser(refreshCurrentUser);
+  }, []);
+
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-  /* ── 메뉴 링크 (공통) ── */
-  const NavLinks = ({ compact = false }: { compact?: boolean }) => (
+
+  const NavLinks = () => (
     <LayoutGroup>
-      <div className={`flex items-center ${compact ? "gap-0" : "gap-1"}`}>
+      <div className="flex items-center gap-1">
         {navItems.map((item) => {
           const active = isActive(item.path);
           return (
             <Link
               key={item.path}
               to={item.path}
-              className={`relative transition-colors duration-200 ${
-                compact ? "px-3 py-2" : "px-4 py-2"
-              }`}
+              className="relative px-4 py-2 transition-colors duration-200"
             >
               <span
-                className={`relative z-[1] ${compact ? "text-[13px]" : "text-sm"} ${
+                className={`relative z-[1] text-sm ${
                   active
-                    ? "text-[#00A88C] font-semibold"
-                    : "text-gray-500 hover:text-[#0F0F0F] font-medium"
+                    ? "font-semibold text-[#00A88C]"
+                    : isNight
+                      ? "font-medium text-white/50 hover:text-white/80"
+                      : "font-medium text-gray-500 hover:text-[#0F0F0F]"
                 }`}
               >
                 {item.label}
@@ -58,7 +132,7 @@ export default function Navigation() {
               {active && (
                 <motion.span
                   layoutId="navUnderline"
-                  className="absolute bottom-0 left-1/2 -translate-x-1/2 w-5 h-[2px] rounded-full bg-[#00C9A7]"
+                  className="absolute bottom-0 left-1/2 h-[2px] w-5 -translate-x-1/2 rounded-full bg-[#00C9A7]"
                   transition={{ type: "spring", stiffness: 400, damping: 30 }}
                 />
               )}
@@ -71,44 +145,121 @@ export default function Navigation() {
 
   return (
     <>
-      {/* ━━ 기본 헤더 (상단 고정, 스크롤 시 그림자) ━━ */}
-      <header className={`sticky top-0 z-50 h-[68px] bg-white/95 backdrop-blur-sm transition-all duration-300 ${scrolled ? "shadow-sm border-b-transparent" : "border-b border-gray-100"}`}>
-        <div className="w-full h-full px-8 grid grid-cols-[auto_1fr_auto] items-center">
-
-          {/* 좌: 로고 */}
-          <Link to="/" className="flex items-center gap-2.5 hover:opacity-70 transition-opacity">
-            <div className="grid grid-cols-2 gap-[3px] w-[24px] h-[24px]">
+      <header
+        className={`sticky top-0 z-50 h-[68px] backdrop-blur-sm transition-all duration-500 ${
+          isNight
+            ? scrolled
+              ? "border-b border-white/5 bg-[#0C1222]/90 shadow-[0_1px_20px_rgba(0,0,0,0.3)]"
+              : "border-b border-white/5 bg-[#0C1222]/80"
+            : scrolled
+              ? "border-b border-transparent bg-white/95 shadow-sm"
+              : "border-b border-gray-100 bg-white/95"
+        }`}
+      >
+        <div className="grid h-full w-full grid-cols-[auto_1fr_auto] items-center px-8">
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-2.5 transition-opacity hover:opacity-70">
+            <div className="grid h-[24px] w-[24px] grid-cols-2 gap-[3px]">
               <div className="rounded-[2px] bg-[#00C9A7]" />
               <div className="rounded-[2px] bg-[#00C9A7] opacity-50" />
               <div className="rounded-[2px] bg-[#FF5C3A] opacity-60" />
               <div className="rounded-[2px] bg-[#FF5C3A]" />
             </div>
-            <span className="text-xl font-bold tracking-tight leading-none select-none">
-              <span className="text-[#FF5C3A]">p</span>ick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A]">.</span>
+            <span
+              className={`select-none text-xl font-bold leading-none tracking-tight transition-colors duration-500 ${
+                isNight ? "text-white" : ""
+              }`}
+            >
+              <span className="text-[#FF5C3A]">p</span>ick
+              <span className="text-[#00C9A7]">x</span>el
+              <span className="text-[#FF5C3A]">.</span>
             </span>
           </Link>
 
-          {/* 중앙: 메뉴 */}
+          {/* Center nav */}
           <div className="flex justify-center">
             <NavLinks />
           </div>
 
-          {/* 우: 액션 */}
+          {/* Actions */}
           <div className="flex items-center gap-2.5">
-            <Link
-              to="/notifications"
-              className="relative size-10 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-500 hover:text-[#0F0F0F]"
+            <DayNightSwitch isNight={isNight} onToggle={onToggle} />
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className={`hidden h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold transition-colors md:flex ${
+                isNight
+                  ? "border-white/10 text-white/50 hover:border-[#FF5C3A]/40 hover:bg-[#FF5C3A]/10 hover:text-[#FF5C3A]"
+                  : "border-gray-200 text-gray-600 hover:border-[#FF5C3A]/40 hover:bg-[#FFF7F4] hover:text-[#FF5C3A]"
+              }`}
             >
-              <Bell className="size-5" />
-              {hasUnread && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#FF5C3A] rounded-full ring-2 ring-white" />
-              )}
-            </Link>
+              <LogOut className="size-4" />
+              로그아웃
+            </button>
+
+            <div className="relative">
+              <Link
+                to="/notifications"
+                className={`relative flex size-10 items-center justify-center rounded-full transition-colors ${
+                  isNight
+                    ? "text-white/50 hover:bg-white/10 hover:text-white"
+                    : "text-gray-500 hover:bg-gray-100 hover:text-[#0F0F0F]"
+                }`}
+              >
+                <Bell className="size-5" />
+                {hasUnread && (
+                  <span
+                    className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#FF5C3A] ring-2 ${
+                      isNight ? "ring-[#0C1222]" : "ring-white"
+                    }`}
+                  />
+                )}
+              </Link>
+
+              {/* 미니 알림 말풍선 */}
+              <AnimatePresence>
+                {showMiniNotification && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.95, x: "-50%" }}
+                    animate={{ opacity: 1, y: 0, scale: 1, x: "-50%" }}
+                    exit={{ opacity: 0, scale: 0.95, x: "-50%" }}
+                    className="absolute left-1/2 top-full mt-3 w-52 -translate-x-1/2 pointer-events-none"
+                  >
+                    <div className={`relative rounded-xl border p-3.5 shadow-2xl ${
+                      isNight ? "bg-[#1A1F2E] border-white/10 text-white" : "bg-white border-gray-100 text-gray-800"
+                    }`}>
+                      {/* 말풍선 꼬리 */}
+                      <div className={`absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-l border-t ${
+                        isNight ? "bg-[#1A1F2E] border-white/10" : "bg-white border-gray-100"
+                      }`} />
+                      
+                      <div className="relative z-10 flex flex-col gap-2 pointer-events-auto">
+                        <p className="text-[11px] font-semibold leading-tight">
+                          {lastNotificationTitle}
+                        </p>
+                        <button 
+                          onClick={() => navigate("/notifications")}
+                          className="text-[10px] font-bold text-[#00C9A7] hover:underline text-left"
+                        >
+                          자세히 보기 →
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
             <Link
-              to="/profile/jieun"
-              className="size-9 rounded-full bg-gradient-to-br from-[#00C9A7] to-[#009E88] flex items-center justify-center text-white text-xs font-bold shadow-sm shadow-[#00C9A7]/20 hover:shadow-md hover:shadow-[#00C9A7]/30 transition-shadow"
+              to={profilePath}
+              className="flex size-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#00C9A7] to-[#009E88] text-xs font-bold text-white shadow-sm shadow-[#00C9A7]/20 transition-shadow hover:shadow-md hover:shadow-[#00C9A7]/30"
             >
-              J
+              <ImageWithFallback
+                src={currentUser?.profileImage || DEFAULT_AVATAR}
+                alt={currentUser?.nickname || currentUser?.name || "프로필"}
+                className="size-full object-cover"
+              />
             </Link>
           </div>
         </div>

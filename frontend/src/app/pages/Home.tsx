@@ -1,507 +1,934 @@
-import { ArrowRight } from "lucide-react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Link, Navigate } from "react-router";
-import { motion } from "motion/react";
-import { useEffect, useRef, useState } from "react";
-import { ImageWithFallback } from "../components/figma/ImageWithFallback";
+import {
+  motion,
+  useMotionValue,
+  useSpring,
+  useTransform,
+} from "motion/react";
+import { gsap } from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { useGSAP } from "@gsap/react";
+import {
+  ChevronDown,
+  Layers,
+  Search,
+  FolderKanban,
+  MessageCircle,
+  UserPlus,
+  Compass,
+  Handshake,
+  ArrowRight,
+} from "lucide-react";
 import { isAuthenticated } from "../utils/auth";
 import Footer from "../components/Footer";
+import { DayNightSwitch } from "../components/DayNightSwitch";
+import Lenis from "lenis";
 
-const feedShowcase = [
+gsap.registerPlugin(ScrollTrigger);
+
+const features = [
   {
-    id: 1,
-    image: "https://images.unsplash.com/photo-1623932078839-44eb01fbee63?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcmVhdGl2ZSUyMGRlc2lnbiUyMHdvcmt8ZW58MXx8fHwxNzc1NjAzODU5fDA&ixlib=rb-4.1.0&q=80&w=1080",
-    title: "브랜드 아이덴티티",
-    author: "김지은",
+    icon: Layers,
+    title: "포트폴리오 피드",
+    description:
+      "디자이너의 작품을 실시간 피드로 탐색하세요. Pick으로 마음에 드는 작업을 저장하고 나만의 컬렉션을 만들 수 있습니다.",
+    accent: "mint" as const,
   },
   {
-    id: 2,
-    image: "https://images.unsplash.com/photo-1761746395536-00d334eba480?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxmYXNoaW9uJTIwZGVzaWduJTIwc2tldGNofGVufDF8fHx8MTc3NTYzODA1M3ww&ixlib=rb-4.1.0&q=80&w=1080",
-    title: "패션 디자인",
-    author: "이수진",
+    icon: Search,
+    title: "디자이너 탐색 & 매칭",
+    description:
+      "카테고리, 스타일, 경력별로 최적의 디자이너를 찾아보세요. 프로젝트에 딱 맞는 크리에이터에게 바로 제안할 수 있습니다.",
+    accent: "coral" as const,
   },
   {
-    id: 3,
-    image: "https://images.unsplash.com/photo-1770581939371-326fc1537f10?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0eXBvZ3JhcGh5JTIwcG9zdGVyJTIwZGVzaWdufGVufDF8fHx8MTc3NTU5Nzc3Mnww&ixlib=rb-4.1.0&q=80&w=1080",
-    title: "타이포그래피 포스터",
-    author: "박서준",
+    icon: FolderKanban,
+    title: "프로젝트 관리",
+    description:
+      "모집 공고 등록부터 지원 관리, 마일스톤 추적까지. 프로젝트의 모든 흐름을 한곳에서 관리합니다.",
+    accent: "mint" as const,
   },
   {
-    id: 4,
-    image: "https://images.unsplash.com/photo-1760138270903-d95903188730?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxsb2dvJTIwYnJhbmRpbmclMjBpZGVudGl0eXxlbnwxfHx8fDE3NzU2MzgwNTN8MA&ixlib=rb-4.1.0&q=80&w=1080",
-    title: "로고 브랜딩",
-    author: "최유나",
-  },
-  {
-    id: 5,
-    image: "https://images.unsplash.com/photo-1707836868495-3307d371aba4?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3ZWJzaXRlJTIwbW9ja3VwJTIwZGVzaWdufGVufDF8fHx8MTc3NTU3MzI1NXww&ixlib=rb-4.1.0&q=80&w=1080",
-    title: "웹사이트 디자인",
-    author: "정재현",
-  },
-  {
-    id: 6,
-    image: "https://images.unsplash.com/photo-1618761714954-0b8cd0026356?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3ZWIlMjBkZXNpZ24lMjBpbnRlcmZhY2V8ZW58MXx8fHwxNzc1NTg0MDgxfDA&ixlib=rb-4.1.0&q=80&w=1080",
-    title: "UI/UX 인터페이스",
-    author: "이민호",
-  },
-  {
-    id: 7,
-    image: "https://images.unsplash.com/photo-1645483252995-7bdc48253204?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjaGFyYWN0ZXIlMjBkZXNpZ24lMjBhcnR8ZW58MXx8fHwxNzc1NjM4MDU0fDA&ixlib=rb-4.1.0&q=80&w=1080",
-    title: "캐릭터 디자인",
-    author: "강민지",
-  },
-  {
-    id: 8,
-    image: "https://images.unsplash.com/photo-1705321963943-de94bb3f0dd3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbnRlcmlvciUyMGRlc2lnbiUyMG1vZGVybnxlbnwxfHx8fDE3NzU2MzgwNTR8MA&ixlib=rb-4.1.0&q=80&w=1080",
-    title: "인테리어 디자인",
-    author: "윤서아",
-  },
-  {
-    id: 9,
-    image: "https://images.unsplash.com/photo-1700605295478-2478ac29d2ec?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxpbGx1c3RyYXRpb24lMjBhcnR3b3JrfGVufDF8fHx8MTc3NTYzNzc0Mnww&ixlib=rb-4.1.0&q=80&w=1080",
-    title: "일러스트레이션",
-    author: "한지훈",
-  },
-  {
-    id: 10,
-    image: "https://images.unsplash.com/photo-1774283834505-e7bf45485d43?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhZHZlcnRpc2luZyUyMHBvc3RlciUyMGNyZWF0aXZlfGVufDF8fHx8MTc3NTYzODA1NHww&ixlib=rb-4.1.0&q=80&w=1080",
-    title: "광고 포스터",
-    author: "송혜교",
+    icon: MessageCircle,
+    title: "실시간 협업 메시징",
+    description:
+      "1:1 채팅, 파일 공유, 프로젝트 진행 상태까지 한 화면에서 소통하세요. 빠르고 효율적인 협업이 가능합니다.",
+    accent: "coral" as const,
   },
 ];
 
-function CountUpNumber({ value }: { value: number }) {
-  const [count, setCount] = useState(0);
-  const [hasStarted, setHasStarted] = useState(false);
-  const frameRef = useRef<number | null>(null);
+const steps = [
+  {
+    icon: UserPlus,
+    number: "01",
+    title: "가입하기",
+    description: "간단한 정보만 입력하면 바로 시작할 수 있어요.",
+  },
+  {
+    icon: Compass,
+    number: "02",
+    title: "탐색 & 매칭",
+    description:
+      "피드를 둘러보고 마음에 드는 디자이너를 찾거나, 프로젝트를 등록하세요.",
+  },
+  {
+    icon: Handshake,
+    number: "03",
+    title: "협업 & 완성",
+    description:
+      "메시지로 소통하며 함께 작업을 완성하고, 결과물을 세상에 공개하세요.",
+  },
+];
 
-  useEffect(() => {
-    if (!hasStarted) {
-      return;
-    }
+const feedGridImages = [
+  "https://images.unsplash.com/photo-1561070791-2526d30994b5?w=400&q=70",
+  "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400&q=70",
+  "https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=400&q=70",
+  "https://images.unsplash.com/photo-1609921212029-bb5a28e60960?w=400&q=70",
+  "https://images.unsplash.com/photo-1633186710895-309db2eca9e4?w=400&q=70",
+  "https://images.unsplash.com/photo-1547826039-bfc35e0f1ea8?w=400&q=70",
+  "https://images.unsplash.com/photo-1626785774573-4b799315345d?w=400&q=70",
+  "https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=400&q=70",
+  "https://images.unsplash.com/photo-1634986666676-ec8fd927c23d?w=400&q=70",
+  "https://images.unsplash.com/photo-1613909207039-6b173b755cc1?w=400&q=70",
+  "https://images.unsplash.com/photo-1617791160505-6f00504e3519?w=400&q=70",
+  "https://images.unsplash.com/photo-1605106702734-205df224ecce?w=400&q=70",
+  "https://images.unsplash.com/photo-1600132806370-bf17e65e942f?w=400&q=70",
+  "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=400&q=70",
+  "https://images.unsplash.com/photo-1549490349-8643362247b5?w=400&q=70",
+  "https://images.unsplash.com/photo-1482160549825-59d1b23cb208?w=400&q=70",
+];
 
-    const duration = 1400;
-    const startTime = performance.now();
+const pixelDots = [
+  { size: 6, x: "12%", y: "18%", color: "#00C9A7", delay: 0 },
+  { size: 4, x: "85%", y: "22%", color: "#FF5C3A", delay: 0.5 },
+  { size: 8, x: "8%", y: "72%", color: "#FF5C3A", delay: 1.2 },
+  { size: 5, x: "92%", y: "65%", color: "#00C9A7", delay: 0.8 },
+  { size: 7, x: "18%", y: "45%", color: "#00C9A7", delay: 1.5 },
+  { size: 4, x: "78%", y: "80%", color: "#FF5C3A", delay: 0.3 },
+  { size: 6, x: "45%", y: "12%", color: "#00C9A7", delay: 2.0 },
+  { size: 5, x: "55%", y: "88%", color: "#FF5C3A", delay: 1.0 },
+  { size: 3, x: "30%", y: "30%", color: "#00C9A7", delay: 0.7 },
+  { size: 3, x: "70%", y: "40%", color: "#FF5C3A", delay: 1.8 },
+];
 
-    const tick = (now: number) => {
-      const progress = Math.min((now - startTime) / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-
-      setCount(Math.round(value * eased));
-
-      if (progress < 1) {
-        frameRef.current = requestAnimationFrame(tick);
-      }
-    };
-
-    frameRef.current = requestAnimationFrame(tick);
-
-    return () => {
-      if (frameRef.current) {
-        cancelAnimationFrame(frameRef.current);
-      }
-    };
-  }, [hasStarted, value]);
-
+/* ─── Logo ─── */
+function PickxelLogo({ dark = false }: { dark?: boolean }) {
   return (
-    <motion.span
-      className="font-bold text-[#0F0F0F]"
-      onViewportEnter={() => setHasStarted(true)}
-      viewport={{ once: true, margin: "-80px" }}
-    >
-      {count.toLocaleString()}
-    </motion.span>
+    <Link to="/" className="flex items-center gap-2.5">
+      <div className="grid h-7 w-7 grid-cols-2 gap-[3px]">
+        <div className="rounded-[3px] bg-[#00C9A7]" />
+        <div className="rounded-[3px] bg-[#00C9A7]/55" />
+        <div className="rounded-[3px] bg-[#FF5C3A]/65" />
+        <div className="rounded-[3px] bg-[#FF5C3A]" />
+      </div>
+      <span
+        className={`text-xl font-bold tracking-tight transition-colors duration-700 sm:text-2xl ${
+          dark ? "text-white" : "text-[#2D2A26]"
+        }`}
+      >
+        <span className="text-[#FF5C3A]">p</span>ick
+        <span className="text-[#00C9A7]">x</span>el
+        <span className="text-[#FF5C3A] text-[26px]">.</span>
+      </span>
+    </Link>
   );
 }
 
+/* DayNightSwitch is now imported from components/DayNightSwitch */
+
+/* ─── Sticky Nav ─── */
+function StickyNav({
+  isNight,
+  onToggle,
+}: {
+  isNight: boolean;
+  onToggle: () => void;
+}) {
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 80);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  return (
+    <motion.nav
+      initial={{ y: -100 }}
+      animate={{ y: 0 }}
+      transition={{ duration: 0.6, ease: "easeOut" }}
+      className={`fixed left-0 right-0 top-0 z-50 transition-all duration-700 ${
+        scrolled
+          ? isNight
+            ? "bg-[#0C1222]/85 shadow-[0_1px_20px_rgba(0,0,0,0.3)] backdrop-blur-xl"
+            : "bg-white/80 shadow-[0_1px_20px_rgba(0,0,0,0.06)] backdrop-blur-xl"
+          : "bg-transparent"
+      }`}
+    >
+      <div className="mx-auto flex max-w-[1400px] items-center justify-between px-6 py-4 sm:px-10">
+        <PickxelLogo dark={isNight} />
+
+        <div className="flex items-center gap-3">
+          <DayNightSwitch isNight={isNight} onToggle={onToggle} />
+          <Link
+            to="/login"
+            className={`group relative overflow-hidden rounded-full px-7 py-2.5 text-sm font-semibold transition-all duration-700 ${
+              scrolled
+                ? isNight
+                  ? "bg-white text-[#0C1222] hover:bg-white/90"
+                  : "bg-[#0F0F0F] text-white hover:bg-[#2D2A26]"
+                : isNight
+                  ? "border border-white/30 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
+                  : "border border-[#2D2A26]/20 bg-[#2D2A26]/5 text-[#2D2A26] backdrop-blur-sm hover:bg-[#2D2A26]/10"
+            }`}
+          >
+            <span className="relative z-10">시작하기</span>
+          </Link>
+        </div>
+      </div>
+    </motion.nav>
+  );
+}
+
+/* ─── Floating Showcase Image ─── */
+/* ─── Scrolling Image Column ─── */
+function ScrollingColumn({
+  images,
+  speed,
+  reverse,
+  isNight,
+}: {
+  images: string[];
+  speed: number;
+  reverse?: boolean;
+  isNight: boolean;
+}) {
+  const doubled = [...images, ...images];
+  return (
+    <div className="relative h-full w-[180px] shrink-0 overflow-hidden sm:w-[200px] lg:w-[220px]">
+      <motion.div
+        className="flex flex-col gap-3"
+        animate={{ y: reverse ? ["0%", "-50%"] : ["-50%", "0%"] }}
+        transition={{
+          duration: speed,
+          repeat: Infinity,
+          ease: "linear",
+        }}
+      >
+        {doubled.map((src, i) => (
+          <motion.div
+            key={`${src}-${i}`}
+            className={`group relative aspect-[3/4] w-full overflow-hidden transition-all duration-500 ${
+              isNight
+                ? "rounded-lg border border-white/10 shadow-[0_4px_20px_rgba(0,0,0,0.4)]"
+                : "rounded-lg border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.08)]"
+            }`}
+            whileHover={{
+              scale: 1.05,
+              zIndex: 10,
+              transition: { type: "spring", stiffness: 300, damping: 20 },
+            }}
+          >
+            <img
+              src={src}
+              alt=""
+              className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
+              draggable={false}
+              loading="lazy"
+            />
+            <div
+              className={`pointer-events-none absolute inset-0 transition-opacity duration-300 group-hover:opacity-0 ${
+                isNight ? "opacity-20" : "opacity-10"
+              }`}
+              style={{
+                backgroundImage: isNight
+                  ? "radial-gradient(circle, rgba(255,255,255,0.3) 1px, transparent 1px)"
+                  : "radial-gradient(circle, rgba(0,0,0,0.15) 1px, transparent 1px)",
+                backgroundSize: "4px 4px",
+              }}
+            />
+          </motion.div>
+        ))}
+      </motion.div>
+    </div>
+  );
+}
+
+/* ─── Hero ─── */
+function HeroSection({ isNight }: { isNight: boolean }) {
+  const col1 = feedGridImages.slice(0, 4);
+  const col2 = feedGridImages.slice(4, 8);
+  const col3 = feedGridImages.slice(8, 12);
+  const col4 = feedGridImages.slice(12, 16);
+
+  return (
+    <section
+      className={`relative flex min-h-screen items-center justify-center overflow-hidden pt-20 transition-colors duration-700 ${
+        isNight ? "bg-[#0C1222]" : "bg-[var(--brand-landing-bg)]"
+      }`}
+    >
+      {/* Background scrolling grid */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-3 opacity-50 sm:gap-4">
+        <ScrollingColumn images={col1} speed={35} isNight={isNight} />
+        <ScrollingColumn
+          images={col2}
+          speed={30}
+          reverse
+          isNight={isNight}
+        />
+        <ScrollingColumn images={col3} speed={38} isNight={isNight} />
+        <ScrollingColumn
+          images={col4}
+          speed={32}
+          reverse
+          isNight={isNight}
+        />
+        <ScrollingColumn
+          images={[...col1].reverse()}
+          speed={36}
+          isNight={isNight}
+        />
+        <ScrollingColumn
+          images={[...col2].reverse()}
+          speed={33}
+          reverse
+          isNight={isNight}
+        />
+      </div>
+
+      {/* Blur overlay */}
+      <div
+        className={`pointer-events-none absolute inset-0 transition-all duration-700 ${
+          isNight
+            ? "bg-[#0C1222]/70 backdrop-blur-[8px]"
+            : "bg-[var(--brand-landing-bg)]/70 backdrop-blur-[8px]"
+        }`}
+      />
+
+      {/* Glow blobs */}
+      <motion.div
+        animate={{ x: [0, 30, 0], y: [0, -20, 0] }}
+        transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+        className={`absolute -left-32 top-1/4 h-[400px] w-[400px] rounded-full blur-[120px] transition-colors duration-700 ${
+          isNight ? "bg-[#00C9A7]/10" : "bg-[#00C9A7]/15"
+        }`}
+      />
+      <motion.div
+        animate={{ x: [0, -25, 0], y: [0, 30, 0] }}
+        transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
+        className={`absolute -right-32 bottom-1/4 h-[350px] w-[350px] rounded-full blur-[120px] transition-colors duration-700 ${
+          isNight ? "bg-[#FF5C3A]/8" : "bg-[#FF5C3A]/12"
+        }`}
+      />
+
+      {/* Pixel dot decorations */}
+      {pixelDots.map((dot, i) => (
+        <motion.div
+          key={i}
+          className="absolute z-10"
+          style={{ left: dot.x, top: dot.y }}
+          animate={{
+            opacity: [0.3, 0.8, 0.3],
+            scale: [1, 1.3, 1],
+          }}
+          transition={{
+            duration: 3,
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: dot.delay,
+          }}
+        >
+          <div
+            style={{
+              width: dot.size,
+              height: dot.size,
+              backgroundColor: dot.color,
+            }}
+          />
+        </motion.div>
+      ))}
+
+      {/* Center text content */}
+      <div className="relative z-20 flex flex-col items-center px-6 text-center">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.2 }}
+        >
+          <div
+            className={`mb-8 inline-flex items-center gap-2 rounded-full border px-5 py-2 text-[11px] font-bold tracking-[0.15em] uppercase transition-all duration-700 ${
+              isNight
+                ? "border-white/15 bg-white/5 text-white/60 backdrop-blur-sm"
+                : "border-[#2D2A26]/10 bg-white/40 text-[#7A746D] backdrop-blur-sm"
+            }`}
+          >
+            <span
+              className="inline-block h-1.5 w-1.5 bg-[#00C9A7]"
+              style={{ clipPath: "none" }}
+            />
+            Designer Matching Platform
+          </div>
+        </motion.div>
+
+        <motion.h1
+          initial={{ opacity: 0, y: 50 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.9, delay: 0.4 }}
+          className={`text-4xl font-black leading-[1.15] tracking-tight transition-colors duration-700 sm:text-5xl md:text-6xl lg:text-7xl ${
+            isNight ? "text-white" : "text-[#2D2A26]"
+          }`}
+        >
+          디자이너를{" "}
+          <span className="relative inline-block text-[#FF5C3A]">
+            pick
+            <motion.span
+              className="absolute -bottom-1 left-0 h-[3px] w-full bg-[#FF5C3A]"
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: 1 }}
+              transition={{ duration: 0.8, delay: 1.0, ease: "easeOut" }}
+              style={{ transformOrigin: "left" }}
+            />
+          </span>
+          하고
+          <br />
+          작업물을{" "}
+          <span className="relative inline-block text-[#00C9A7]">
+            sell
+            <motion.span
+              className="absolute -bottom-1 left-0 h-[3px] w-full bg-[#00C9A7]"
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: 1 }}
+              transition={{ duration: 0.8, delay: 1.3, ease: "easeOut" }}
+              style={{ transformOrigin: "left" }}
+            />
+          </span>
+          하다.
+        </motion.h1>
+
+        <motion.p
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.7 }}
+          className={`mt-6 max-w-[480px] text-base leading-relaxed transition-colors duration-700 sm:text-lg ${
+            isNight ? "text-white/65" : "text-[#4A4540]"
+          }`}
+        >
+          마음에 드는 디자이너를 골라 프로젝트를 맡기고,
+          <br />
+          당신의 작업물을 세상에 판매하세요.
+        </motion.p>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.9 }}
+          className="mt-10 flex flex-wrap items-center justify-center gap-4"
+        >
+          <Link
+            to="/login"
+            className="group relative inline-flex items-center gap-2 overflow-hidden rounded-full bg-gradient-to-r from-[#FF5C3A] to-[#e84d2d] px-8 py-3.5 text-sm font-bold text-white shadow-[0_4px_24px_rgba(255,92,58,0.3)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_8px_32px_rgba(255,92,58,0.4)]"
+          >
+            <span className="relative z-10 flex items-center gap-2">
+              Pick 시작하기
+              <ArrowRight className="size-4 transition-transform duration-300 group-hover:translate-x-1" />
+            </span>
+          </Link>
+          <Link
+            to="/login"
+            className={`rounded-full px-6 py-3.5 text-sm font-semibold transition-all duration-500 ${
+              isNight
+                ? "border border-white/20 text-white/70 backdrop-blur-sm hover:bg-white/10"
+                : "border border-[#2D2A26]/20 text-[#4A4540] backdrop-blur-sm hover:bg-[#2D2A26]/5"
+            }`}
+          >
+            Sell 시작하기
+          </Link>
+        </motion.div>
+
+        {/* Pixel-style decorative dots around CTA */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.8, delay: 1.2 }}
+          className={`mt-10 flex items-center gap-6 text-xs font-medium transition-colors duration-700 ${
+            isNight ? "text-white/50" : "text-[#5A554F]"
+          }`}
+        >
+          <span className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 bg-[#00C9A7]" />
+            무료 가입
+          </span>
+          <span
+            className={`h-3 w-px ${isNight ? "bg-white/15" : "bg-[#2D2A26]/10"}`}
+          />
+          <span className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 bg-[#00C9A7]" />
+            검증된 디자이너
+          </span>
+          <span
+            className={`h-3 w-px ${isNight ? "bg-white/15" : "bg-[#2D2A26]/10"}`}
+          />
+          <span className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 bg-[#FF5C3A]" />
+            안전한 거래
+          </span>
+        </motion.div>
+      </div>
+
+      {/* Scroll indicator */}
+      <motion.div
+        className="absolute bottom-6 left-1/2 z-20 -translate-x-1/2"
+        animate={{ y: [0, 10, 0] }}
+        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+      >
+        <ChevronDown
+          className={`size-6 transition-colors duration-700 ${
+            isNight ? "text-white/30" : "text-[#2D2A26]/30"
+          }`}
+        />
+      </motion.div>
+    </section>
+  );
+}
+
+/* ─── Features ─── */
+function FeaturesSection({ isNight }: { isNight: boolean }) {
+  const sectionRef = useRef<HTMLElement>(null);
+
+  useGSAP(
+    () => {
+      gsap.fromTo(
+        ".feature-title",
+        { y: 60, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          ease: "power3.out",
+          scrollTrigger: {
+            trigger: ".feature-title",
+            start: "top 85%",
+          },
+        }
+      );
+    },
+    { scope: sectionRef }
+  );
+
+  return (
+    <section
+      ref={sectionRef}
+      className={`relative py-28 transition-colors duration-700 sm:py-36 ${
+        isNight ? "bg-[#111827]" : "bg-[var(--brand-landing-soft)]"
+      }`}
+    >
+      <div className="mx-auto max-w-[1200px] px-6 sm:px-10">
+        <div className="feature-title mb-16 text-center">
+          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.3em] text-[#00C9A7]">
+            Core Features
+          </p>
+          <h2
+            className={`text-3xl font-black leading-tight transition-colors duration-700 sm:text-5xl ${
+              isNight ? "text-white" : "text-[var(--brand-landing-text)]"
+            }`}
+          >
+            디자인 협업의
+            <br />
+            모든 것이 여기에
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          {features.map((feature, index) => (
+            <motion.div
+              key={feature.title}
+              initial={{ opacity: 0, y: 50 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-80px" }}
+              transition={{
+                duration: 0.6,
+                delay: index * 0.15,
+                ease: "easeOut",
+              }}
+              whileHover={{ y: -8, transition: { duration: 0.3 } }}
+              className={`group relative overflow-hidden rounded-3xl border p-8 transition-all duration-700 ${
+                isNight
+                  ? "border-white/10 bg-[#1a2035] shadow-[0_2px_20px_rgba(0,0,0,0.2)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.4)]"
+                  : "border-[var(--brand-landing-border)] bg-white shadow-[0_2px_20px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.1)]"
+              }`}
+            >
+              <div
+                className={`absolute -right-12 -top-12 h-32 w-32 rounded-full blur-3xl transition-opacity duration-500 group-hover:opacity-100 ${
+                  feature.accent === "mint"
+                    ? isNight
+                      ? "bg-[#00C9A7]/20 opacity-0"
+                      : "bg-[#00C9A7]/10 opacity-0"
+                    : isNight
+                      ? "bg-[#FF5C3A]/20 opacity-0"
+                      : "bg-[#FF5C3A]/10 opacity-0"
+                }`}
+              />
+
+              <motion.div
+                whileHover={{ rotate: 8, scale: 1.1 }}
+                transition={{ type: "spring", stiffness: 300, damping: 15 }}
+                className={`mb-5 inline-flex rounded-2xl p-3.5 ${
+                  feature.accent === "mint"
+                    ? isNight
+                      ? "bg-[#00C9A7]/15 text-[#00C9A7]"
+                      : "bg-[#00C9A7]/10 text-[#00C9A7]"
+                    : isNight
+                      ? "bg-[#FF5C3A]/15 text-[#FF5C3A]"
+                      : "bg-[#FF5C3A]/10 text-[#FF5C3A]"
+                }`}
+              >
+                <feature.icon className="size-6" strokeWidth={2} />
+              </motion.div>
+
+              <h3
+                className={`mb-3 text-xl font-bold transition-colors duration-700 ${
+                  isNight ? "text-white" : "text-[var(--brand-landing-text)]"
+                }`}
+              >
+                {feature.title}
+              </h3>
+              <p
+                className={`text-sm leading-relaxed transition-colors duration-700 ${
+                  isNight
+                    ? "text-white/60"
+                    : "text-[var(--brand-landing-text-sub)]"
+                }`}
+              >
+                {feature.description}
+              </p>
+
+              <div
+                className={`mt-6 flex items-center gap-1.5 text-xs font-semibold transition-colors ${
+                  feature.accent === "mint"
+                    ? "text-[#00C9A7] group-hover:text-[#00A88C]"
+                    : "text-[#FF5C3A] group-hover:text-[#ea4d2d]"
+                }`}
+              >
+                자세히 보기
+                <ArrowRight className="size-3.5 transition-transform duration-300 group-hover:translate-x-1" />
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─── How It Works ─── */
+function HowItWorksSection({ isNight }: { isNight: boolean }) {
+  const sectionRef = useRef<HTMLElement>(null);
+  const lineRef = useRef<HTMLDivElement>(null);
+
+  useGSAP(
+    () => {
+      if (!lineRef.current) return;
+
+      gsap.fromTo(
+        lineRef.current,
+        { scaleX: 0 },
+        {
+          scaleX: 1,
+          duration: 1.2,
+          ease: "power2.inOut",
+          scrollTrigger: {
+            trigger: sectionRef.current,
+            start: "top 60%",
+          },
+        }
+      );
+
+      gsap.fromTo(
+        ".step-card",
+        { y: 60, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.7,
+          stagger: 0.2,
+          ease: "power3.out",
+          scrollTrigger: {
+            trigger: ".step-card",
+            start: "top 85%",
+          },
+        }
+      );
+    },
+    { scope: sectionRef }
+  );
+
+  return (
+    <section
+      ref={sectionRef}
+      className={`relative py-28 transition-colors duration-700 sm:py-36 ${
+        isNight ? "bg-[#0C1222]" : "bg-[var(--brand-landing-bg)]"
+      }`}
+    >
+      <div className="mx-auto max-w-[1200px] px-6 sm:px-10">
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.7 }}
+          className="mb-20 text-center"
+        >
+          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.3em] text-[#FF5C3A]">
+            How It Works
+          </p>
+          <h2
+            className={`text-3xl font-black leading-tight transition-colors duration-700 sm:text-5xl ${
+              isNight ? "text-white" : "text-[var(--brand-landing-text)]"
+            }`}
+          >
+            세 단계로 시작하세요
+          </h2>
+        </motion.div>
+
+        <div className="relative">
+          <div
+            ref={lineRef}
+            className="absolute left-[16.67%] right-[16.67%] top-[52px] hidden h-[2px] origin-left bg-gradient-to-r from-[#00C9A7] via-[#00C9A7]/50 to-[#FF5C3A] md:block"
+          />
+
+          <div className="grid grid-cols-1 gap-10 md:grid-cols-3 md:gap-8">
+            {steps.map((step, index) => (
+              <motion.div
+                key={step.number}
+                className="step-card group text-center"
+                whileHover={{ y: -6 }}
+                transition={{ duration: 0.3 }}
+              >
+                <motion.div
+                  whileHover={{ scale: 1.1, rotate: 5 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 15 }}
+                  className={`relative z-10 mx-auto mb-7 flex h-[104px] w-[104px] items-center justify-center rounded-3xl border-2 shadow-lg transition-all duration-700 ${
+                    isNight
+                      ? index === 0
+                        ? "border-[#00C9A7]/40 bg-[#1a2035] text-[#00C9A7] group-hover:border-[#00C9A7] group-hover:shadow-[0_8px_30px_rgba(0,201,167,0.25)]"
+                        : index === 1
+                          ? "border-[#00C9A7]/25 bg-[#1a2035] text-[#00A88C] group-hover:border-[#00C9A7]/70 group-hover:shadow-[0_8px_30px_rgba(0,168,140,0.25)]"
+                          : "border-[#FF5C3A]/40 bg-[#1a2035] text-[#FF5C3A] group-hover:border-[#FF5C3A] group-hover:shadow-[0_8px_30px_rgba(255,92,58,0.25)]"
+                      : index === 0
+                        ? "border-[#00C9A7]/30 bg-white text-[#00C9A7] group-hover:border-[#00C9A7] group-hover:shadow-[0_8px_30px_rgba(0,201,167,0.2)]"
+                        : index === 1
+                          ? "border-[#00C9A7]/20 bg-white text-[#00A88C] group-hover:border-[#00C9A7]/60 group-hover:shadow-[0_8px_30px_rgba(0,168,140,0.2)]"
+                          : "border-[#FF5C3A]/30 bg-white text-[#FF5C3A] group-hover:border-[#FF5C3A] group-hover:shadow-[0_8px_30px_rgba(255,92,58,0.2)]"
+                  }`}
+                >
+                  <step.icon className="size-10" strokeWidth={1.5} />
+                  <span
+                    className={`absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold transition-colors duration-700 ${
+                      isNight
+                        ? "bg-white text-[#0C1222]"
+                        : "bg-[#2D2A26] text-white"
+                    }`}
+                  >
+                    {step.number}
+                  </span>
+                </motion.div>
+
+                <h3
+                  className={`mb-3 text-lg font-bold transition-colors duration-700 ${
+                    isNight ? "text-white" : "text-[var(--brand-landing-text)]"
+                  }`}
+                >
+                  {step.title}
+                </h3>
+                <p
+                  className={`mx-auto max-w-[260px] text-sm leading-relaxed transition-colors duration-700 ${
+                    isNight
+                      ? "text-white/55"
+                      : "text-[var(--brand-landing-text-sub)]"
+                  }`}
+                >
+                  {step.description}
+                </p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ─── CTA ─── */
+function CTASection({ isNight }: { isNight: boolean }) {
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+  const smoothX = useSpring(mouseX, { stiffness: 50, damping: 20 });
+  const smoothY = useSpring(mouseY, { stiffness: 50, damping: 20 });
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width - 0.5) * 30;
+      const y = ((e.clientY - rect.top) / rect.height - 0.5) * 30;
+      mouseX.set(x);
+      mouseY.set(y);
+    },
+    [mouseX, mouseY]
+  );
+
+  return (
+    <section
+      onMouseMove={handleMouseMove}
+      className={`relative overflow-hidden py-28 transition-colors duration-700 sm:py-36 ${
+        isNight ? "bg-[#0f1729]" : ""
+      }`}
+    >
+      <div
+        className={`absolute inset-0 transition-all duration-700 ${
+          isNight
+            ? "bg-gradient-to-br from-[#00C9A7]/8 via-[#0f1729] to-[#FF5C3A]/8"
+            : "bg-gradient-to-br from-[#00C9A7]/10 via-[#FAF8F5] to-[#FF5C3A]/10"
+        }`}
+      />
+
+      <motion.div
+        className={`absolute -left-20 -top-20 h-72 w-72 rounded-full blur-3xl transition-colors duration-700 ${
+          isNight ? "bg-[#00C9A7]/10" : "bg-[#00C9A7]/15"
+        }`}
+        style={{ x: smoothX, y: smoothY }}
+      />
+      <motion.div
+        className={`absolute -bottom-20 -right-20 h-72 w-72 rounded-full blur-3xl transition-colors duration-700 ${
+          isNight ? "bg-[#FF5C3A]/8" : "bg-[#FF5C3A]/12"
+        }`}
+        style={{
+          x: useTransform(smoothX, (v) => -v),
+          y: useTransform(smoothY, (v) => -v),
+        }}
+      />
+
+      <div className="relative z-10 mx-auto max-w-[800px] px-6 text-center sm:px-10">
+        <motion.h2
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.7 }}
+          className={`text-3xl font-black leading-tight transition-colors duration-700 sm:text-5xl ${
+            isNight ? "text-white" : "text-[var(--brand-landing-text)]"
+          }`}
+        >
+          당신의 픽셀을
+          <br />
+          세상에 보여주세요
+        </motion.h2>
+
+        <motion.p
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.7, delay: 0.15 }}
+          className={`mx-auto mt-6 max-w-[440px] text-base leading-relaxed transition-colors duration-700 ${
+            isNight ? "text-white/55" : "text-[var(--brand-landing-text-sub)]"
+          }`}
+        >
+          지금 가입하고 수많은 디자이너, 클라이언트와 만나보세요.
+          <br />
+          당신의 크리에이티브가 시작되는 곳.
+        </motion.p>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.7, delay: 0.3 }}
+          className="mt-10"
+        >
+          <Link
+            to="/login"
+            className={`group relative inline-flex items-center gap-2.5 overflow-hidden rounded-full px-10 py-4 text-base font-bold shadow-lg transition-all duration-300 hover:-translate-y-1 ${
+              isNight
+                ? "bg-white text-[#0C1222] hover:shadow-[0_8px_40px_rgba(255,255,255,0.15)]"
+                : "bg-[#2D2A26] text-white hover:shadow-[0_8px_40px_rgba(45,42,38,0.35)]"
+            }`}
+          >
+            <span className="relative z-10">시작하기</span>
+            <ArrowRight className="relative z-10 size-5 transition-transform duration-300 group-hover:translate-x-1" />
+            <span
+              className={`absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 ${
+                isNight
+                  ? "bg-gradient-to-r from-[#A8F0E4] to-[#00C9A7]"
+                  : "bg-gradient-to-r from-[#00C9A7] to-[#00A88C]"
+              }`}
+            />
+          </Link>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.7, delay: 0.5 }}
+          className={`mt-8 flex items-center justify-center gap-6 text-xs transition-colors duration-700 ${
+            isNight ? "text-white/45" : "text-[var(--brand-landing-text-sub)]"
+          }`}
+        >
+          <span className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#00C9A7]" />
+            무료 가입
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#00C9A7]" />
+            즉시 시작
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#00C9A7]" />
+            안전한 협업
+          </span>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+/* ─── Home ─── */
 export default function Home() {
   if (isAuthenticated()) {
     return <Navigate to="/feed" replace />;
   }
 
+  const [isNight, setIsNight] = useState(false);
+
+  const handleToggle = useCallback(() => {
+    setIsNight((prev) => !prev);
+  }, []);
+
+  useEffect(() => {
+    const lenis = new Lenis({
+      duration: 1.2,
+      easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+    });
+
+    function raf(time: number) {
+      lenis.raf(time);
+      requestAnimationFrame(raf);
+    }
+    requestAnimationFrame(raf);
+
+    return () => lenis.destroy();
+  }, []);
+
   return (
-    <div className="min-h-screen bg-white">
-      {/* Hero Navigation */}
-      <motion.nav
-        initial={{ y: -100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.6, ease: "easeOut" }}
-        className="border-b border-gray-200 bg-white sticky top-0 z-50 shadow-sm"
-      >
-        <div className="max-w-[1400px] mx-auto px-6 py-4 flex items-center justify-between">
-          {/* Logo with Branding */}
-          <Link to="/" className="flex items-center gap-2">
-            <div className="grid grid-cols-2 gap-[3px] w-[28px] h-[28px]">
-              <div className="rounded-[2px] bg-[#00C9A7]"></div>
-              <div className="rounded-[2px] bg-[#00C9A7] opacity-50"></div>
-              <div className="rounded-[2px] bg-[#FF5C3A] opacity-60"></div>
-              <div className="rounded-[2px] bg-[#FF5C3A]"></div>
-            </div>
-            <span className="text-2xl font-bold tracking-tight">
-              <span className="text-[#FF5C3A]">p</span>ick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A] text-[28px]">.</span>
-            </span>
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link
-              to="/login"
-              className="text-sm text-gray-600 hover:text-[#00A88C] transition-colors"
-            >
-              로그인
-            </Link>
-            <Link
-              to="/signup"
-              className="bg-gradient-to-r from-[#00C9A7] to-[#00A88C] text-white px-5 py-2 rounded-full text-sm font-medium hover:shadow-lg hover:scale-105 transition-all"
-            >
-              시작하기
-            </Link>
-          </div>
-        </div>
-      </motion.nav>
-      
-      {/* Hero Section */}
-      <section className="max-w-[1400px] mx-auto px-6 py-20">
-        <div className="text-center space-y-6">
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="text-[#00C9A7] text-sm font-medium"
-          >
-            디자이너와 의뢰인을 바로 연결하는 플랫폼
-          </motion.p>
-          <motion.h1
-            initial="hidden"
-            animate="visible"
-            className="text-5xl md:text-6xl"
-          >
-            <motion.span
-              variants={{
-                hidden: { opacity: 0, y: 18 },
-                visible: { opacity: 1, y: 0 },
-              }}
-              transition={{ duration: 0.5, delay: 0.35 }}
-              className="inline-block text-[#0F0F0F]"
-            >
-              디자이너를&nbsp;
-            </motion.span>
-            <motion.span
-              variants={{
-                hidden: { opacity: 0, y: 14, scale: 0.75 },
-                visible: { opacity: 1, y: 0, scale: [0.75, 1.18, 1] },
-              }}
-              transition={{ duration: 0.62, delay: 0.62, ease: "easeOut" }}
-              className="inline-block text-[#00C9A7]"
-            >
-              Pick
-            </motion.span>
-            <motion.span
-              variants={{
-                hidden: { opacity: 0, y: 18 },
-                visible: { opacity: 1, y: 0 },
-              }}
-              transition={{ duration: 0.5, delay: 0.82 }}
-              className="inline-block text-[#0F0F0F]"
-            >
-              하고,&nbsp;
-            </motion.span>
-            <motion.span
-              variants={{
-                hidden: { opacity: 0, y: 18 },
-                visible: { opacity: 1, y: 0 },
-              }}
-              transition={{ duration: 0.5, delay: 0.98 }}
-              className="inline-block text-[#0F0F0F]"
-            >
-              작업물을&nbsp;
-            </motion.span>
-            <motion.span
-              variants={{
-                hidden: { opacity: 0, y: 14, scale: 0.75 },
-                visible: { opacity: 1, y: 0, scale: [0.75, 1.18, 1] },
-              }}
-              transition={{ duration: 0.62, delay: 1.16, ease: "easeOut" }}
-              className="inline-block text-[#FF5C3A]"
-            >
-              Sell
-            </motion.span>
-            <motion.span
-              variants={{
-                hidden: { opacity: 0, y: 18 },
-                visible: { opacity: 1, y: 0 },
-              }}
-              transition={{ duration: 0.5, delay: 1.34 }}
-              className="inline-block text-[#0F0F0F]"
-            >
-              하다.
-            </motion.span>
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.9 }}
-            className="text-gray-600 text-lg"
-          >
-            마음에 드는 작업을 발견하고, 조건에 맞는 프로젝트를 제안하세요. 픽셀은 의뢰인과 디자이너를 더 빠르고 안전하게 연결합니다.
-          </motion.p>
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 1.1 }}
-            className="flex items-center justify-center gap-4 pt-4"
-          >
-            <Link
-              to="/explore"
-              className="bg-[#00C9A7] text-black px-6 py-3 rounded-lg font-medium hover:bg-[#00A88C] flex items-center gap-2 hover:scale-105 transition-transform"
-            >
-              디자이너 찾기
-            </Link>
-            <Link
-              to="/projects/new"
-              className="bg-white border border-gray-300 text-black px-6 py-3 rounded-lg font-medium hover:bg-gray-50 hover:scale-105 transition-transform"
-            >
-              프로젝트 등록
-            </Link>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Stats Section */}
-      <section className="max-w-[1400px] mx-auto px-6 py-12">
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-8"
-        >
-          <p className="text-gray-600 mb-4">
-            이미 <CountUpNumber value={1400} />명 이상의 디자이너와 의뢰인이 픽셀에서 만나고 있습니다
-          </p>
-        </motion.div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          {[
-            { 
-              image: "https://images.unsplash.com/photo-1742440710226-450e3b85c100?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcmVhdGl2ZSUyMHN0dWRpbyUyMHdvcmtzcGFjZSUyMHRlYW18ZW58MXx8fHwxNzc1NTczMTA4fDA&ixlib=rb-4.1.0&q=80&w=1080",
-              title: "Studio Pixel", 
-              desc: "브랜드 아이덴티티 디자인 전문",
-              badge: "추천"
-            },
-            { 
-              image: "https://images.unsplash.com/photo-1691430597165-4ac5e9d375e0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwYWNrYWdpbmclMjBkZXNpZ24lMjBjb2xvcmZ1bHxlbnwxfHx8fDE3NzU1ODAzNzN8MA&ixlib=rb-4.1.0&q=80&w=1080",
-              title: "Design Lab", 
-              desc: "제품 패키징 & 그래픽 디자인",
-              badge: "인기"
-            },
-            { 
-              image: "https://images.unsplash.com/photo-1609309267394-9d7b8e01bfe0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhcnQlMjBkaXJlY3Rpb24lMjBjcmVhdGl2ZXxlbnwxfHx8fDE3NzU2MzgxNzZ8MA&ixlib=rb-4.1.0&q=80&w=1080",
-              title: "Creative Director", 
-              desc: "아트 디렉션 & 비주얼 컨설팅",
-              badge: "신규"
-            }
-          ].map((card, index) => (
-            <motion.div
-              key={index}
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-100px" }}
-              transition={{ duration: 0.6, delay: index * 0.1 }}
-              className="relative"
-            >
-              <motion.div
-                animate={{ y: [0, -4, 0] }}
-                transition={{
-                  duration: 4 + index * 0.3,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                  delay: index * 0.2,
-                }}
-                whileHover={{ y: -8, scale: 1.03, transition: { duration: 0.25 } }}
-                className="relative rounded-2xl h-64 flex flex-col justify-end cursor-pointer overflow-hidden group"
-              >
-                {/* Background Image */}
-                <div className="absolute inset-0">
-                  <ImageWithFallback
-                    src={card.image}
-                    alt={card.title}
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent transition-opacity duration-500 group-hover:from-black/75 group-hover:via-black/30" />
-                </div>
-                
-                {/* Badge */}
-                <div className="absolute top-4 right-4 bg-[#00C9A7] text-black px-3 py-1 rounded-full text-xs font-bold transition-transform duration-300 group-hover:-translate-y-1 group-hover:scale-105">
-                  {card.badge}
-                </div>
-                
-                {/* Content */}
-                <div className="relative p-6 text-white transition-transform duration-500 group-hover:-translate-y-2">
-                  <h3 className="font-bold text-2xl mb-2">{card.title}</h3>
-                  <p className="text-sm text-gray-200">{card.desc}</p>
-                </div>
-              </motion.div>
-            </motion.div>
-          ))}
-        </div>
-      </section>
-
-      {/* Live Feed Animation Section */}
-      <section className="py-20 overflow-hidden bg-white">
-        <div className="max-w-[1400px] mx-auto px-6 mb-12">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-            className="text-center"
-          >
-            <h2 className="text-4xl font-bold mb-4">실시간으로 업데이트되는 작품들</h2>
-            <p className="text-gray-600 text-lg">지금 이 순간에도 새로운 작업과 포트폴리오가 올라오고 있습니다</p>
-          </motion.div>
-        </div>
-
-        {/* First Row - Moving Right */}
-        <div className="relative mb-6">
-          <motion.div
-            className="flex gap-6"
-            animate={{
-              x: [0, -1920],
-            }}
-            transition={{
-              x: {
-                repeat: Infinity,
-                repeatType: "loop",
-                duration: 30,
-                ease: "linear",
-              },
-            }}
-          >
-            {[...feedShowcase.slice(0, 5), ...feedShowcase.slice(0, 5)].map((item, index) => (
-              <div
-                key={`row1-${index}`}
-                className="flex-shrink-0 w-[360px] bg-white rounded-xl overflow-hidden shadow-lg group transition-transform duration-300 hover:-translate-y-2 hover:shadow-2xl"
-              >
-                <div className="relative h-[270px] overflow-hidden">
-                  <ImageWithFallback
-                    src={item.image}
-                    alt={item.title}
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                  />
-                </div>
-                <div className="p-4">
-                  <h3 className="font-bold text-lg mb-1">{item.title}</h3>
-                  <p className="text-sm text-gray-600">{item.author}</p>
-                </div>
-              </div>
-            ))}
-          </motion.div>
-        </div>
-
-        {/* Second Row - Moving Left */}
-        <div className="relative">
-          <motion.div
-            className="flex gap-6"
-            animate={{
-              x: [-1920, 0],
-            }}
-            transition={{
-              x: {
-                repeat: Infinity,
-                repeatType: "loop",
-                duration: 30,
-                ease: "linear",
-              },
-            }}
-          >
-            {[...feedShowcase.slice(5, 10), ...feedShowcase.slice(5, 10)].map((item, index) => (
-              <div
-                key={`row2-${index}`}
-                className="flex-shrink-0 w-[360px] bg-white rounded-xl overflow-hidden shadow-lg group transition-transform duration-300 hover:-translate-y-2 hover:shadow-2xl"
-              >
-                <div className="relative h-[270px] overflow-hidden">
-                  <ImageWithFallback
-                    src={item.image}
-                    alt={item.title}
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                  />
-                </div>
-                <div className="p-4">
-                  <h3 className="font-bold text-lg mb-1">{item.title}</h3>
-                  <p className="text-sm text-gray-600">{item.author}</p>
-                </div>
-              </div>
-            ))}
-          </motion.div>
-        </div>
-
-        <div className="text-center mt-12">
-          <Link
-            to="/feed"
-            className="inline-flex items-center gap-2 bg-[#00C9A7] text-black px-8 py-4 rounded-lg font-medium hover:bg-[#00A88C] hover:scale-105 transition-all"
-          >
-            더 많은 작품 보기
-            <ArrowRight className="size-5" />
-          </Link>
-        </div>
-      </section>
-
-      {/* How It Works Section */}
-      <section className="bg-[#F7F7F5] py-20">
-        <div className="max-w-[1400px] mx-auto px-6">
-          <motion.h2
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-100px" }}
-            transition={{ duration: 0.6 }}
-            className="text-4xl font-bold mb-12"
-          >
-            픽셀은 이렇게 작동합니다
-          </motion.h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            {[
-              {
-                number: "01",
-                title: "무료 가입",
-                description: "몇 가지 정보만 입력하면 포트폴리오 탐색과 프로젝트 등록을 바로 시작할 수 있습니다."
-              },
-              {
-                number: "02",
-                title: "프로젝트 등록",
-                description: "원하는 스타일, 일정, 예산을 입력해 디자이너에게 프로젝트를 제안합니다."
-              },
-              {
-                number: "03",
-                title: "디자이너 매칭",
-                description: "프로젝트 조건과 작업 스타일을 바탕으로 잘 맞는 디자이너를 추천합니다."
-              },
-              {
-                number: "04",
-                title: "안전한 계약",
-                description: "메시지, 계약, 작업 진행 과정을 한곳에서 확인하며 안심하고 협업합니다."
-              }
-            ].map((item, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, y: 40 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-100px" }}
-                transition={{ duration: 0.6, delay: index * 0.1 }}
-                className="space-y-3"
-              >
-                <motion.div
-                  whileHover={{ scale: 1.1 }}
-                  transition={{ duration: 0.2 }}
-                  className="text-6xl font-bold text-gray-200 hover:text-[#00C9A7]"
-                >
-                  {item.number}
-                </motion.div>
-                <h3 className="text-xl font-bold">{item.title}</h3>
-                <p className="text-sm text-gray-600 leading-relaxed">{item.description}</p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
+    <div
+      className={`min-h-screen transition-colors duration-700 ${
+        isNight ? "bg-[#0C1222]" : "bg-[var(--brand-landing-bg)]"
+      }`}
+    >
+      <StickyNav isNight={isNight} onToggle={handleToggle} />
+      <HeroSection isNight={isNight} />
+      <FeaturesSection isNight={isNight} />
+      <HowItWorksSection isNight={isNight} />
+      <CTASection isNight={isNight} />
       <Footer />
     </div>
   );

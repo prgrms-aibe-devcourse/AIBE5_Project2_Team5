@@ -1,16 +1,40 @@
 import Navigation from "../components/Navigation";
+import { toast } from "sonner";
 import { Edit, Search, Info, Send, Image, Smile, AtSign, Sparkles, Calendar, FileText, CheckCircle, Circle, ChevronDown, ChevronUp, ThumbsUp, XCircle, Paperclip, Figma, ExternalLink, Plus, Clock, Check, CheckCheck, Trash2, GripVertical, Eye, ArrowLeft, Bookmark } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import {
   getUnreadMessageConversationIds,
   markConversationRead,
 } from "../utils/notificationState";
 import {
-  getFeedProposalMessages,
-  type FeedProposalMessage,
-} from "../utils/feedProposalMessages";
+  deleteMessageConversationApi,
+  getConversationAssistantSuggestionsApi,
+  getConversationProcessesApi,
+  getConversationPresenceApi,
+  getConversationMessagesApi,
+  getMessageConversationsApi,
+  markConversationReadApi,
+  saveConversationProcessesApi,
+  sendConversationMessageApi,
+  toggleMessageReactionApi,
+  updateConversationTypingApi,
+  type ChatMessageResponse as ApiChatMessageResponse,
+  type MessageAssistantGoal,
+  type MessageConversationResponse as ApiMessageConversationResponse,
+  type MessageProcessResponse as ApiMessageProcessResponse,
+} from "../api/messageApi";
+import {
+  uploadMessageAttachmentsApi,
+} from "../api/uploadApi";
+import {
+  createMessageSocket,
+  type IncomingMessageSocketEvent,
+  type MessagePresenceState,
+} from "../api/messageSocket";
+import { getCurrentUser } from "../utils/auth";
+import { DEFAULT_AVATAR } from "../utils/avatar";
 
 type AttachmentUploadStatus = "uploading" | "ready" | "failed";
 type IntegrationProvider = "figma" | "adobe" | "photoshop" | "pinterest";
@@ -26,6 +50,8 @@ type MessageAttachment =
   | (MessageAttachmentBase & {
       type: "image";
       src: string;
+      size?: number;
+      mimeType?: string;
     })
   | (MessageAttachmentBase & {
       type: "icon";
@@ -35,6 +61,7 @@ type MessageAttachment =
       type: "file";
       size: number;
       mimeType: string;
+      url?: string;
     })
   | (MessageAttachmentBase & {
       type: "integration";
@@ -100,15 +127,64 @@ type ProcessToast = {
   message: string;
 };
 
+type AssistantActionItem = {
+  goal: MessageAssistantGoal;
+  label: string;
+};
+
 const CURRENT_USER_ID = "me";
-const ACTIVE_PARTNER_ID = "kim-minjae";
-const PROCESS_STORAGE_KEY = "pickxel:message-processes";
-const PROCESS_CREATED_STORAGE_KEY = "pickxel:message-processes-created";
+const PROCESS_STORAGE_KEY = "pickxel:message-processes:v2";
+const PROCESS_CREATED_STORAGE_KEY = "pickxel:message-processes-created:v2";
 const MESSAGE_DRAFTS_STORAGE_KEY = "pickxel:message-drafts";
 const LEFT_CONVERSATIONS_STORAGE_KEY = "pickxel:left-message-conversations";
+const CONNECTED_CONVERSATION_POLL_INTERVAL = 5000;
+const CONNECTED_PRESENCE_POLL_INTERVAL = 5000;
+const CONNECTED_PROCESS_POLL_INTERVAL = 3000;
+const RECOVERY_POLL_GRACE_PERIOD = 8000;
+const RECOVERY_MESSAGE_POLL_INTERVAL = 1000;
+const RECOVERY_STATE_POLL_INTERVAL = 2000;
+const TYPING_IDLE_DELAY = 1200;
+const TYPING_SYNC_INTERVAL = 800;
+const MAX_CHAT_MESSAGE_LENGTH = 4000;
+const MAX_ASSISTANT_SUGGESTION_LENGTH = 320;
+const DEBUG_MESSAGE_TYPING = import.meta.env.DEV;
+const assistantActionItems: AssistantActionItem[] = [
+  { goal: "reply", label: "답장 추천" },
+  { goal: "next_step", label: "다음 단계 안내" },
+  { goal: "schedule_meeting", label: "미팅 일정 잡기" },
+  { goal: "share_document", label: "문서 전달 안내" },
+];
+const assistantLoadingPreviewItems = [
+  { primaryWidth: "88%", secondaryWidth: "54%" },
+  { primaryWidth: "80%", secondaryWidth: "62%" },
+  { primaryWidth: "92%", secondaryWidth: "48%" },
+];
+
+const debugMessageTyping = (...args: unknown[]) => {
+  if (DEBUG_MESSAGE_TYPING) {
+    console.debug("[MessagesTyping]", ...args);
+  }
+};
 
 const createClientId = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const wait = (delayMs: number) =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, delayMs);
+  });
+
+const normalizeAssistantSuggestionText = (suggestion: string) => {
+  const normalized = suggestion
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^"(.*)"$/, "$1")
+    .trim();
+
+  return normalized.length > MAX_ASSISTANT_SUGGESTION_LENGTH
+    ? normalized.slice(0, MAX_ASSISTANT_SUGGESTION_LENGTH).trim()
+    : normalized;
+};
 
 const formatFileSize = (size: number) => {
   if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))}KB`;
@@ -171,6 +247,15 @@ const getUrlHost = (url: string) => {
   } catch {
     return url.replace(/^https?:\/\//i, "").split("/")[0];
   }
+};
+
+const formatMessageTime = (createdAt?: string) => {
+  const date = createdAt ? new Date(createdAt) : new Date();
+  return new Intl.DateTimeFormat("ko-KR", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(Number.isNaN(date.getTime()) ? new Date() : date);
 };
 
 const integrationProviderMeta: Record<
@@ -325,333 +410,497 @@ const readStoredMessageDrafts = () =>
 const readLeftConversationIds = () =>
   readJsonFromStorage<number[]>(LEFT_CONVERSATIONS_STORAGE_KEY, []);
 
-const wait = (duration: number) =>
-  new Promise((resolve) => {
-    window.setTimeout(resolve, duration);
-  });
-
-const sendMessageToSocket = async (message: ChatMessage) => {
-  // Later this becomes the WebSocket send call and reconciles by clientId.
-  await wait(650);
-  return { serverId: message.id };
+type Conversation = {
+  id: number;
+  partnerId: string;
+  partnerRole: ApiMessageConversationResponse["partnerRole"];
+  username: string;
+  name: string;
+  profileName: string;
+  title: string;
+  role: string;
+  message: string;
+  time: string;
+  unread: boolean;
+  unreadCount: number;
+  online: boolean;
+  statusText: string;
+  avatar: string;
+  bio: string;
+  sharedMedia: Array<{
+    id: number;
+    title: string;
+    src: string;
+  }>;
 };
 
-const conversations = [
-  {
-    id: 1,
-    partnerId: ACTIVE_PARTNER_ID,
-    username: "김민재",
-    name: "김민재 디렉터",
-    profileName: "김민재",
-    title: "UX 전략 디렉터 @ StudioX",
-    role: "크리에이티브팀 · 브랜드 아이덴티티 프로젝트",
-    message: "네, 제안해주신 방향으로 진행해도 좋겠습니다.",
-    time: "오전 10:45",
-    unread: true,
-    unreadCount: 2,
-    online: true,
-    statusText: "지금 활동 중",
-    avatar: "https://i.pravatar.cc/240?img=12",
-    bio: "디지털 브랜드 전략과 사용자 경험 설계를 전문으로 하는 크리에이티브 디렉터입니다. 명확한 콘셉트와 일관된 비주얼 시스템으로 브랜드의 가치를 전달합니다.",
-    sharedMedia: [
-      {
-        id: 1,
-        title: "브랜드 무드보드",
-        src: "https://images.unsplash.com/photo-1772272935464-2e90d8218987?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-      {
-        id: 2,
-        title: "컬러 팔레트 시안",
-        src: "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-      {
-        id: 3,
-        title: "가이드라인 초안",
-        src: "https://images.unsplash.com/photo-1718220216044-006f43e3a9b1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-    ],
-  },
-  {
-    id: 2,
-    partnerId: "lee-soyeon",
-    username: "이소연",
-    name: "이소연 일러스트레이터",
-    profileName: "이소연",
-    title: "일러스트레이터 · 캐릭터 아트",
-    role: "일러스트 의뢰 상담",
-    message: "필요한 자료 확인해서 오늘 중으로 정리해드릴게요.",
-    time: "어제",
-    unread: false,
-    unreadCount: 0,
-    online: false,
-    statusText: "어제 활동",
-    avatar: "https://i.pravatar.cc/240?img=47",
-    bio: "브랜드 캐릭터와 에디토리얼 일러스트를 작업합니다. 따뜻한 색감과 명확한 스토리텔링을 중심으로 시안을 제안합니다.",
-    sharedMedia: [
-      {
-        id: 1,
-        title: "캐릭터 러프",
-        src: "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-      {
-        id: 2,
-        title: "컬러 스터디",
-        src: "https://images.unsplash.com/photo-1700605295478-2478ac29d2ec?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-      {
-        id: 3,
-        title: "레퍼런스 보드",
-        src: "https://images.unsplash.com/photo-1623932078839-44eb01fbee63?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-    ],
-  },
-  {
-    id: 3,
-    partnerId: "metaverse-team",
-    username: "메타버스 프로젝트 팀",
-    name: "메타버스 프로젝트 팀",
-    profileName: "메타버스 프로젝트 팀",
-    title: "XR 콘텐츠 제작 팀",
-    role: "새 미디어 30개 공유",
-    message: "프로젝트 참고 이미지와 시안을 공유했습니다.",
-    time: "토요일",
-    unread: false,
-    unreadCount: 0,
-    online: false,
-    statusText: "토요일 활동",
-    avatar: "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=240",
-    bio: "3D 공간, 인터랙션, 브랜드 경험을 결합한 메타버스 프로젝트를 진행하는 팀입니다. 월드 콘셉트와 에셋 제작을 함께 관리합니다.",
-    sharedMedia: [
-      {
-        id: 1,
-        title: "월드 콘셉트",
-        src: "https://images.unsplash.com/photo-1595411425732-e69c1abe2763?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-      {
-        id: 2,
-        title: "공간 시안",
-        src: "https://images.unsplash.com/photo-1618761714954-0b8cd0026356?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-      {
-        id: 3,
-        title: "아바타 레퍼런스",
-        src: "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-      },
-    ],
-  },
-];
+const conversations: Conversation[] = [];
 
-type Conversation = (typeof conversations)[number];
+const getRoleLabel = (role: ApiMessageConversationResponse["partnerRole"]) =>
+  role === "DESIGNER" ? "디자이너" : "클라이언트";
 
-const createProposalConversation = (
-  proposal: FeedProposalMessage
-): Conversation => ({
-  id: proposal.conversationId,
-  partnerId: `feed-author-${proposal.feedId}-${proposal.authorName}`,
-  username: proposal.authorName,
-  name: proposal.authorName,
-  profileName: proposal.authorName,
-  title: proposal.authorRole,
-  role: `${proposal.feedCategory ?? "피드"} · 제안 대화`,
-  message: proposal.message,
-  time: "방금",
-  unread: false,
-  unreadCount: 0,
-  online: false,
-  statusText: "피드에서 연결됨",
-  avatar: proposal.authorAvatar,
-  bio: `"${proposal.feedTitle}" 게시물에서 시작된 프로젝트 제안 대화입니다.`,
-  sharedMedia: [
-    {
-      id: proposal.feedId,
-      title: proposal.feedTitle,
-      src: proposal.feedImage,
-    },
-  ],
+const formatConversationTime = (createdAt?: string | null) => {
+  if (!createdAt) return "";
+
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+};
+
+const mapConversationResponse = (
+  conversation: ApiMessageConversationResponse
+): Conversation => {
+  const partnerDisplayName =
+    conversation.partnerNickname || conversation.partnerName || "사용자";
+  const title = conversation.partnerJob || getRoleLabel(conversation.partnerRole);
+
+  return {
+    id: conversation.id,
+    partnerId: String(conversation.partnerUserId),
+    partnerRole: conversation.partnerRole,
+    username: conversation.partnerLoginId || partnerDisplayName,
+    name: partnerDisplayName,
+    profileName: partnerDisplayName,
+    title,
+    role: title,
+    message: conversation.lastMessage ?? "새 대화를 시작해보세요.",
+    time: formatConversationTime(conversation.lastMessageAt),
+    unread: conversation.unreadCount > 0,
+    unreadCount: conversation.unreadCount,
+    online: conversation.partnerAvailable,
+    statusText: conversation.partnerAvailable ? "메시지 가능" : "자리비움",
+    avatar: conversation.partnerProfileImage || DEFAULT_AVATAR,
+    bio: conversation.partnerIntroduction || "프로젝트 대화를 진행 중입니다.",
+    sharedMedia: [],
+  };
+};
+
+const normalizeIncomingAttachments = (attachments: unknown): MessageAttachment[] => {
+  if (!Array.isArray(attachments)) {
+    return [];
+  }
+
+  return attachments.flatMap((attachment, index) => {
+    if (!attachment || typeof attachment !== "object") {
+      return [];
+    }
+
+    const item = attachment as Record<string, unknown>;
+    const id =
+      typeof item.id === "string" && item.id.trim()
+        ? item.id
+        : `attachment-${Date.now()}-${index}`;
+    const name =
+      typeof item.name === "string" && item.name.trim() ? item.name : "attachment";
+    const uploadStatus =
+      item.uploadStatus === "uploading" ||
+      item.uploadStatus === "ready" ||
+      item.uploadStatus === "failed"
+        ? item.uploadStatus
+        : undefined;
+    const uploadedUrl =
+      typeof item.uploadedUrl === "string" && item.uploadedUrl.trim()
+        ? item.uploadedUrl
+        : undefined;
+
+    switch (item.type) {
+      case "image": {
+        const srcCandidate =
+          typeof item.src === "string" && item.src.trim()
+            ? item.src
+            : typeof item.url === "string" && item.url.trim()
+              ? item.url
+              : uploadedUrl;
+        if (!srcCandidate) {
+          return [];
+        }
+
+        return [
+          {
+            id,
+            type: "image" as const,
+            name,
+            src: srcCandidate,
+            uploadedUrl: uploadedUrl ?? srcCandidate,
+            uploadStatus,
+            mimeType: typeof item.mimeType === "string" ? item.mimeType : undefined,
+            size: typeof item.size === "number" ? item.size : undefined,
+          },
+        ];
+      }
+      case "file": {
+        const url =
+          typeof item.url === "string" && item.url.trim()
+            ? item.url
+            : uploadedUrl;
+        return [
+          {
+            id,
+            type: "file" as const,
+            name,
+            size: typeof item.size === "number" ? item.size : 0,
+            mimeType:
+              typeof item.mimeType === "string" && item.mimeType.trim()
+                ? item.mimeType
+                : "application/octet-stream",
+            url,
+            uploadedUrl: uploadedUrl ?? url,
+            uploadStatus,
+          },
+        ];
+      }
+      case "integration": {
+        if (typeof item.url !== "string" || !item.url.trim()) {
+          return [];
+        }
+
+        const provider = item.provider;
+        if (
+          provider !== "figma" &&
+          provider !== "adobe" &&
+          provider !== "photoshop" &&
+          provider !== "pinterest"
+        ) {
+          return [];
+        }
+
+        return [
+          {
+            id,
+            type: "integration" as const,
+            provider,
+            url: item.url,
+            name,
+            uploadStatus,
+            previewTitle:
+              typeof item.previewTitle === "string" ? item.previewTitle : undefined,
+            previewDescription:
+              typeof item.previewDescription === "string"
+                ? item.previewDescription
+                : undefined,
+            host: typeof item.host === "string" ? item.host : undefined,
+          },
+        ];
+      }
+      case "icon": {
+        if (typeof item.value !== "string" || !item.value.trim()) {
+          return [];
+        }
+
+        return [
+          {
+            id,
+            type: "icon" as const,
+            value: normalizeMessageIconValue(item.value),
+            name,
+            uploadStatus,
+          },
+        ];
+      }
+      default:
+        return [];
+    }
+  });
+};
+
+const buildOutgoingAttachmentsPayload = (attachments: MessageAttachment[]) =>
+  attachments.flatMap((attachment) => {
+    switch (attachment.type) {
+      case "image": {
+        const src = attachment.uploadedUrl ?? attachment.src;
+        if (!src) {
+          return [];
+        }
+
+        return [
+          {
+            id: attachment.id,
+            type: "image" as const,
+            name: attachment.name,
+            src,
+            mimeType: attachment.mimeType,
+            size: attachment.size,
+          },
+        ];
+      }
+      case "file": {
+        const url = attachment.uploadedUrl ?? attachment.url;
+        if (!url) {
+          return [];
+        }
+
+        return [
+          {
+            id: attachment.id,
+            type: "file" as const,
+            name: attachment.name,
+            size: attachment.size,
+            mimeType: attachment.mimeType,
+            url,
+          },
+        ];
+      }
+      case "integration":
+        return [
+          {
+            id: attachment.id,
+            type: "integration" as const,
+            provider: attachment.provider,
+            url: attachment.url,
+            name: attachment.name,
+            previewTitle: attachment.previewTitle,
+            previewDescription: attachment.previewDescription,
+            host: attachment.host,
+          },
+        ];
+      case "icon":
+        return [
+          {
+            id: attachment.id,
+            type: "icon" as const,
+            value: toMessageIconStorageValue(attachment.value),
+            name: attachment.name,
+          },
+        ];
+      default:
+        return [];
+    }
+  });
+
+const readFileAsDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("File preview could not be created."));
+    };
+    reader.onerror = () => reject(new Error("File preview could not be created."));
+    reader.readAsDataURL(file);
+  });
+
+const reactionEmojiAliases: Record<string, string> = {
+  thumbs_up: "👍",
+  thumbsup: "👍",
+  "thumbs-up": "👍",
+  heart: "❤️",
+  fire: "🔥",
+  clap: "👏",
+  joy: "😂",
+  wow: "😮",
+  palette: "🎨",
+  check: "✅",
+  eyes: "👀",
+  rocket: "🚀",
+};
+
+const messageIconDisplayByKey: Record<string, string> = {
+  thumbs_up: "👍",
+  clap: "👏",
+  raising_hands: "🙌",
+  ok_hand: "👌",
+  pray: "🙏",
+  smile: "😊",
+  slight_smile: "🙂",
+  grin: "😄",
+  thinking: "🤔",
+  eyes: "👀",
+  sparkles: "✨",
+  fire: "🔥",
+  palette: "🎨",
+  framed_picture: "🖼️",
+  idea: "💡",
+  pin: "📌",
+  check: "✅",
+  memo: "📝",
+  rocket: "🚀",
+  speech_balloon: "💬",
+  heart: "❤️",
+  star: "⭐",
+  coffee: "☕",
+  target: "🎯",
+};
+
+const messageIconKeyByAlias = Object.entries(messageIconDisplayByKey).reduce(
+  (accumulator, [key, emoji]) => {
+    const normalizedKey = key.trim().replace(/\uFE0F/g, "").toLowerCase();
+    const normalizedEmoji = emoji.trim().replace(/\uFE0F/g, "").toLowerCase();
+    accumulator[normalizedKey] = key;
+    accumulator[`:${normalizedKey}:`] = key;
+    accumulator[normalizedEmoji] = key;
+    return accumulator;
+  },
+  {
+    thumbsup: "thumbs_up",
+    "thumbs-up": "thumbs_up",
+    "thumbs up": "thumbs_up",
+    raise_hands: "raising_hands",
+    raised_hands: "raising_hands",
+    ok: "ok_hand",
+    bulb: "idea",
+    light_bulb: "idea",
+    pushpin: "pin",
+    comment: "speech_balloon",
+    speech: "speech_balloon",
+    dart: "target",
+    picture: "framed_picture",
+    frame: "framed_picture",
+    art: "palette",
+    tick: "check",
+    check_mark: "check",
+    note: "memo",
+  } as Record<string, string>
+);
+
+const normalizeReactionEmoji = (emoji: string) => {
+  const normalizedKey = emoji.trim().replace(/\uFE0F/g, "").replace(/-/g, "_").toLowerCase();
+  return reactionEmojiAliases[normalizedKey] ?? emoji;
+};
+
+const normalizeMessageIconValue = (value: string) => {
+  const normalizedValue = value.trim().replace(/\uFE0F/g, "").toLowerCase();
+  const iconKey = messageIconKeyByAlias[normalizedValue];
+  return iconKey ? (messageIconDisplayByKey[iconKey] ?? value) : value;
+};
+
+const toMessageIconStorageValue = (value: string) => {
+  const normalizedValue = value.trim().replace(/\uFE0F/g, "").toLowerCase();
+  const iconKey = messageIconKeyByAlias[normalizedValue];
+  return iconKey ? `:${iconKey}:` : value;
+};
+
+const normalizeMessageReactions = (reactions: MessageReaction[] = []) =>
+  reactions.map((reaction) => ({
+    ...reaction,
+    emoji: normalizeReactionEmoji(reaction.emoji),
+  }));
+
+const toNumericUserId = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : null;
+  }
+
+  return null;
+};
+
+const isCurrentUsersMessage = (
+  senderUserId: unknown,
+  options: {
+    currentUserId?: number;
+    partnerUserId?: string | number | null;
+  }
+) => {
+  const normalizedSenderUserId = toNumericUserId(senderUserId);
+  const normalizedCurrentUserId = toNumericUserId(options.currentUserId);
+
+  if (normalizedSenderUserId !== null && normalizedCurrentUserId !== null) {
+    return normalizedSenderUserId === normalizedCurrentUserId;
+  }
+
+  const normalizedPartnerUserId = toNumericUserId(options.partnerUserId);
+  if (normalizedSenderUserId !== null && normalizedPartnerUserId !== null) {
+    return normalizedSenderUserId !== normalizedPartnerUserId;
+  }
+
+  return false;
+};
+
+const mapChatMessageResponse = (
+  message: ApiChatMessageResponse,
+  options: {
+    currentUserId?: number;
+    partnerUserId?: string | number | null;
+  }
+): ChatMessage => {
+  const isSelf = isCurrentUsersMessage(message.senderUserId, options);
+  const messageId = String(message.id);
+
+  return {
+    id: messageId,
+    clientId: message.clientId || messageId,
+    serverId: messageId,
+    conversationId: message.conversationId,
+    senderId: isSelf ? CURRENT_USER_ID : String(message.senderUserId),
+    sender: isSelf ? "나" : message.senderName,
+    message: message.message,
+    time: formatMessageTime(message.createdAt),
+    createdAt: message.createdAt,
+    isSelf,
+    status: isSelf && message.readByPartner ? "read" : "sent",
+    attachments: normalizeIncomingAttachments(message.attachments ?? []),
+    reactions: normalizeMessageReactions(message.reactions ?? []),
+  };
+};
+
+const isSameChatMessage = (
+  left: Pick<ChatMessage, "id" | "clientId" | "serverId" | "conversationId">,
+  right: Pick<ChatMessage, "id" | "clientId" | "serverId" | "conversationId">
+) => {
+  if (left.conversationId !== right.conversationId) {
+    return false;
+  }
+
+  const leftIdentifiers = new Set(
+    [left.id, left.clientId, left.serverId].filter(
+      (value): value is string => typeof value === "string" && value.trim().length > 0
+    )
+  );
+
+  return [right.id, right.clientId, right.serverId].some(
+    (value) => typeof value === "string" && leftIdentifiers.has(value)
+  );
+};
+
+const parseNumericMessageId = (value: string | number | null | undefined) => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  const parsedValue = Number(trimmedValue);
+  return Number.isFinite(parsedValue) ? parsedValue : null;
+};
+
+const mapProcessResponse = (
+  process: ApiMessageProcessResponse
+): ProjectProcess => ({
+  id: process.id,
+  title: process.title,
+  status: process.status,
+  confirmations: {
+    designer: process.confirmations?.designer ?? false,
+    client: process.confirmations?.client ?? false,
+  },
+  tasks: (process.tasks ?? []).map((task) => ({
+    id: task.id,
+    text: task.text,
+    completed: task.completed,
+  })),
 });
 
-const createProposalChatMessage = (proposal: FeedProposalMessage): ChatMessage => ({
-  id: proposal.id,
-  clientId: proposal.id,
-  serverId: proposal.id,
-  conversationId: proposal.conversationId,
-  senderId: CURRENT_USER_ID,
-  sender: "나",
-  message: proposal.message,
-  time: "방금",
-  createdAt: proposal.createdAt,
-  isSelf: true,
-  status: "sent",
-  attachments: [
-    {
-      id: `${proposal.id}-feed-image`,
-      type: "image",
-      src: proposal.feedImage,
-      name: proposal.feedTitle,
-      uploadStatus: "ready",
-    },
-  ],
-});
-
-const messages = [
-  {
-    id: "msg-1",
-    clientId: "seed-msg-1",
-    serverId: "msg-1",
-    conversationId: 1,
-    senderId: ACTIVE_PARTNER_ID,
-    sender: "김민재 디렉터",
-    message:
-      "안녕하세요! 이번 브랜드 아이덴티티 가이드라인 작업과 관련해서 전체적인 컬러 톤과 방향을 먼저 논의하고 싶습니다.",
-    time: "오전 10:32",
-    createdAt: "2024-05-24T01:32:00.000Z",
-    isSelf: false,
-    status: "read",
-    reactions: [
-      { emoji: "👀", count: 1, reactedByMe: true },
-      { emoji: "👍", count: 2 },
-    ],
-  },
-  {
-    id: "msg-2",
-    clientId: "seed-msg-2",
-    serverId: "msg-2",
-    conversationId: 1,
-    senderId: CURRENT_USER_ID,
-    sender: "나",
-    message:
-      "좋습니다! 메인 컬러는 'Electric Mint'를 중심으로 두고, 보조 컬러는 차분한 그레이 톤으로 맞추면 어떨까요?",
-    time: "오전 10:40",
-    createdAt: "2024-05-24T01:40:00.000Z",
-    isSelf: true,
-    status: "read",
-    highlighted: true,
-    reactions: [{ emoji: "🎨", count: 1 }],
-  },
-  {
-    id: "msg-3",
-    clientId: "seed-msg-3",
-    serverId: "msg-3",
-    conversationId: 1,
-    senderId: ACTIVE_PARTNER_ID,
-    sender: "김민재 디렉터",
-    message:
-      "네, 제안해주신 컬러 방향이 프로젝트 분위기와 잘 맞는 것 같습니다. 다음 단계로 넘어가도 좋겠습니다. Plus Jakarta Sans의 모던한 느낌도 브랜드에 잘 어울립니다.",
-    time: "오전 10:45",
-    createdAt: "2024-05-24T01:45:00.000Z",
-    isSelf: false,
-    status: "read",
-    reactions: [{ emoji: "✅", count: 1, reactedByMe: true }],
-  },
-  {
-    id: "msg-4",
-    clientId: "seed-msg-4",
-    serverId: "msg-4",
-    conversationId: 2,
-    senderId: "lee-soyeon",
-    sender: "이소연 일러스트레이터",
-    message:
-      "안녕하세요! 캐릭터 일러스트 의뢰 자료 확인했습니다. 분위기는 따뜻하고 귀여운 방향으로 잡으면 좋을 것 같아요.",
-    time: "어제 오후 2:18",
-    createdAt: "2024-05-23T05:18:00.000Z",
-    isSelf: false,
-    status: "sent",
-  },
-  {
-    id: "msg-5",
-    clientId: "seed-msg-5",
-    serverId: "msg-5",
-    conversationId: 2,
-    senderId: CURRENT_USER_ID,
-    sender: "나",
-    message:
-      "좋아요. 표정 시안은 3가지 정도로 보고 싶고, 메인 컬러는 브랜드 팔레트에 맞춰주세요.",
-    time: "어제 오후 2:27",
-    createdAt: "2024-05-23T05:27:00.000Z",
-    isSelf: true,
-    status: "sent",
-  },
-  {
-    id: "msg-6",
-    clientId: "seed-msg-6",
-    serverId: "msg-6",
-    conversationId: 2,
-    senderId: "lee-soyeon",
-    sender: "이소연 일러스트레이터",
-    message:
-      "네, 필요한 자료 확인해서 오늘 중으로 러프 스케치와 컬러 방향을 정리해드릴게요.",
-    time: "어제 오후 2:35",
-    createdAt: "2024-05-23T05:35:00.000Z",
-    isSelf: false,
-    status: "sent",
-  },
-  {
-    id: "msg-7",
-    clientId: "seed-msg-7",
-    serverId: "msg-7",
-    conversationId: 3,
-    senderId: "metaverse-team",
-    sender: "메타버스 프로젝트 팀",
-    message:
-      "프로젝트 참고 이미지와 공간 콘셉트 시안을 공유했습니다. 월드 분위기는 미래적인 갤러리 톤으로 잡았습니다.",
-    time: "토요일 오전 11:12",
-    createdAt: "2024-05-18T02:12:00.000Z",
-    isSelf: false,
-    status: "sent",
-  },
-  {
-    id: "msg-8",
-    clientId: "seed-msg-8",
-    serverId: "msg-8",
-    conversationId: 3,
-    senderId: CURRENT_USER_ID,
-    sender: "나",
-    message:
-      "좋습니다. 입장 동선과 메인 전시 구역이 구분되면 더 보기 좋을 것 같아요.",
-    time: "토요일 오전 11:25",
-    createdAt: "2024-05-18T02:25:00.000Z",
-    isSelf: true,
-    status: "sent",
-  },
-  {
-    id: "msg-9",
-    clientId: "seed-msg-9",
-    serverId: "msg-9",
-    conversationId: 3,
-    senderId: "metaverse-team",
-    sender: "메타버스 프로젝트 팀",
-    message:
-      "확인했습니다. 동선 분리 버전으로 수정해서 다음 회의 전에 업데이트하겠습니다.",
-    time: "토요일 오전 11:40",
-    createdAt: "2024-05-18T02:40:00.000Z",
-    isSelf: false,
-    status: "sent",
-  },
-] satisfies ChatMessage[];
-
-const quickActions = [
-  { label: "AI 메시지 도우미", icon: <Sparkles className="size-4" /> },
-  { label: "미팅 일정 잡기", icon: <Calendar className="size-4" /> },
-  { label: "프로젝트 문서 첨부", icon: <FileText className="size-4" /> },
-];
-
-const sharedMedia = [
-  {
-    id: 1,
-    title: "브랜드 무드보드",
-    src: "https://images.unsplash.com/photo-1772272935464-2e90d8218987?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-  },
-  {
-    id: 2,
-    title: "컬러 팔레트 시안",
-    src: "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-  },
-  {
-    id: 3,
-    title: "가이드라인 초안",
-    src: "https://images.unsplash.com/photo-1718220216044-006f43e3a9b1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-  },
-];
+const messages: ChatMessage[] = [];
 
 const attachableIcons = [
   "👍",
@@ -765,84 +1014,51 @@ const getProcessStatusFromState = (
   return "pending";
 };
 
-const initialProcesses: ProjectProcess[] = [
-  {
-    id: 1,
-    title: "프로젝트 기획",
-    status: "completed",
-    confirmations: { designer: true, client: true },
-    tasks: [
-      { id: 1, text: "클라이언트 요구사항 분석", completed: true },
-      { id: 2, text: "프로젝트 범위 정의", completed: true },
-      { id: 3, text: "일정 및 예산 확정", completed: true },
-    ],
-  },
-  {
-    id: 2,
-    title: "디자인 작업",
-    status: "in-progress",
-    confirmations: { designer: true, client: false },
-    tasks: [
-      { id: 4, text: "와이어프레임 제작", completed: true },
-      { id: 5, text: "시각 디자인 시안", completed: true },
-      { id: 6, text: "컬러 팔레트 확정", completed: false },
-      { id: 7, text: "타이포그래피 선정", completed: false },
-    ],
-  },
-  {
-    id: 3,
-    title: "피드백 및 수정",
-    status: "pending",
-    confirmations: createEmptyProcessConfirmations(),
-    tasks: [
-      { id: 8, text: "1차 클라이언트 리뷰", completed: false },
-      { id: 9, text: "수정사항 반영", completed: false },
-      { id: 10, text: "최종 승인", completed: false },
-    ],
-  },
-  {
-    id: 4,
-    title: "최종 납품",
-    status: "pending",
-    confirmations: createEmptyProcessConfirmations(),
-    tasks: [
-      { id: 11, text: "최종 파일 정리", completed: false },
-      { id: 12, text: "가이드라인 문서 작성", completed: false },
-      { id: 13, text: "프로젝트 완료", completed: false },
-    ],
-  },
-];
+const initialProcesses: ProjectProcess[] = [];
 
 export default function Messages() {
   const navigate = useNavigate();
-  const storedProcessesRef = useRef<ProjectProcess[] | null>(readStoredProcesses());
+  const [searchParams, setSearchParams] = useSearchParams();
+  const currentUser = getCurrentUser();
+  const currentUserId = currentUser?.userId;
+  const requestedConversationId = Number(searchParams.get("conversationId") ?? 0);
   const storedMessageDraftsRef = useRef<Record<string, string>>(readStoredMessageDrafts());
-  const storedFeedProposalMessagesRef = useRef<FeedProposalMessage[]>(
-    getFeedProposalMessages()
-  );
-  const [proposalConversations] = useState<Conversation[]>(() =>
-    storedFeedProposalMessagesRef.current.map(createProposalConversation)
-  );
+  const [serverConversations, setServerConversations] = useState<Conversation[]>([]);
+  const [isConversationsLoading, setIsConversationsLoading] = useState(true);
+  const [conversationError, setConversationError] = useState<string | null>(null);
+  const [conversationReloadKey, setConversationReloadKey] = useState(0);
+  const initialLoadDoneRef = useRef(false);
+  const lastHandledReloadKeyRef = useRef(-1);
   const [leftConversationIds, setLeftConversationIds] = useState<number[]>(
     readLeftConversationIds
   );
-  const rawConversations = [...proposalConversations, ...conversations];
+  const [onlineByConversationId, setOnlineByConversationId] = useState<Record<number, boolean>>(
+    {}
+  );
+  const [typingConversationId, setTypingConversationId] = useState<number | null>(null);
+  const rawConversations = [...serverConversations, ...conversations].map((conversation) => {
+    const isOnline = onlineByConversationId[conversation.id] ?? conversation.online;
+    const statusText = isOnline ? "메시지 가능" : "자리비움";
+
+    return {
+      ...conversation,
+      online: isOnline,
+      statusText,
+    };
+  });
   const allConversations = rawConversations.filter(
     (conversation) => !leftConversationIds.includes(conversation.id)
   );
+  const messageSocketConversationIds = allConversations
+    .map((conversation) => conversation.id)
+    .join("|");
   const [activeTab, setActiveTab] = useState<"profile" | "process">("profile");
-  const [activeConversationId, setActiveConversationId] = useState(
-    () => allConversations[0]?.id ?? conversations[0].id
-  );
+  const [activeConversationId, setActiveConversationId] = useState(requestedConversationId);
   const [mobileView, setMobileView] = useState<"list" | "chat" | "detail">("list");
   const [conversationSearch, setConversationSearch] = useState("");
-  const [processes, setProcesses] = useState<ProjectProcess[]>(
-    () => storedProcessesRef.current ?? initialProcesses
-  );
+  const [processes, setProcesses] = useState<ProjectProcess[]>(initialProcesses);
   const [expandedProcess, setExpandedProcess] = useState<number | null>(2);
-  const [processCreated, setProcessCreated] = useState(
-    () => readStoredProcessCreated()
-  );
+  const [processCreated, setProcessCreated] = useState(false);
   const [isProcessModalOpen, setIsProcessModalOpen] = useState(false);
   const [draftProcesses, setDraftProcesses] = useState<ProjectProcess[]>(createDefaultProcessDraft);
   const [processDraftSnapshot, setProcessDraftSnapshot] =
@@ -858,15 +1074,12 @@ export default function Messages() {
   );
   const [clearingUnreadConversationId, setClearingUnreadConversationId] =
     useState<number | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => [
-    ...messages,
-    ...storedFeedProposalMessagesRef.current.map(createProposalChatMessage),
-  ]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => [...messages]);
   const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>(
     () => storedMessageDraftsRef.current
   );
   const [messageText, setMessageText] = useState(
-    () => storedMessageDraftsRef.current[String(allConversations[0]?.id ?? conversations[0].id)] ?? ""
+    () => storedMessageDraftsRef.current[String(allConversations[0]?.id ?? 0)] ?? ""
   );
   const [pendingAttachments, setPendingAttachments] = useState<MessageAttachment[]>([]);
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
@@ -882,25 +1095,1005 @@ export default function Messages() {
     key: number;
     shouldBounceCount: boolean;
   } | null>(null);
-  const [typingConversationId, setTypingConversationId] = useState<number | null>(null);
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
+  const [isRecoveryPollingActive, setIsRecoveryPollingActive] = useState(false);
   const [selectedImage, setSelectedImage] = useState<{ src: string; name: string } | null>(null);
   const [processToast, setProcessToast] = useState<ProcessToast | null>(null);
+  const [assistantGoal, setAssistantGoal] = useState<MessageAssistantGoal>("reply");
+  const [assistantSuggestions, setAssistantSuggestions] = useState<string[]>([]);
+  const [assistantUsedAi, setAssistantUsedAi] = useState(false);
+  const [assistantError, setAssistantError] = useState<string | null>(null);
+  const [isAssistantLoading, setIsAssistantLoading] = useState(false);
+  const [isAssistantExpanded, setIsAssistantExpanded] = useState(false);
+  const [hasAssistantRequested, setHasAssistantRequested] = useState(false);
+  const assistantRequestIdRef = useRef(0);
+  const assistantLastLoadedContextRef = useRef<string | null>(null);
+  const assistantInitialConversationLoadRef = useRef<number | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageSocketRef = useRef<ReturnType<typeof createMessageSocket> | null>(null);
+  const activeConversationIdRef = useRef(activeConversationId);
+  const expandedProcessRef = useRef<number | null>(expandedProcess);
+  const allConversationsRef = useRef<Conversation[]>([]);
+  const onlineByConversationIdRef = useRef<Record<number, boolean>>({});
+  const latestServerMessageIdByConversationRef = useRef<Record<number, number>>({});
+  const recoveryPollingTimeoutRef = useRef<number | null>(null);
+  const typingTimeoutRef = useRef<number | null>(null);
+  const typingConversationRef = useRef<number | null>(null);
+  const isMessageComposingRef = useRef(false);
+  const partnerTypingConversationIdRef = useRef<number | null>(null);
+  const lastTypingSyncAtRef = useRef<Record<number, number>>({});
+  const partnerTypingTimeoutRef = useRef<number | null>(null);
+  const isProcessModalOpenRef = useRef(false);
   const activeConversation =
     allConversations.find((conversation) => conversation.id === activeConversationId) ??
     allConversations[0] ??
-    rawConversations[0];
-  const activeMessages = chatMessages.filter(
-    (message) => message.conversationId === activeConversation.id
-  );
-  const isPartnerTyping = typingConversationId === activeConversation.id;
+    null;
+  const activeMessages = activeConversation
+    ? chatMessages.filter((message) => message.conversationId === activeConversation.id)
+    : [];
+  const latestActiveMessage =
+    activeMessages.length > 0 ? activeMessages[activeMessages.length - 1] : null;
+  const assistantMessageSignature = activeMessages
+    .slice(-6)
+    .map((message) => {
+      const attachmentCount = message.attachments?.length ?? 0;
+      return [
+        message.serverId ?? message.id,
+        message.createdAt,
+        message.message,
+        attachmentCount,
+      ].join(":");
+    })
+    .join("|");
+  const assistantProcessSignature = processes
+    .map((process) =>
+      [
+        process.id,
+        process.title,
+        process.status,
+        process.confirmations.designer ? "1" : "0",
+        process.confirmations.client ? "1" : "0",
+        process.tasks.map((task) => `${task.id}-${task.text}-${task.completed ? "1" : "0"}`).join(","),
+      ].join(":"),
+    )
+    .join("|");
+  useEffect(() => {
+    setAssistantGoal("reply");
+    setAssistantSuggestions([]);
+    setAssistantUsedAi(false);
+    setAssistantError(null);
+    setIsAssistantLoading(false);
+    setIsAssistantExpanded(false);
+    setHasAssistantRequested(false);
+    assistantLastLoadedContextRef.current = null;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    if (recoveryPollingTimeoutRef.current !== null) {
+      window.clearTimeout(recoveryPollingTimeoutRef.current);
+      recoveryPollingTimeoutRef.current = null;
+    }
+
+    if (isSocketConnected) {
+      setIsRecoveryPollingActive(false);
+      return;
+    }
+
+    setIsRecoveryPollingActive(false);
+    recoveryPollingTimeoutRef.current = window.setTimeout(() => {
+      if (!messageSocketRef.current?.isOpen()) {
+        setIsRecoveryPollingActive(true);
+      }
+      recoveryPollingTimeoutRef.current = null;
+    }, RECOVERY_POLL_GRACE_PERIOD);
+
+    return () => {
+      if (recoveryPollingTimeoutRef.current !== null) {
+        window.clearTimeout(recoveryPollingTimeoutRef.current);
+        recoveryPollingTimeoutRef.current = null;
+      }
+    };
+  }, [isSocketConnected]);
+
+  const updateLatestServerMessageId = (
+    conversationId: number,
+    messageId: string | number | null | undefined
+  ) => {
+    const parsedMessageId = parseNumericMessageId(messageId);
+    if (parsedMessageId === null) {
+      return;
+    }
+
+    const previousMessageId = latestServerMessageIdByConversationRef.current[conversationId];
+    latestServerMessageIdByConversationRef.current[conversationId] =
+      typeof previousMessageId === "number"
+        ? Math.max(previousMessageId, parsedMessageId)
+        : parsedMessageId;
+  };
+
+  const syncLatestServerMessageIdFromResponses = (
+    conversationId: number,
+    messageResponses: ApiChatMessageResponse[]
+  ) => {
+    if (messageResponses.length === 0) {
+      delete latestServerMessageIdByConversationRef.current[conversationId];
+      return;
+    }
+
+    messageResponses.forEach((message) => {
+      updateLatestServerMessageId(conversationId, message.id);
+    });
+  };
+
+  const mergeConversationMessages = (
+    prev: ChatMessage[],
+    conversationId: number,
+    nextMessages: ChatMessage[],
+    mode: "replace" | "append"
+  ) => {
+    const currentConversationMessages = prev.filter(
+      (message) => message.conversationId === conversationId
+    );
+    const otherMessages = prev.filter(
+      (message) => message.conversationId !== conversationId
+    );
+
+    if (mode === "replace") {
+      const optimisticMessagesNotInHistory = currentConversationMessages.filter(
+        (currentMessage) =>
+          currentMessage.isSelf &&
+          !nextMessages.some((message) => isSameChatMessage(message, currentMessage))
+      );
+
+      return [...otherMessages, ...nextMessages, ...optimisticMessagesNotInHistory];
+    }
+
+    const mergedMessages = [...currentConversationMessages];
+
+    nextMessages.forEach((nextMessage) => {
+      const existingMessageIndex = mergedMessages.findIndex((message) =>
+        isSameChatMessage(message, nextMessage)
+      );
+
+      if (existingMessageIndex < 0) {
+        mergedMessages.push(nextMessage);
+        return;
+      }
+
+      mergedMessages[existingMessageIndex] = {
+        ...mergedMessages[existingMessageIndex],
+        ...nextMessage,
+      };
+    });
+
+    return [...otherMessages, ...mergedMessages];
+  };
+
+  const catchUpConversationMessages = async (conversationId: number, partnerUserId: string) => {
+    const lastKnownMessageId = latestServerMessageIdByConversationRef.current[conversationId];
+    const shouldFetchMissedOnly =
+      typeof lastKnownMessageId === "number" && Number.isFinite(lastKnownMessageId);
+    const messageResponses = await getConversationMessagesApi(
+      conversationId,
+      shouldFetchMissedOnly ? { afterMessageId: lastKnownMessageId } : undefined
+    );
+
+    if (activeConversationIdRef.current !== conversationId) {
+      return;
+    }
+
+    if (messageResponses.length === 0) {
+      return;
+    }
+
+    syncLatestServerMessageIdFromResponses(conversationId, messageResponses);
+
+    const nextMessages = messageResponses.map((message) =>
+      mapChatMessageResponse(message, {
+        currentUserId,
+        partnerUserId,
+      })
+    );
+
+    setChatMessages((prev) =>
+      mergeConversationMessages(
+        prev,
+        conversationId,
+        nextMessages,
+        shouldFetchMissedOnly ? "append" : "replace"
+      )
+    );
+  };
+
+  function applyPresenceStates(states: MessagePresenceState[]) {
+    const partnerUserIdByConversationId = new Map(
+      allConversations.map((conversation) => [
+        conversation.id,
+        toNumericUserId(conversation.partnerId),
+      ])
+    );
+
+    setOnlineByConversationId((prev) => {
+      const next = { ...prev };
+      states.forEach((state) => {
+        const partnerUserId = partnerUserIdByConversationId.get(state.conversationId);
+        if (partnerUserId === state.userId) {
+          next[state.conversationId] = state.isOnline;
+          return;
+        }
+
+        if (
+          (partnerUserId === null || partnerUserId === undefined) &&
+          state.userId !== currentUserId
+        ) {
+          next[state.conversationId] = state.isOnline;
+        }
+      });
+      onlineByConversationIdRef.current = next;
+      return next;
+    });
+    setServerConversations((prev) =>
+      prev.map((conversation) => {
+        const nextState = states.find((state) => {
+          const partnerUserId = partnerUserIdByConversationId.get(state.conversationId);
+          return (
+            state.conversationId === conversation.id &&
+            (partnerUserId === state.userId ||
+              ((partnerUserId === null || partnerUserId === undefined) &&
+                state.userId !== currentUserId))
+          );
+        });
+
+        if (!nextState) {
+          return conversation;
+        }
+
+        return {
+          ...conversation,
+          online: nextState.isOnline,
+          statusText: nextState.isOnline ? "메시지 가능" : "자리비움",
+        };
+      })
+    );
+  }
+
+  function clearOwnTypingTimeout() {
+    if (typingTimeoutRef.current !== null) {
+      window.clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+  }
+
+  function startOwnTyping(conversationId: number) {
+    if (typingConversationRef.current !== conversationId) {
+      if (typingConversationRef.current !== null) {
+        stopOwnTyping(typingConversationRef.current);
+      }
+
+      notifyTypingState(conversationId, true);
+      typingConversationRef.current = conversationId;
+    } else {
+      notifyTypingState(conversationId, true);
+    }
+
+    clearOwnTypingTimeout();
+    typingTimeoutRef.current = window.setTimeout(() => {
+      stopOwnTyping(conversationId);
+    }, TYPING_IDLE_DELAY);
+  }
+
+  function applyConversationPresence(
+    conversationId: number,
+    presence: {
+      partnerAvailable: boolean;
+      partnerTyping: boolean;
+    }
+  ) {
+    debugMessageTyping("applyConversationPresence", {
+      conversationId,
+      presence,
+    });
+    setOnlineByConversationId((prev) => {
+      const next = {
+        ...prev,
+        [conversationId]: presence.partnerAvailable,
+      };
+      onlineByConversationIdRef.current = next;
+      return next;
+    });
+    setServerConversations((prev) =>
+      prev.map((conversation) =>
+        conversation.id === conversationId
+          ? {
+              ...conversation,
+              online: presence.partnerAvailable,
+              statusText: presence.partnerAvailable ? "메시지 가능" : "자리비움",
+            }
+          : conversation
+      )
+    );
+    setTypingConversationId((current) => {
+      const nextTypingConversationId = presence.partnerTyping
+        ? conversationId
+        : current === conversationId
+          ? null
+          : current;
+      partnerTypingConversationIdRef.current = nextTypingConversationId;
+      return nextTypingConversationId;
+    });
+  }
+
+  function notifyTypingState(conversationId: number, isTyping: boolean) {
+    debugMessageTyping("notifyTypingState", {
+      conversationId,
+      isTyping,
+      currentUserId,
+    });
+    const now = Date.now();
+    if (isTyping) {
+      const lastSyncedAt = lastTypingSyncAtRef.current[conversationId] ?? 0;
+      if (now - lastSyncedAt < TYPING_SYNC_INTERVAL) {
+        return;
+      }
+      lastTypingSyncAtRef.current[conversationId] = now;
+    } else {
+      delete lastTypingSyncAtRef.current[conversationId];
+    }
+
+    const socket = messageSocketRef.current;
+    if (socket?.isOpen()) {
+      try {
+        socket.sendTyping(conversationId, isTyping);
+      } catch {
+        // REST fallback below still updates typing state.
+      }
+    }
+
+    void updateConversationTypingApi(conversationId, isTyping).catch(() => {
+      // Presence polling will retry shortly; ignore transient typing sync failures.
+    });
+  }
+
+  function stopOwnTyping(conversationId = typingConversationRef.current) {
+    clearOwnTypingTimeout();
+
+    if (!conversationId) {
+      typingConversationRef.current = null;
+      return;
+    }
+
+    notifyTypingState(conversationId, false);
+
+    if (typingConversationRef.current === conversationId) {
+      typingConversationRef.current = null;
+    }
+  }
+
+  function syncProcessState(nextProcesses: ProjectProcess[], preferredExpandedId?: number | null) {
+    setProcesses(nextProcesses);
+    setProcessCreated(nextProcesses.length > 0);
+    setExpandedProcess((current) => {
+      if (nextProcesses.length === 0) {
+        return null;
+      }
+
+      if (preferredExpandedId === null) {
+        return null;
+      }
+
+      const candidate = preferredExpandedId ?? current;
+
+      return candidate && nextProcesses.some((process) => process.id === candidate)
+        ? candidate
+        : nextProcesses[0].id;
+    });
+  }
+
+  function normalizeProcessesForSave(source: ProjectProcess[]) {
+    return source.map((process) => {
+      const confirmations = process.confirmations ?? createEmptyProcessConfirmations();
+      const tasks = process.tasks.map((task) => ({
+        ...task,
+        text: task.text.trim(),
+      }));
+
+      return {
+        ...process,
+        title: process.title.trim(),
+        confirmations,
+        status: getProcessStatusFromState(tasks, confirmations),
+        tasks,
+      };
+    });
+  }
+
+  async function persistProcesses(
+    nextProcesses: ProjectProcess[],
+    options?: {
+      successMessage?: string;
+      optimistic?: boolean;
+      preferredExpandedId?: number | null;
+    }
+  ) {
+    if (!activeConversation) return null;
+
+    const conversationId = activeConversation.id;
+    const normalizedProcesses = normalizeProcessesForSave(nextProcesses);
+    const previousProcesses = cloneProcesses(processes);
+    const previousExpandedId = expandedProcess;
+    const preferredExpandedId = options?.preferredExpandedId ?? expandedProcess;
+
+    if (options?.optimistic) {
+      syncProcessState(normalizedProcesses, preferredExpandedId);
+    }
+
+    try {
+      const savedResponses = await saveConversationProcessesApi(
+        conversationId,
+        normalizedProcesses.map((process) => ({
+          id: process.id,
+          title: process.title,
+          confirmations: process.confirmations,
+          tasks: process.tasks.map((task) => ({
+            id: task.id,
+            text: task.text,
+            completed: task.completed,
+          })),
+        }))
+      );
+
+      const savedProcesses = savedResponses.map(mapProcessResponse);
+      if (activeConversationIdRef.current === conversationId) {
+        syncProcessState(savedProcesses, preferredExpandedId);
+        if (options?.successMessage) {
+          showProcessToast(options.successMessage);
+        }
+      }
+
+      return savedProcesses;
+    } catch (error) {
+      if (options?.optimistic && activeConversationIdRef.current === conversationId) {
+        syncProcessState(previousProcesses, previousExpandedId);
+      }
+
+      setConversationError(
+        error instanceof Error ? error.message : "작업 프로세스를 저장하지 못했습니다."
+      );
+      return null;
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadConversations(silent = false) {
+      try {
+        if (!silent) {
+          setIsConversationsLoading(true);
+          setConversationError(null);
+        }
+        const conversationResponses = await getMessageConversationsApi();
+
+        if (!mounted) return;
+
+        const nextConversations = conversationResponses.map(mapConversationResponse).map((conversation) => {
+          const isOnline =
+            onlineByConversationIdRef.current[conversation.id] ?? conversation.online;
+          return {
+            ...conversation,
+            online: isOnline,
+            statusText: isOnline ? "메시지 가능" : "자리비움",
+          };
+        });
+        setServerConversations(nextConversations);
+        initialLoadDoneRef.current = true;
+        const socket = messageSocketRef.current;
+        if (socket?.isOpen() && nextConversations.length > 0) {
+          try {
+            socket.subscribe(nextConversations.map((conversation) => conversation.id));
+          } catch {
+            // Ignore transient subscribe refresh failures.
+          }
+        }
+
+        const requestedId = Number.isFinite(requestedConversationId)
+          ? requestedConversationId
+          : 0;
+        const requestedConversation = nextConversations.find(
+          (conversation) => conversation.id === requestedId
+        );
+
+        setActiveConversationId((currentId) => {
+          if (requestedConversation && currentId !== requestedConversation.id) {
+            return requestedConversation.id;
+          }
+          if (nextConversations.some((conversation) => conversation.id === currentId)) {
+            return currentId;
+          }
+          return requestedConversation?.id ?? nextConversations[0]?.id ?? 0;
+        });
+      } catch (error) {
+        if (!mounted || silent) return;
+        setConversationError(
+          error instanceof Error ? error.message : "대화 목록을 불러오지 못했습니다."
+        );
+      } finally {
+        if (mounted && !silent) {
+          setIsConversationsLoading(false);
+        }
+      }
+    }
+
+    const isExplicitReload = lastHandledReloadKeyRef.current !== conversationReloadKey;
+    if (isExplicitReload) lastHandledReloadKeyRef.current = conversationReloadKey;
+    // 이미 한 번 로드된 상태에서 소켓 연결 변경으로 인한 재실행은 silent로 처리
+    const shouldBeSilent = initialLoadDoneRef.current && !isExplicitReload;
+    void loadConversations(shouldBeSilent);
+    const pollInterval = window.setInterval(() => {
+      void loadConversations(true);
+    }, isRecoveryPollingActive
+      ? RECOVERY_STATE_POLL_INTERVAL
+      : CONNECTED_CONVERSATION_POLL_INTERVAL);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(pollInterval);
+    };
+  }, [requestedConversationId, conversationReloadKey, isRecoveryPollingActive]);
+
+  useEffect(() => {
+    if (!activeConversation) return;
+
+    let mounted = true;
+    const conversationId = activeConversation.id;
+    const partnerUserId = activeConversation.partnerId;
+
+    async function loadConversationMessages() {
+      try {
+        const messageResponses = await getConversationMessagesApi(conversationId);
+
+        if (!mounted || activeConversationIdRef.current !== conversationId) return;
+
+        syncLatestServerMessageIdFromResponses(conversationId, messageResponses);
+
+        const nextMessages = messageResponses.map((message) =>
+          mapChatMessageResponse(message, {
+            currentUserId,
+            partnerUserId,
+          })
+        );
+
+        setChatMessages((prev) =>
+          mergeConversationMessages(prev, conversationId, nextMessages, "replace")
+        );
+      } catch (error) {
+        if (!mounted) return;
+        setConversationError(
+          error instanceof Error ? error.message : "메시지 내역을 불러오지 못했습니다."
+        );
+      }
+    }
+
+    void loadConversationMessages();
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeConversation?.id, currentUserId]);
+
+  useEffect(() => {
+    if (!activeConversation || !isRecoveryPollingActive) {
+      return;
+    }
+
+    let mounted = true;
+    const conversationId = activeConversation.id;
+    const partnerUserId = activeConversation.partnerId;
+
+    async function recoverConversationMessages(silent = false) {
+      if (messageSocketRef.current?.isOpen()) {
+        return;
+      }
+
+      try {
+        await catchUpConversationMessages(conversationId, partnerUserId);
+      } catch (error) {
+        if (!mounted || silent) return;
+        setConversationError(
+          error instanceof Error ? error.message : "누락된 메시지를 복구하지 못했습니다."
+        );
+      }
+    }
+
+    void recoverConversationMessages();
+    const pollInterval = window.setInterval(() => {
+      void recoverConversationMessages(true);
+    }, RECOVERY_MESSAGE_POLL_INTERVAL);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(pollInterval);
+    };
+  }, [activeConversation?.id, currentUserId, isRecoveryPollingActive]);
+
+  useEffect(() => {
+    if (!activeConversation) return;
+
+    let mounted = true;
+    const conversationId = activeConversation.id;
+
+    async function loadConversationPresence(silent = false) {
+      try {
+        const presence = await getConversationPresenceApi(conversationId);
+        if (!mounted || activeConversationIdRef.current !== conversationId) return;
+
+        debugMessageTyping("presence api", {
+          conversationId,
+          silent,
+          presence,
+        });
+        applyConversationPresence(conversationId, presence);
+      } catch (error) {
+        if (!mounted || silent) return;
+        setConversationError(
+          error instanceof Error ? error.message : "대화 상태를 불러오지 못했습니다."
+        );
+      }
+    }
+
+    void loadConversationPresence();
+    const pollInterval = window.setInterval(() => {
+      void loadConversationPresence(true);
+    }, isRecoveryPollingActive
+      ? RECOVERY_STATE_POLL_INTERVAL
+      : CONNECTED_PRESENCE_POLL_INTERVAL);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(pollInterval);
+    };
+  }, [activeConversation?.id, isRecoveryPollingActive]);
+
+  useEffect(() => {
+    if (!activeConversation) {
+      setProcesses([]);
+      setProcessCreated(false);
+      return;
+    }
+
+    let mounted = true;
+    const conversationId = activeConversation.id;
+
+    async function loadProcesses(silent = false) {
+      try {
+        const processResponses = await getConversationProcessesApi(conversationId);
+        if (!mounted || activeConversationIdRef.current !== conversationId) return;
+
+        const nextProcesses = processResponses.map(mapProcessResponse);
+        setProcesses(nextProcesses);
+        setProcessCreated(nextProcesses.length > 0);
+        if (nextProcesses.length > 0) {
+          setExpandedProcess((current) =>
+            current && nextProcesses.some((process) => process.id === current)
+              ? current
+              : nextProcesses[0].id
+          );
+        } else {
+          setExpandedProcess(null);
+        }
+      } catch (error) {
+        if (!mounted || silent) return;
+        setConversationError(
+          error instanceof Error ? error.message : "작업 프로세스를 불러오지 못했습니다."
+        );
+      }
+    }
+
+    void loadProcesses();
+    const pollInterval = window.setInterval(() => {
+      void loadProcesses(true);
+    }, isRecoveryPollingActive
+      ? RECOVERY_STATE_POLL_INTERVAL
+      : CONNECTED_PROCESS_POLL_INTERVAL);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(pollInterval);
+    };
+  }, [activeConversation?.id, isRecoveryPollingActive]);
+
+  useEffect(() => {
+    if (!activeConversation) return;
+
+    const conversationId = activeConversation.id;
+    const socket = messageSocketRef.current;
+
+    if (socket?.isOpen()) {
+      try {
+        socket.markConversationRead(conversationId);
+        return;
+      } catch {
+        // Fall through to REST when the socket is temporarily unavailable.
+      }
+    }
+
+    void markConversationReadApi(conversationId).catch(() => {
+      // Best-effort read acknowledgement fallback.
+    });
+  }, [activeConversation?.id, activeMessages.length, isSocketConnected]);
+
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    allConversationsRef.current = allConversations;
+  }, [allConversations]);
+
+  useEffect(() => {
+    onlineByConversationIdRef.current = onlineByConversationId;
+  }, [onlineByConversationId]);
+
+  useEffect(() => {
+    partnerTypingConversationIdRef.current = typingConversationId;
+  }, [typingConversationId]);
+
+  useEffect(() => {
+    expandedProcessRef.current = expandedProcess;
+  }, [expandedProcess]);
+
+  useEffect(() => {
+    isProcessModalOpenRef.current = isProcessModalOpen;
+  }, [isProcessModalOpen]);
+
+  useEffect(() => {
+    return () => {
+      stopOwnTyping();
+    };
+  }, [activeConversation?.id]);
+
+  useEffect(() => {
+    const conversationIds = messageSocketConversationIds
+      .split("|")
+      .map((conversationId) => Number(conversationId))
+      .filter((conversationId) => Number.isFinite(conversationId));
+
+    const socket = createMessageSocket({
+      onOpen: ({ reconnected }) => {
+        setIsSocketConnected(true);
+        setConversationReloadKey((key) => key + 1);
+        if (conversationIds.length > 0) {
+          socket.subscribe(conversationIds);
+        }
+
+        if (!reconnected) {
+          return;
+        }
+
+        const activeConversationId = activeConversationIdRef.current;
+        const currentConversation = allConversationsRef.current.find(
+          (conversation) => conversation.id === activeConversationId
+        );
+        if (!currentConversation) {
+          return;
+        }
+
+        void catchUpConversationMessages(
+          currentConversation.id,
+          currentConversation.partnerId
+        ).catch(() => {
+          setConversationReloadKey((key) => key + 1);
+        });
+      },
+      onEvent: (event: IncomingMessageSocketEvent) => {
+        if (event.type === "typing") {
+          debugMessageTyping("socket typing event", {
+            event,
+            currentUserId,
+            activeConversationId: activeConversationIdRef.current,
+          });
+          if (event.senderUserId !== currentUserId) {
+            if (partnerTypingTimeoutRef.current !== null) {
+              window.clearTimeout(partnerTypingTimeoutRef.current);
+              partnerTypingTimeoutRef.current = null;
+            }
+
+            const currentConversation = allConversationsRef.current.find(
+              (conversation) => conversation.id === event.conversationId
+            );
+
+            if (event.isTyping) {
+              applyConversationPresence(event.conversationId, {
+                partnerAvailable: currentConversation?.online ?? true,
+                partnerTyping: true,
+              });
+              partnerTypingTimeoutRef.current = window.setTimeout(() => {
+                applyConversationPresence(event.conversationId, {
+                  partnerAvailable: currentConversation?.online ?? true,
+                  partnerTyping: false,
+                });
+                partnerTypingTimeoutRef.current = null;
+              }, TYPING_IDLE_DELAY + 800);
+            } else {
+              applyConversationPresence(event.conversationId, {
+                partnerAvailable: currentConversation?.online ?? true,
+                partnerTyping: false,
+              });
+            }
+          }
+          return;
+        }
+
+        if (event.type === "conversation.read") {
+          if (event.readerUserId !== currentUserId) {
+            setChatMessages((prev) =>
+              prev.map((message) =>
+                message.conversationId === event.conversationId && message.isSelf
+                  ? {
+                      ...message,
+                      status:
+                        typeof event.lastReadMessageId === "number" &&
+                        Number(message.serverId ?? message.id) <= event.lastReadMessageId
+                          ? "read"
+                          : message.status,
+                    }
+                  : message
+              )
+            );
+            setConversationReloadKey((key) => key + 1);
+          }
+          return;
+        }
+
+        if (event.type === "reaction.update") {
+          setChatMessages((prev) =>
+            prev.map((message) =>
+              message.conversationId === event.conversationId &&
+              Number(message.serverId ?? message.id) === event.messageId
+                ? {
+                    ...message,
+                    reactions: normalizeMessageReactions(event.reactions),
+                  }
+                : message
+            )
+          );
+          return;
+        }
+
+        if (event.type === "process.update") {
+          if (event.conversationId !== activeConversationIdRef.current) {
+            return;
+          }
+
+          const nextProcesses = event.processes.map(mapProcessResponse);
+          syncProcessState(nextProcesses, expandedProcessRef.current);
+          if (!isProcessModalOpenRef.current) {
+            setDraftProcesses(cloneProcesses(nextProcesses));
+            setProcessDraftSnapshot(cloneProcesses(nextProcesses));
+          }
+          return;
+        }
+
+        if (event.type === "presence.snapshot") {
+          applyPresenceStates(event.states);
+          return;
+        }
+
+        if (event.type === "presence.update") {
+          applyPresenceStates([
+            {
+              conversationId: event.conversationId,
+              userId: event.userId,
+              isOnline: event.isOnline,
+            },
+          ]);
+          return;
+        }
+
+        const incomingMessage = event;
+        updateLatestServerMessageId(
+          incomingMessage.conversationId,
+          incomingMessage.serverId
+        );
+        const partnerUserId = allConversationsRef.current.find(
+          (conversation) => conversation.id === incomingMessage.conversationId
+        )?.partnerId;
+        const isSelfMessage = isCurrentUsersMessage(incomingMessage.senderUserId, {
+          currentUserId,
+          partnerUserId,
+        });
+        const nextMessage: ChatMessage = {
+          id: incomingMessage.serverId,
+          clientId: incomingMessage.clientId || incomingMessage.serverId,
+          serverId: incomingMessage.serverId,
+          conversationId: incomingMessage.conversationId,
+          senderId: isSelfMessage ? CURRENT_USER_ID : String(incomingMessage.senderUserId),
+          sender: isSelfMessage ? "나" : incomingMessage.senderName || "상대",
+          message: incomingMessage.message,
+          time: formatMessageTime(incomingMessage.createdAt),
+          createdAt: incomingMessage.createdAt,
+          isSelf: isSelfMessage,
+          status: isSelfMessage && incomingMessage.readByPartner ? "read" : "sent",
+          attachments: normalizeIncomingAttachments(incomingMessage.attachments ?? []),
+          reactions: normalizeMessageReactions(incomingMessage.reactions ?? []),
+        };
+
+        setChatMessages((prev) => {
+          const existingMessageIndex = prev.findIndex(
+            (message) => message.clientId === nextMessage.clientId
+          );
+
+          if (existingMessageIndex < 0) {
+            return [...prev, nextMessage];
+          }
+
+          return prev.map((message, index) =>
+            index === existingMessageIndex
+              ? {
+                  ...message,
+                  id: nextMessage.id,
+                  serverId: nextMessage.serverId,
+                  senderId: nextMessage.senderId,
+                  sender: nextMessage.sender,
+                  message: nextMessage.message,
+                  status: nextMessage.status,
+                  createdAt: nextMessage.createdAt,
+                  time: nextMessage.time,
+                  attachments: nextMessage.attachments,
+                  reactions: nextMessage.reactions,
+                }
+              : message
+          );
+        });
+
+        if (!conversationIds.includes(incomingMessage.conversationId)) {
+          setConversationReloadKey((key) => key + 1);
+        }
+
+        if (!isSelfMessage && incomingMessage.conversationId !== activeConversationIdRef.current) {
+          setUnreadConversationIds((prev) =>
+            prev.includes(incomingMessage.conversationId)
+              ? prev
+              : [...prev, incomingMessage.conversationId]
+          );
+        }
+      },
+      onClose: () => {
+        setIsSocketConnected(false);
+        setTypingConversationId(null);
+        partnerTypingConversationIdRef.current = null;
+        if (partnerTypingTimeoutRef.current !== null) {
+          window.clearTimeout(partnerTypingTimeoutRef.current);
+          partnerTypingTimeoutRef.current = null;
+        }
+        clearOwnTypingTimeout();
+        typingConversationRef.current = null;
+      },
+    });
+
+    messageSocketRef.current = socket;
+    socket.connect();
+
+    return () => {
+      if (messageSocketRef.current === socket) {
+        messageSocketRef.current = null;
+      }
+      socket.close();
+    };
+  }, [currentUserId, messageSocketConversationIds]);
+
+  const isPartnerTyping = Boolean(activeConversation && typingConversationId === activeConversation.id);
   const draftValidationMessage = getProcessDraftValidation(draftProcesses);
   const isProcessDraftDirty =
     JSON.stringify(draftProcesses) !== JSON.stringify(processDraftSnapshot);
   const hasUploadingAttachments = pendingAttachments.some(
     (attachment) => attachment.uploadStatus === "uploading"
+  );
+  const hasFailedAttachments = pendingAttachments.some(
+    (attachment) => attachment.uploadStatus === "failed"
   );
   const integrationModalMeta = integrationModalProvider
     ? integrationProviderMeta[integrationModalProvider]
@@ -962,14 +2155,15 @@ export default function Messages() {
 
     if (!lastMessage) return fallbackConversation?.message ?? "";
 
-    const hasText = Boolean(lastMessage.message.trim());
+    const messageText = typeof lastMessage.message === "string" ? lastMessage.message : "";
+    const hasText = Boolean(messageText.trim());
     const hasAttachments = Boolean(lastMessage.attachments?.length);
 
     if (!hasText && hasAttachments && lastMessage.attachments) {
       return getAttachmentConversationPreview(lastMessage.attachments);
     }
 
-    return lastMessage.message || fallbackConversation?.message || "";
+    return messageText || fallbackConversation?.message || "";
   };
 
   const getConversationUnreadCount = (conversation: Conversation) =>
@@ -997,10 +2191,12 @@ export default function Messages() {
   });
 
   useEffect(() => {
+    if (!activeConversation) return;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeConversation.id, activeMessages.length, isPartnerTyping]);
+  }, [activeConversation?.id, activeMessages.length, isPartnerTyping]);
 
   useEffect(() => {
+    if (!activeConversation) return;
     if (clearingUnreadConversationId === activeConversation.id) return;
     const isDesktopLayout =
       typeof window !== "undefined" &&
@@ -1008,12 +2204,7 @@ export default function Messages() {
 
     if (!isDesktopLayout && mobileView === "list") return;
     setUnreadConversationIds(markConversationRead(activeConversation.id));
-  }, [activeConversation.id, clearingUnreadConversationId, mobileView]);
-
-  useEffect(() => {
-    writeJsonToStorage(PROCESS_STORAGE_KEY, processes);
-    writeJsonToStorage(PROCESS_CREATED_STORAGE_KEY, processCreated);
-  }, [processCreated, processes]);
+  }, [activeConversation?.id, clearingUnreadConversationId, mobileView]);
 
   useEffect(() => {
     writeJsonToStorage(MESSAGE_DRAFTS_STORAGE_KEY, messageDrafts);
@@ -1024,23 +2215,32 @@ export default function Messages() {
   }, [leftConversationIds]);
 
   useEffect(() => {
+    if (!activeConversation) {
+      setMessageText("");
+      return;
+    }
     setMessageText(messageDrafts[String(activeConversation.id)] ?? "");
-  }, [activeConversation.id]);
+  }, [activeConversation?.id]);
 
   const toggleTask = (processId: number, taskId: number) => {
-    setProcesses(prev => prev.map(process => {
-      if (process.id === processId) {
-        const tasks = process.tasks.map(task =>
-          task.id === taskId ? { ...task, completed: !task.completed } : task
-        );
-        return {
-          ...process,
-          status: getProcessStatusFromState(tasks, process.confirmations),
-          tasks,
-        };
-      }
-      return process;
-    }));
+    const nextProcesses = processes.map((process) => {
+      if (process.id !== processId) return process;
+
+      const tasks = process.tasks.map((task) =>
+        task.id === taskId ? { ...task, completed: !task.completed } : task
+      );
+
+      return {
+        ...process,
+        status: getProcessStatusFromState(tasks, process.confirmations),
+        tasks,
+      };
+    });
+
+    void persistProcesses(nextProcesses, {
+      optimistic: true,
+      preferredExpandedId: processId,
+    });
   };
 
   const toggleProcessConfirmation = (
@@ -1050,22 +2250,28 @@ export default function Messages() {
     const targetProcess = processes.find((process) => process.id === processId);
     const isConfirming = targetProcess ? !targetProcess.confirmations[role] : false;
 
-    setProcesses((prev) =>
-      prev.map((process) => {
-        if (process.id !== processId) return process;
+    const nextProcesses = processes.map((process) => {
+      if (process.id !== processId) return process;
 
-        const confirmations = {
-          ...process.confirmations,
-          [role]: !process.confirmations[role],
-        };
+      const confirmations = {
+        ...process.confirmations,
+        [role]: !process.confirmations[role],
+      };
 
-        return {
-          ...process,
-          confirmations,
-          status: getProcessStatusFromState(process.tasks, confirmations),
-        };
-      })
-    );
+      return {
+        ...process,
+        confirmations,
+        status: getProcessStatusFromState(process.tasks, confirmations),
+      };
+    });
+
+    const roleLabel = getProcessParticipantButtonTitle(role);
+    void persistProcesses(nextProcesses, {
+      optimistic: true,
+      preferredExpandedId: null,
+      successMessage: isConfirming ? `${roleLabel} 확인이 기록되었습니다.` : undefined,
+    });
+    return;
 
     if (isConfirming) {
       const roleLabel = role === "designer" ? "디자이너" : "클라이언트";
@@ -1214,10 +2420,25 @@ export default function Messages() {
     setDraggingDraftTask(null);
   };
 
-  const applyProcessDraft = () => {
+  const applyProcessDraft = async () => {
     if (draftValidationMessage) return;
 
-    const normalizedProcesses = draftProcesses.map((process) => {
+    const normalizedProcesses = normalizeProcessesForSave(draftProcesses);
+    const savedProcesses = await persistProcesses(normalizedProcesses, {
+      preferredExpandedId: normalizedProcesses[0]?.id ?? null,
+    });
+
+    if (!savedProcesses) return;
+
+    setDraftProcesses(cloneProcesses(savedProcesses));
+    setProcessDraftSnapshot(cloneProcesses(savedProcesses));
+    setActiveTab("process");
+    setIsProcessModalOpen(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+    return;
+
+    const legacyNormalizedProcesses = draftProcesses.map((process) => {
       const tasks = process.tasks.map((task) => ({
         ...task,
         text: task.text.trim(),
@@ -1235,11 +2456,11 @@ export default function Messages() {
       };
     });
 
-    setProcesses(normalizedProcesses);
+    setProcesses(legacyNormalizedProcesses);
     setProcessCreated(true);
     setActiveTab("process");
-    setExpandedProcess(normalizedProcesses[0]?.id ?? null);
-    setProcessDraftSnapshot(cloneProcesses(normalizedProcesses));
+    setExpandedProcess(legacyNormalizedProcesses[0]?.id ?? null);
+    setProcessDraftSnapshot(cloneProcesses(legacyNormalizedProcesses));
     setIsProcessModalOpen(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -1259,19 +2480,75 @@ export default function Messages() {
     );
   };
 
+  const getCurrentParticipantRoleLabel = () =>
+    currentUser?.role === "client" ? "클라이언트" : "디자이너";
+
+  const getPartnerParticipantRoleLabel = () =>
+    activeConversation?.partnerRole === "CLIENT" ? "클라이언트" : "디자이너";
+
+  const getCurrentParticipantName = () =>
+    currentUser?.nickname?.trim() || currentUser?.name?.trim() || "나";
+
+  const getPartnerParticipantName = () =>
+    activeConversation?.profileName?.trim() || activeConversation?.name?.trim() || "상대방";
+
+  const getShortParticipantName = (name: string, maxLength = 8) =>
+    name.length > maxLength ? `${name.slice(0, maxLength)}…` : name;
+
+  const normalizedCurrentParticipantUserId = toNumericUserId(currentUserId);
+  const normalizedPartnerParticipantUserId = toNumericUserId(activeConversation?.partnerId);
+  const currentProcessConfirmationRole: keyof ProcessConfirmations =
+    currentUser?.role === "client" && activeConversation?.partnerRole !== "CLIENT"
+      ? "client"
+      : currentUser?.role === "designer" && activeConversation?.partnerRole !== "DESIGNER"
+        ? "designer"
+        : normalizedCurrentParticipantUserId !== null && normalizedPartnerParticipantUserId !== null
+          ? normalizedCurrentParticipantUserId <= normalizedPartnerParticipantUserId
+            ? "designer"
+            : "client"
+          : "designer";
+  const partnerProcessConfirmationRole: keyof ProcessConfirmations =
+    currentProcessConfirmationRole === "designer" ? "client" : "designer";
+
+  const getProcessParticipantRoleLabel = (
+    role: keyof ProcessConfirmations
+  ) =>
+    role === currentProcessConfirmationRole
+      ? getCurrentParticipantRoleLabel()
+      : getPartnerParticipantRoleLabel();
+
+  const getProcessParticipantDisplayLabel = (
+    role: keyof ProcessConfirmations
+  ) =>
+    role === currentProcessConfirmationRole
+      ? `${getCurrentParticipantName()} (${getCurrentParticipantRoleLabel()})`
+      : `${getPartnerParticipantName()} (${getPartnerParticipantRoleLabel()})`;
+
+  const getProcessParticipantButtonTitle = (role: keyof ProcessConfirmations) =>
+    `${getProcessParticipantRoleLabel(role)} 확인`;
+
+  const getProcessParticipantButtonSubtitle = (role: keyof ProcessConfirmations) =>
+    role === currentProcessConfirmationRole
+      ? getShortParticipantName(getCurrentParticipantName())
+      : getShortParticipantName(getPartnerParticipantName());
+
+  const isProcessConfirmationEditable = (role: keyof ProcessConfirmations) =>
+    role === currentProcessConfirmationRole;
+
   const getConfirmationLabel = (
     role: keyof ProcessConfirmations,
     confirmations: ProcessConfirmations
   ) => {
-    const roleLabel = role === "designer" ? "디자이너" : "클라이언트";
+    const roleLabel = getProcessParticipantDisplayLabel(role);
     return confirmations[role] ? `${roleLabel} 확인 완료` : `${roleLabel} 대기`;
   };
 
   const getProcessApprovalSummary = (process: ProjectProcess, progress: number) =>
-    `작업 ${progress}% · ${getConfirmationLabel(
-      "designer",
-      process.confirmations
-    )} · ${getConfirmationLabel("client", process.confirmations)}`;
+    `작업 ${progress}% · ${
+      process.confirmations.designer ? "디자이너 완료" : "디자이너 대기"
+    } · ${
+      process.confirmations.client ? "클라이언트 완료" : "클라이언트 대기"
+    }`;
 
   const getProcessApprovalBadge = (process: ProjectProcess, progress: number) => {
     if (progress === 100 && hasBothConfirmations(process.confirmations)) {
@@ -1316,16 +2593,31 @@ export default function Messages() {
     processes.every((process) => process.status === "completed");
 
   const handleCompleteWork = () => {
+    if (!activeConversation) return;
+    const revieweeId = Number(activeConversation.partnerId);
+    const profileKey = activeConversation.username || activeConversation.partnerId;
     navigate(
-      `/review/write?client=${encodeURIComponent(activeConversation.name)}&project=${encodeURIComponent(activeConversation.role)}`
+      `/review/write?client=${encodeURIComponent(activeConversation.name)}&project=${encodeURIComponent(activeConversation.role)}&conversationId=${activeConversation.id}&revieweeId=${encodeURIComponent(String(revieweeId))}&profileKey=${encodeURIComponent(profileKey)}`,
+      {
+        state: {
+          conversationId: activeConversation.id,
+          revieweeId,
+          profileKey,
+          clientName: activeConversation.name,
+          projectName: activeConversation.role,
+        },
+      }
     );
   };
 
   const handleOpenProfile = () => {
+    if (!activeConversation) return;
     navigate(`/profile/${encodeURIComponent(activeConversation.username)}`);
   };
 
   const handleSelectConversation = (conversationId: number) => {
+    stopOwnTyping();
+
     if (unreadConversationIds.includes(conversationId)) {
       setClearingUnreadConversationId(conversationId);
       window.setTimeout(() => {
@@ -1338,6 +2630,7 @@ export default function Messages() {
       setUnreadConversationIds(markConversationRead(conversationId));
     }
     setActiveConversationId(conversationId);
+    setSearchParams({ conversationId: String(conversationId) }, { replace: true });
     setActiveTab("profile");
     setMobileView("chat");
     setIsAttachMenuOpen(false);
@@ -1346,7 +2639,9 @@ export default function Messages() {
     setTypingConversationId(null);
   };
 
-  const handleLeaveConversation = () => {
+  const handleLeaveConversation = async () => {
+    if (!activeConversation) return;
+    stopOwnTyping(activeConversation.id);
     const conversationId = activeConversation.id;
     const shouldLeave = window.confirm(
       `${activeConversation.name} 대화방에서 나갈까요? 메시지 목록에서 이 대화가 사라집니다.`
@@ -1384,13 +2679,276 @@ export default function Messages() {
     }
   };
 
+  const processCompletionGuideText = "작업이 끝나면 양쪽 모두 확인해 주세요.";
+
+  const handleDeleteConversation = async () => {
+    if (!activeConversation) return;
+    stopOwnTyping(activeConversation.id);
+
+    const conversationId = activeConversation.id;
+    const shouldDelete = window.confirm(
+      "정말 채팅창을 삭제하시겠어요? 모든 데이터가 사라질 수 있습니다."
+    );
+
+    if (!shouldDelete) return;
+
+    try {
+      await deleteMessageConversationApi(conversationId);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "채팅창을 삭제하지 못했습니다.");
+      return;
+    }
+
+    const nextLeftConversationIds = Array.from(
+      new Set([...leftConversationIds, conversationId])
+    );
+    const nextConversations = rawConversations.filter(
+      (conversation) => !nextLeftConversationIds.includes(conversation.id)
+    );
+    const nextConversation = nextConversations[0];
+
+    setLeftConversationIds(nextLeftConversationIds);
+    setUnreadConversationIds(markConversationRead(conversationId));
+    setMessageDrafts((prev) => {
+      const nextDrafts = { ...prev };
+      delete nextDrafts[String(conversationId)];
+      return nextDrafts;
+    });
+    setPendingAttachments([]);
+    setIsAttachMenuOpen(false);
+    setIsIconPickerOpen(false);
+    setReactionPickerMessageId(null);
+    setTypingConversationId(null);
+    setActiveTab("profile");
+    setConversationReloadKey((current) => current + 1);
+
+    if (nextConversation) {
+      setActiveConversationId(nextConversation.id);
+      setMobileView("chat");
+    } else {
+      setMobileView("list");
+    }
+  };
+
   const updateMessageText = (value: string) => {
+    if (!activeConversation) return;
+    debugMessageTyping("updateMessageText", {
+      conversationId: activeConversation.id,
+      valueLength: value.length,
+      hasTrimmedValue: Boolean(value.trim()),
+    });
     setMessageText(value);
     setMessageDrafts((prev) => ({
       ...prev,
       [String(activeConversation.id)]: value,
     }));
+
+    const conversationId = activeConversation.id;
+    const trimmedValue = value.trim();
+
+    if (!trimmedValue) {
+      if (isMessageComposingRef.current) {
+        startOwnTyping(conversationId);
+        return;
+      }
+
+      if (typingConversationRef.current === conversationId) {
+        stopOwnTyping(conversationId);
+      } else {
+        clearOwnTypingTimeout();
+      }
+      return;
+    }
+
+    startOwnTyping(conversationId);
   };
+
+  const loadAssistantSuggestions = async (
+    goal: MessageAssistantGoal,
+    options?: {
+      silent?: boolean;
+      force?: boolean;
+    },
+  ) => {
+    if (!activeConversation) return;
+
+    const contextKey = [
+      activeConversation.id,
+      goal,
+      messageText,
+      assistantMessageSignature,
+      assistantProcessSignature,
+    ].join("::");
+
+    if (options?.silent && !options.force && assistantLastLoadedContextRef.current === contextKey) {
+      return;
+    }
+
+    assistantLastLoadedContextRef.current = contextKey;
+
+    const requestId = assistantRequestIdRef.current + 1;
+    assistantRequestIdRef.current = requestId;
+
+    if (!options?.silent) {
+      setAssistantGoal(goal);
+      setAssistantError(null);
+      setIsAssistantLoading(true);
+    }
+
+    try {
+      const response = await getConversationAssistantSuggestionsApi(activeConversation.id, {
+        goal,
+        draft: messageText,
+      });
+      if (assistantRequestIdRef.current !== requestId) {
+        return;
+      }
+      if (!response.usedAi) {
+        setAssistantSuggestions([]);
+        setAssistantUsedAi(false);
+        setAssistantError("AI 응답을 받지 못했어요. Gemini API 상태를 확인한 뒤 다시 시도해주세요.");
+        return;
+      }
+
+      setAssistantSuggestions(response.suggestions);
+      setAssistantUsedAi(true);
+      setAssistantError(null);
+    } catch (error) {
+      if (assistantRequestIdRef.current !== requestId) {
+        return;
+      }
+      setAssistantSuggestions([]);
+      setAssistantUsedAi(false);
+      setAssistantError(
+        error instanceof Error
+          ? error.message
+          : "추천 문구를 불러오지 못했어요.",
+      );
+    } finally {
+      if (assistantRequestIdRef.current === requestId) {
+        setIsAssistantLoading(false);
+      }
+    }
+  };
+
+  const handleLoadAssistantSuggestions = async (goal: MessageAssistantGoal) => {
+    setIsAssistantExpanded(true);
+    setAssistantGoal(goal);
+    setAssistantError(null);
+    setIsAssistantLoading(true);
+    setHasAssistantRequested(true);
+    await loadAssistantSuggestions(goal);
+  };
+
+  const handleSelectAssistantGoal = (goal: MessageAssistantGoal) => {
+    if (assistantGoal === goal) {
+      return;
+    }
+
+    setAssistantGoal(goal);
+    setAssistantSuggestions([]);
+    setAssistantUsedAi(false);
+    setAssistantError(null);
+  };
+
+  const handleRefreshAssistantSuggestions = async () => {
+    if (!activeConversation || isAssistantLoading) {
+      return;
+    }
+
+    setIsAssistantExpanded(true);
+    setHasAssistantRequested(true);
+    await loadAssistantSuggestions(assistantGoal);
+  };
+
+  const handleApplyAssistantSuggestion = (suggestion: string) => {
+    updateMessageText(normalizeAssistantSuggestionText(suggestion));
+    messageInputRef.current?.focus();
+  };
+
+  const verifySentMessageFromHistory = async (
+    conversationId: number,
+    clientId: string,
+    partnerUserId: string
+  ) => {
+    const messageResponses = await getConversationMessagesApi(conversationId);
+    syncLatestServerMessageIdFromResponses(conversationId, messageResponses);
+    const matchedMessage = messageResponses.find(
+      (message) => message.clientId === clientId || String(message.id) === clientId
+    );
+
+    if (!matchedMessage) {
+      return null;
+    }
+
+    return mapChatMessageResponse(matchedMessage, {
+      currentUserId,
+      partnerUserId,
+    });
+  };
+
+  const recoverFailedOutgoingMessage = async (params: {
+    conversationId: number;
+    clientId: string;
+    partnerUserId: string;
+    message: string;
+    attachments: ReturnType<typeof buildOutgoingAttachmentsPayload>;
+  }) => {
+    const retryDelays = [0, 350, 900, 1800];
+
+    for (const delayMs of retryDelays) {
+      if (delayMs > 0) {
+        await wait(delayMs);
+      }
+
+      const verifiedMessage = await verifySentMessageFromHistory(
+        params.conversationId,
+        params.clientId,
+        params.partnerUserId
+      );
+
+      if (verifiedMessage) {
+        return verifiedMessage;
+      }
+    }
+
+    try {
+      const savedMessage = await sendConversationMessageApi(params.conversationId, {
+        clientId: params.clientId,
+        message: params.message,
+        attachments: params.attachments,
+      });
+
+      return mapChatMessageResponse(savedMessage, {
+        currentUserId,
+        partnerUserId: params.partnerUserId,
+      });
+    } catch {
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    if (!activeConversation || !latestActiveMessage) {
+      return;
+    }
+
+    if (assistantInitialConversationLoadRef.current === activeConversation.id) {
+      return;
+    }
+
+    assistantInitialConversationLoadRef.current = activeConversation.id;
+
+    if (latestActiveMessage.isSelf) {
+      return;
+    }
+
+    setAssistantGoal("reply");
+    setAssistantError(null);
+    setIsAssistantExpanded(true);
+    setHasAssistantRequested(true);
+    void loadAssistantSuggestions("reply", { force: true });
+  }, [activeConversation, latestActiveMessage]);
 
   const getCurrentTime = () => {
     return new Intl.DateTimeFormat("ko-KR", {
@@ -1400,7 +2958,69 @@ export default function Messages() {
     }).format(new Date());
   };
 
-  const markAttachmentReady = (attachmentId: string, delay = 650) => {
+  const uploadPendingMessageAttachments = async (
+    conversationId: number,
+    files: File[],
+    attachmentIds: string[],
+  ) => {
+    try {
+      const response = await uploadMessageAttachmentsApi(conversationId, files);
+
+      setPendingAttachments((prev) =>
+        prev.map((attachment) => {
+          const attachmentIndex = attachmentIds.indexOf(attachment.id);
+          if (attachmentIndex < 0) {
+            return attachment;
+          }
+
+          const uploadedAttachment = response.attachments[attachmentIndex];
+          if (!uploadedAttachment) {
+            return {
+              ...attachment,
+              uploadStatus: "failed",
+            };
+          }
+
+          if (attachment.type === "image" && uploadedAttachment.type === "image") {
+            return {
+              ...attachment,
+              src: uploadedAttachment.url,
+              uploadedUrl: uploadedAttachment.url,
+              mimeType: uploadedAttachment.contentType,
+              size: uploadedAttachment.size,
+              uploadStatus: "ready",
+            };
+          }
+
+          if (attachment.type === "file" && uploadedAttachment.type === "file") {
+            return {
+              ...attachment,
+              url: uploadedAttachment.url,
+              uploadedUrl: uploadedAttachment.url,
+              mimeType: uploadedAttachment.contentType,
+              size: uploadedAttachment.size,
+              uploadStatus: "ready",
+            };
+          }
+
+          return {
+            ...attachment,
+            uploadStatus: "failed",
+          };
+        }),
+      );
+    } catch {
+      setPendingAttachments((prev) =>
+        prev.map((attachment) =>
+          attachmentIds.includes(attachment.id)
+            ? { ...attachment, uploadStatus: "failed" }
+            : attachment,
+        ),
+      );
+    }
+  };
+
+  const markAttachmentReady = (attachmentId: string, delayMs = 0) => {
     window.setTimeout(() => {
       setPendingAttachments((prev) =>
         prev.map((attachment) =>
@@ -1409,15 +3029,23 @@ export default function Messages() {
             : attachment
         )
       );
-    }, delay);
+    }, delayMs);
   };
 
   const handleSendMessage = () => {
+    if (!activeConversation) return;
     const trimmedMessage = messageText.trim();
     if (!trimmedMessage && pendingAttachments.length === 0) return;
-    if (hasUploadingAttachments) return;
+    if (hasUploadingAttachments || hasFailedAttachments) return;
+    if (trimmedMessage.length > MAX_CHAT_MESSAGE_LENGTH) {
+      toast.error("메시지는 4000자 이하로 전송할 수 있어요.");
+      return;
+    }
+
+    stopOwnTyping(activeConversation.id);
 
     const clientId = createClientId("msg");
+    const serializedAttachments = buildOutgoingAttachmentsPayload(pendingAttachments);
     const outgoingMessage: ChatMessage = {
       id: clientId,
       clientId,
@@ -1443,81 +3071,170 @@ export default function Messages() {
     setIsIconPickerOpen(false);
     setIsAttachMenuOpen(false);
 
-    sendMessageToSocket(outgoingMessage)
-      .then(({ serverId }) => {
+    const activeConversationIdAtSend = activeConversation.id;
+    const activePartnerUserIdAtSend = activeConversation.partnerId;
+
+    const sendMessageWithRestFallback = () =>
+      sendConversationMessageApi(outgoingMessage.conversationId, {
+        clientId: outgoingMessage.clientId,
+        message: outgoingMessage.message,
+        attachments: serializedAttachments,
+      }).then((savedMessage) => ({
+        serverId: String(savedMessage.id),
+        createdAt: savedMessage.createdAt,
+      }));
+
+    const sendMessageToServer = messageSocketRef.current?.isOpen()
+      ? messageSocketRef.current
+          .sendMessage({
+            clientId: outgoingMessage.clientId,
+            conversationId: outgoingMessage.conversationId,
+            message: outgoingMessage.message,
+            attachments: serializedAttachments,
+            createdAt: outgoingMessage.createdAt,
+          })
+          .catch(() => sendMessageWithRestFallback())
+      : sendMessageWithRestFallback();
+
+    sendMessageToServer
+      .then(({ serverId, createdAt }) => {
+        updateLatestServerMessageId(activeConversationIdAtSend, serverId);
         setChatMessages((prev) =>
           prev.map((message) =>
             message.clientId === clientId
-              ? { ...message, id: serverId, serverId, status: "sent" }
+              ? {
+                  ...message,
+                  id: serverId,
+                  serverId,
+                  status: "sent",
+                  createdAt: createdAt ?? message.createdAt,
+                  time: createdAt ? formatMessageTime(createdAt) : message.time,
+                }
               : message
           )
         );
-        setTypingConversationId(outgoingMessage.conversationId);
-        window.setTimeout(() => {
-          setChatMessages((prev) =>
-            prev.map((message) =>
-              message.clientId === clientId && message.status === "sent"
-                ? { ...message, status: "read" }
-                : message
-            )
-          );
-        }, 900);
-        window.setTimeout(() => {
-          setTypingConversationId((currentId) =>
-            currentId === outgoingMessage.conversationId ? null : currentId
-          );
-        }, 1600);
+        setConversationReloadKey((key) => key + 1);
       })
       .catch(() => {
-        setChatMessages((prev) =>
-          prev.map((message) =>
-            message.clientId === clientId
-              ? { ...message, status: "failed" }
-              : message
-          )
-        );
+        void recoverFailedOutgoingMessage({
+          conversationId: activeConversationIdAtSend,
+          clientId,
+          partnerUserId: activePartnerUserIdAtSend,
+          message: outgoingMessage.message,
+          attachments: serializedAttachments,
+        })
+          .then((verifiedMessage) => {
+            if (!verifiedMessage) {
+              setChatMessages((prev) =>
+                prev.map((message) =>
+                  message.clientId === clientId
+                    ? { ...message, status: "failed" }
+                    : message
+                )
+              );
+              return;
+            }
+
+            setChatMessages((prev) =>
+              prev.map((message) =>
+                message.clientId === clientId
+                  ? {
+                      ...message,
+                      ...verifiedMessage,
+                      clientId,
+                    }
+                  : message
+              )
+            );
+            updateLatestServerMessageId(
+              activeConversationIdAtSend,
+              verifiedMessage.serverId ?? verifiedMessage.id
+            );
+            setConversationReloadKey((key) => key + 1);
+          })
+          .catch(() => {
+            setChatMessages((prev) =>
+              prev.map((message) =>
+                message.clientId === clientId
+                  ? { ...message, status: "failed" }
+                  : message
+              )
+            );
+          });
       });
   };
 
   const handleMessageKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (
+      activeConversation &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      (event.key.length === 1 || event.key === "Backspace" || event.key === "Delete")
+    ) {
+      startOwnTyping(activeConversation.id);
+    }
+
     if (event.key === "Enter" && !event.nativeEvent.isComposing) {
       event.preventDefault();
       handleSendMessage();
     }
   };
 
-  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMessageCompositionStart = () => {
+    if (!activeConversation) return;
+    isMessageComposingRef.current = true;
+    startOwnTyping(activeConversation.id);
+  };
+
+  const handleMessageCompositionUpdate = () => {
+    if (!activeConversation) return;
+    isMessageComposingRef.current = true;
+    startOwnTyping(activeConversation.id);
+  };
+
+  const handleMessageCompositionEnd = (
+    event: React.CompositionEvent<HTMLInputElement>
+  ) => {
+    if (!activeConversation) return;
+    isMessageComposingRef.current = false;
+    updateMessageText(event.currentTarget.value);
+  };
+
+  const handleImageChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []).filter((file) =>
       file.type.startsWith("image/")
     );
-    if (files.length === 0) return;
-
-    files.forEach((file, index) => {
-      const attachmentId = createClientId(`image-${index}`);
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result !== "string") return;
-        setPendingAttachments((prev) => [
-          ...prev,
-          {
-            id: attachmentId,
-            type: "image",
-            src: reader.result,
-            name: file.name,
-            uploadStatus: "uploading",
-          },
-        ]);
-        markAttachmentReady(attachmentId, 560 + index * 120);
-      };
-      reader.readAsDataURL(file);
-    });
-
     event.target.value = "";
+
+    if (!activeConversation || files.length === 0) return;
+
+    const previewSources = await Promise.all(
+      files.map((file) => readFileAsDataUrl(file).catch(() => ""))
+    );
+    const attachments = files.map((file, index) => ({
+      id: createClientId(`image-${index}`),
+      type: "image" as const,
+      src: previewSources[index] || "",
+      name: file.name,
+      size: file.size,
+      mimeType: file.type || "application/octet-stream",
+      uploadStatus: "uploading" as const,
+    }));
+
+    setPendingAttachments((prev) => [...prev, ...attachments]);
+    void uploadPendingMessageAttachments(
+      activeConversation.id,
+      files,
+      attachments.map((attachment) => attachment.id),
+    );
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
-    if (files.length === 0) return;
+    event.target.value = "";
+
+    if (!activeConversation || files.length === 0) return;
 
     const attachments = files.map((file) => ({
       id: createClientId("file"),
@@ -1529,11 +3246,12 @@ export default function Messages() {
     }));
 
     setPendingAttachments((prev) => [...prev, ...attachments]);
-    attachments.forEach((attachment, index) => {
-      markAttachmentReady(attachment.id, 520 + index * 140);
-    });
+    void uploadPendingMessageAttachments(
+      activeConversation.id,
+      files,
+      attachments.map((attachment) => attachment.id),
+    );
     setIsAttachMenuOpen(false);
-    event.target.value = "";
   };
 
   const handleAttachIcon = (icon: string) => {
@@ -1543,7 +3261,7 @@ export default function Messages() {
         id: createClientId("icon"),
         type: "icon",
         value: icon,
-        name: `${icon} 아이콘`,
+        name: "메시지 이모티콘",
         uploadStatus: "ready",
       },
     ]);
@@ -1605,15 +3323,14 @@ export default function Messages() {
         provider,
         url: normalizedUrl,
         name: `${label} 작업 링크`,
-        uploadStatus: "uploading",
+        uploadStatus: "ready",
         ...preview,
       },
     ]);
-    markAttachmentReady(attachmentId, 620);
     closeIntegrationModal();
   };
 
-  const handleToggleReaction = (messageClientId: string, emoji: string) => {
+  const handleToggleReaction = async (messageClientId: string, emoji: string) => {
     const targetMessage = chatMessages.find(
       (message) => message.clientId === messageClientId
     );
@@ -1621,6 +3338,7 @@ export default function Messages() {
       (reaction) => reaction.emoji === emoji
     );
     const shouldBounceCount = !targetReaction || !targetReaction.reactedByMe;
+    const messageId = Number(targetMessage?.serverId ?? targetMessage?.id);
 
     setReactionAnimation({
       messageClientId,
@@ -1628,46 +3346,27 @@ export default function Messages() {
       key: Date.now(),
       shouldBounceCount,
     });
-
-    setChatMessages((prev) =>
-      prev.map((message) => {
-        if (message.clientId !== messageClientId) return message;
-
-        const reactions = message.reactions ?? [];
-        const existingReaction = reactions.find((reaction) => reaction.emoji === emoji);
-
-        if (!existingReaction) {
-          return {
-            ...message,
-            reactions: [...reactions, { emoji, count: 1, reactedByMe: true }],
-          };
-        }
-
-        if (existingReaction.reactedByMe) {
-          const nextCount = existingReaction.count - 1;
-          return {
-            ...message,
-            reactions: reactions
-              .map((reaction) =>
-                reaction.emoji === emoji
-                  ? { ...reaction, count: nextCount, reactedByMe: false }
-                  : reaction
-              )
-              .filter((reaction) => reaction.count > 0),
-          };
-        }
-
-        return {
-          ...message,
-          reactions: reactions.map((reaction) =>
-            reaction.emoji === emoji
-              ? { ...reaction, count: reaction.count + 1, reactedByMe: true }
-              : reaction
-          ),
-        };
-      })
-    );
     setReactionPickerMessageId(null);
+
+    if (!activeConversation || !Number.isFinite(messageId)) return;
+
+    try {
+      const response = await toggleMessageReactionApi(activeConversation.id, messageId, emoji);
+      setChatMessages((prev) =>
+        prev.map((message) =>
+          message.clientId === messageClientId || Number(message.serverId ?? message.id) === response.messageId
+              ? {
+                  ...message,
+                  reactions: normalizeMessageReactions(response.reactions),
+                }
+              : message
+        )
+      );
+    } catch (error) {
+      setConversationError(
+        error instanceof Error ? error.message : "메시지 반응을 저장하지 못했습니다."
+      );
+    }
   };
 
   const handleRemoveAttachment = (attachmentId: string) => {
@@ -1793,12 +3492,8 @@ export default function Messages() {
     removable = false
   ) => {
     const meta = getFileAttachmentMeta(attachment);
-
-    return (
-      <div
-        key={attachment.id}
-        className="relative flex max-w-72 items-center gap-2 rounded-lg border border-white/70 bg-white/80 px-3 py-2 pr-8 text-left shadow-sm"
-      >
+    const cardContent = (
+      <>
         <span
           className={`flex size-10 shrink-0 items-center justify-center rounded-lg text-[10px] font-black ${meta.className}`}
         >
@@ -1813,6 +3508,29 @@ export default function Messages() {
             {renderAttachmentStatus(attachment)}
           </div>
         </div>
+      </>
+    );
+
+    if (!removable && attachment.url) {
+      return (
+        <a
+          key={attachment.id}
+          href={attachment.url}
+          target="_blank"
+          rel="noreferrer"
+          className="relative flex max-w-72 items-center gap-2 rounded-lg border border-white/70 bg-white/80 px-3 py-2 pr-8 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white"
+        >
+          {cardContent}
+        </a>
+      );
+    }
+
+    return (
+      <div
+        key={attachment.id}
+        className="relative flex max-w-72 items-center gap-2 rounded-lg border border-white/70 bg-white/80 px-3 py-2 pr-8 text-left shadow-sm"
+      >
+        {cardContent}
         {removable && (
           <button
             type="button"
@@ -1894,7 +3612,7 @@ export default function Messages() {
   const handleEndWork = () => {
     if (confirm("작업을 종료하시겠습니까? 진행 중인 작업이 있는 경우 저장되지 않을 수 있습니다.")) {
       // 작업 종료 처리
-      alert("작업이 종료되었습니다.");
+      toast.success("작업이 종료되었습니다.");
     }
   };
 
@@ -1948,6 +3666,48 @@ export default function Messages() {
         return null;
     }
   };
+
+  if (!activeConversation) {
+    if (isConversationsLoading) {
+      return (
+        <div className="min-h-screen bg-[#F7F7F5]">
+          <Navigation />
+          <main className="mx-auto flex min-h-[calc(100vh-80px)] w-full max-w-5xl items-center justify-center px-6 py-16">
+            <div className="flex flex-col items-center gap-4 text-gray-500">
+              <div className="size-10 animate-spin rounded-full border-4 border-[#00C9A7] border-t-transparent" />
+              <p className="text-sm font-medium">대화를 불러오는 중입니다...</p>
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-screen bg-[#F7F7F5]">
+        <Navigation />
+        <main className="mx-auto flex min-h-[calc(100vh-80px)] w-full max-w-5xl items-center justify-center px-6 py-16">
+          <section className="w-full rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center shadow-sm">
+            <div className="mx-auto mb-5 grid size-14 place-items-center rounded-lg bg-[#E8FBF7] text-[#007E68]">
+              <Send className="size-7" />
+            </div>
+            <h1 className="text-2xl font-bold text-[#0F0F0F]">아직 대화가 없습니다</h1>
+            <p className="mt-3 text-sm leading-relaxed text-gray-600">
+              {conversationError ??
+                "피드나 프로젝트에서 제안을 시작하면 이곳에 대화가 생성됩니다."}
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate("/feed")}
+              className="mt-6 h-11 rounded-lg bg-[#00C9A7] px-5 text-sm font-bold text-[#0F0F0F] transition-colors hover:bg-[#00A88C]"
+            >
+              피드 둘러보기
+            </button>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F7F7F5]">
       <style>{`
@@ -1969,6 +3729,16 @@ export default function Messages() {
         @keyframes pickxelTypingDot {
           0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
           30% { opacity: 1; transform: translateY(-3px); }
+        }
+
+        @keyframes pickxelAssistantCardPulse {
+          0%, 100% { opacity: 0.78; transform: translateY(0); }
+          50% { opacity: 1; transform: translateY(-1px); }
+        }
+
+        @keyframes pickxelAssistantLineShimmer {
+          0% { background-position: 0% 50%; }
+          100% { background-position: 100% 50%; }
         }
 
         @keyframes pickxelDeliveryPop {
@@ -2157,7 +3927,7 @@ export default function Messages() {
 
           <div className="flex-1 overflow-y-auto">
             {filteredConversations.map((conv) => {
-              const isSelected = conv.id === activeConversation.id;
+              const isSelected = conv.id === activeConversation?.id;
               const unreadCount = getConversationUnreadCount(conv);
               const lastMessagePreview = getConversationLastMessagePreview(conv.id);
 
@@ -2178,12 +3948,6 @@ export default function Messages() {
                         src={conv.avatar}
                         alt={conv.name}
                         className="size-12 rounded-full object-cover ring-2 ring-white shadow-sm"
-                      />
-                      <span
-                        className={`absolute bottom-0 right-0 size-2.5 rounded-full border-2 border-white ${
-                          conv.online ? "bg-[#72CDBD]" : "bg-gray-300"
-                        }`}
-                        aria-label={conv.online ? "온라인" : "오프라인"}
                       />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -2208,7 +3972,7 @@ export default function Messages() {
                           }`}
                         />
                         <p className="min-w-0 flex-1 truncate text-xs text-gray-500">
-                          {conv.online ? "온라인" : conv.statusText}
+                          {conv.statusText}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -2273,19 +4037,19 @@ export default function Messages() {
                 <ArrowLeft className="size-5" />
               </button>
               <ImageWithFallback
-                src={activeConversation.avatar}
-                alt={activeConversation.name}
+                src={activeConversation?.avatar}
+                alt={activeConversation?.name || "대화 상대"}
                 className="size-10 shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm"
               />
               <div className="min-w-0">
-                <h3 className="truncate font-semibold">{activeConversation.name}</h3>
+                <h3 className="truncate font-semibold">{activeConversation?.name}</h3>
                 <p className="flex items-center gap-1.5 text-xs text-gray-500">
                   <span
                     className={`size-1.5 rounded-full ${
-                      activeConversation.online ? "bg-[#72CDBD]" : "bg-gray-300"
+                      activeConversation?.online ? "bg-[#72CDBD]" : "bg-gray-300"
                     }`}
                   />
-                  {activeConversation.statusText}
+                  {activeConversation?.online ? "메시지 가능" : "자리비움"}
                 </p>
               </div>
             </div>
@@ -2319,7 +4083,7 @@ export default function Messages() {
                   </span>
                 </div>
                 <p className="mb-3 text-sm leading-relaxed text-gray-700">
-                  {activeConversation.role}를 단계별로 정리해두면 일정, 피드백,
+                  {activeConversation?.role}를 단계별로 정리해두면 일정, 피드백,
                   최종 납품까지 한눈에 관리할 수 있어요.
                 </p>
                 <button
@@ -2352,8 +4116,8 @@ export default function Messages() {
                   {!msg.isSelf && (
                     <div className="flex items-center gap-2 mb-2">
                       <ImageWithFallback
-                        src={activeConversation.avatar}
-                        alt={activeConversation.name}
+                        src={activeConversation?.avatar}
+                        alt={activeConversation?.name}
                         className="size-6 rounded-full object-cover"
                       />
                     </div>
@@ -2487,61 +4251,211 @@ export default function Messages() {
                 </div>
               </div>
             ))}
-            {isPartnerTyping && (
-              <div
-                className="flex justify-start"
-                style={{ animation: "pickxelTypingBubbleIn 180ms ease-out both" }}
-              >
-                <div className="flex max-w-[88%] items-end gap-2 sm:max-w-[70%]">
-                  <ImageWithFallback
-                    src={activeConversation.avatar}
-                    alt={activeConversation.name}
-                    className="size-7 rounded-full object-cover shadow-sm"
-                  />
-                  <div className="rounded-2xl rounded-tl-sm border border-gray-200 bg-white px-4 py-3 shadow-sm">
-                    <div className="mb-1 text-xs font-medium text-gray-500">
-                      {activeConversation.profileName}님이 입력 중...
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      {[0, 1, 2].map((index) => (
-                        <span
-                          key={index}
-                          className="size-2 rounded-full bg-[#00A88C]"
-                          style={{
-                            animation: "pickxelTypingDot 1s ease-in-out infinite",
-                            animationDelay: `${index * 0.16}s`,
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
             <div ref={messagesEndRef} />
 
             {/* Quick Actions */}
-            <div className="bg-gradient-to-br from-[#FFF1F3] via-[#FFE4EA] to-white border-2 border-[#FFB8C5]/70 rounded-xl p-4 shadow-sm">
-              <div className="flex items-center gap-2 mb-3">
-                <Sparkles className="size-5 text-[#E8456D]" />
-                <span className="font-medium text-sm text-[#A30F3D]">AI 메시지 도우미</span>
-              </div>
-              <p className="text-sm text-[#5F2938] mb-3">
-                답장을 더 자연스럽게 다듬거나, 다음 작업 단계에 맞는 메시지를 빠르게 작성해보세요.
-              </p>
-            <div className="flex flex-wrap gap-2">
-                <button className="bg-[#E8456D] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#D7375F] hover:shadow-md transition-all">
-                  미팅 일정 잡기
+            <div className="rounded-xl border border-[#FFB8C5]/70 bg-gradient-to-br from-[#FFF1F3] via-[#FFE4EA] to-white p-3 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="size-4 text-[#E8456D]" />
+                    <span className="text-sm font-medium text-[#A30F3D]">AI 메시지 도우미</span>
+                    <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-[#8C4458]">
+                      {assistantActionItems.find((action) => action.goal === assistantGoal)?.label}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-[#6E3A49]">
+                    {isAssistantExpanded
+                      ? "모드를 고른 뒤 생성 버튼을 누르면 대화 흐름에 맞는 문구를 준비해드려요."
+                      : "처음 연결할 때 한 번 답장 추천을 띄우고, 이후엔 원하는 모드로 다시 생성할 수 있어요."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAssistantExpanded((prev) => !prev)}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#FFD6DE] bg-white/80 px-2.5 py-1 text-xs font-semibold text-[#A30F3D] transition-all hover:bg-white"
+                  aria-label={isAssistantExpanded ? "AI 도우미 접기" : "AI 도우미 펼치기"}
+                >
+                  {isAssistantExpanded ? "접기" : "펼치기"}
+                  {isAssistantExpanded ? (
+                    <ChevronUp className="size-3.5" />
+                  ) : (
+                    <ChevronDown className="size-3.5" />
+                  )}
                 </button>
-                <button className="bg-white border-2 border-[#FFB8C5] px-4 py-2 rounded-lg text-sm text-[#A30F3D] hover:bg-[#FFF7F9] transition-all">
-                  프로젝트 문서 첨부
-                </button>
               </div>
+
+              {isAssistantExpanded && (
+                <div className="mt-3 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      {assistantActionItems.map((action) => {
+                        const isSelected = assistantGoal === action.goal;
+
+                        return (
+                          <button
+                            key={action.goal}
+                            type="button"
+                            onClick={() => handleSelectAssistantGoal(action.goal)}
+                            disabled={isAssistantLoading}
+                            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
+                              isSelected
+                                ? "bg-[#E8456D] text-white hover:bg-[#D7375F] hover:shadow-md"
+                                : "bg-white border border-[#FFB8C5] text-[#A30F3D] hover:bg-[#FFF7F9]"
+                            }`}
+                          >
+                            {action.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleLoadAssistantSuggestions(assistantGoal)}
+                        disabled={isAssistantLoading}
+                        className="inline-flex items-center gap-1 rounded-lg bg-[#E8456D] px-3 py-1.5 text-xs font-semibold text-white transition-all hover:bg-[#D7375F] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label="AI 추천 생성"
+                      >
+                        <Sparkles className="size-3.5" />
+                        생성
+                      </button>
+                      {(assistantError || assistantSuggestions.length > 0 || hasAssistantRequested) && (
+                        <button
+                          type="button"
+                          onClick={handleRefreshAssistantSuggestions}
+                          disabled={isAssistantLoading}
+                          className="inline-flex items-center gap-1 rounded-lg border border-[#FFD6DE] bg-white/85 px-2.5 py-1.5 text-xs font-semibold text-[#A30F3D] transition-all hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label="AI 추천 다시 불러오기"
+                        >
+                          <RefreshCw className={`size-3.5 ${isAssistantLoading ? "animate-spin" : ""}`} />
+                          {assistantError ? "다시 시도" : "새로고침"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {isAssistantLoading ? (
+                      <div className="rounded-lg border border-[#FFD6DE] bg-white/92 px-3 py-3 text-sm text-[#7C3044]">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-[#9A3652]">
+                          <div className="flex shrink-0 items-center gap-1">
+                            {[0, 1, 2].map((index) => (
+                              <span
+                                key={index}
+                                className="size-1.5 rounded-full bg-[#E8456D]"
+                                style={{
+                                  animation: "pickxelTypingDot 1s ease-in-out infinite",
+                                  animationDelay: `${index * 0.16}s`,
+                                }}
+                              />
+                            ))}
+                          </div>
+                          <span>Gemini가 최근 대화와 작업 단계를 읽고 있어요.</span>
+                        </div>
+                        <p className="mt-1 text-xs font-medium text-[#8C4458]">
+                          상대가 방금 보낸 말에 맞는 추천 문구를 정리하는 중이에요.
+                        </p>
+                        <div className="mt-3 space-y-2">
+                          {assistantLoadingPreviewItems.map((item, index) => (
+                            <div
+                              key={`${item.primaryWidth}-${index}`}
+                              className="rounded-lg border border-[#FFE0E7] bg-[#FFF9FB] px-3 py-2.5"
+                              style={{
+                                animation: "pickxelAssistantCardPulse 1.5s ease-in-out infinite",
+                                animationDelay: `${index * 0.14}s`,
+                              }}
+                            >
+                              <div
+                                className="h-2.5 rounded-full"
+                                style={{
+                                  width: item.primaryWidth,
+                                  background:
+                                    "linear-gradient(90deg, rgba(232,69,109,0.16) 0%, rgba(232,69,109,0.3) 45%, rgba(255,214,222,0.45) 100%)",
+                                  backgroundSize: "200% 100%",
+                                  animation:
+                                    "pickxelAssistantLineShimmer 1.5s linear infinite",
+                                }}
+                              />
+                              <div
+                                className="mt-2 h-2 rounded-full"
+                                style={{
+                                  width: item.secondaryWidth,
+                                  background:
+                                    "linear-gradient(90deg, rgba(140,68,88,0.12) 0%, rgba(232,69,109,0.22) 55%, rgba(255,214,222,0.38) 100%)",
+                                  backgroundSize: "200% 100%",
+                                  animation:
+                                    "pickxelAssistantLineShimmer 1.6s linear infinite",
+                                  animationDelay: `${index * 0.1}s`,
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : assistantSuggestions.length > 0 ? (
+                      <>
+                        <p className="text-xs font-semibold text-[#8C4458]">
+                          {assistantUsedAi
+                            ? "최근 대화와 작업 프로세스를 바탕으로 추천했어요."
+                            : "대화 흐름과 작업 단계에 맞춰 빠르게 쓸 수 있는 문구예요."}
+                        </p>
+                        {assistantSuggestions.map((suggestion, index) => (
+                          <button
+                            key={`${assistantGoal}-${index}`}
+                            type="button"
+                            onClick={() => handleApplyAssistantSuggestion(suggestion)}
+                            className="w-full rounded-lg border border-[#FFD6DE] bg-white/95 px-3 py-2.5 text-left text-sm font-medium text-[#5F2938] transition-all hover:border-[#E8456D] hover:bg-[#FFF7F9]"
+                          >
+                            {suggestion}
+                          </button>
+                        ))}
+                      </>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-[#FFD6DE] bg-white/70 px-3 py-2.5 text-sm text-[#7C3044]">
+                        버튼을 누르면 최근 대화와 작업 프로세스를 바탕으로 추천 문구를 3개 준비해드려요.
+                      </div>
+                    )}
+                    {assistantError && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-[#C43E60]">{assistantError}</p>
+                        <p className="text-[11px] text-[#8C4458]">
+                          오류 상태에서는 자동 재요청을 멈추고, 위 버튼으로만 다시 시도해요.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Message Input */}
           <div className="border-t border-gray-200 bg-white p-3 sm:p-4">
+            <div className="mb-2 min-h-[34px] px-1">
+              {isPartnerTyping && (
+                <div
+                  aria-live="polite"
+                  className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#BDEFD8] bg-[#F3FFFB] px-3 py-1.5 text-sm font-medium text-[#0F6C5C] shadow-sm"
+                  style={{ animation: "pickxelTypingBubbleIn 180ms ease-out both" }}
+                >
+                  <div className="flex shrink-0 items-center gap-1">
+                    {[0, 1, 2].map((index) => (
+                      <span
+                        key={index}
+                        className="size-1.5 rounded-full bg-[#00A88C]"
+                        style={{
+                          animation: "pickxelTypingDot 1s ease-in-out infinite",
+                          animationDelay: `${index * 0.16}s`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <p className="min-w-0 break-words leading-5">
+                    {activeConversation?.profileName}님이 입력 중...
+                  </p>
+                </div>
+              )}
+            </div>
             {pendingAttachments.length > 0 && (
               <div className="mb-3 flex flex-wrap items-start gap-2 rounded-xl bg-[#F7F7F5] p-3">
                 {renderImageAttachmentGallery(
@@ -2705,11 +4619,15 @@ export default function Messages() {
               </div>
               <div className="relative flex min-w-0 flex-1 items-center gap-2 rounded-2xl border-2 border-transparent bg-[#F7F7F5] px-3 py-3 transition-all focus-within:border-[#00C9A7] sm:px-4">
                 <input
+                  ref={messageInputRef}
                   type="text"
                   value={messageText}
                   onChange={(event) => updateMessageText(event.target.value)}
                   onKeyDown={handleMessageKeyDown}
-                  placeholder={`${activeConversation.name}님에게 메시지 보내기...`}
+                  onCompositionStart={handleMessageCompositionStart}
+                  onCompositionUpdate={handleMessageCompositionUpdate}
+                  onCompositionEnd={handleMessageCompositionEnd}
+                  placeholder={`${activeConversation?.name}님에게 메시지 보내기...`}
                   className="min-w-0 flex-1 bg-transparent text-sm focus:outline-none"
                 />
                 <button
@@ -2757,6 +4675,7 @@ export default function Messages() {
                 onClick={handleSendMessage}
                 disabled={
                   hasUploadingAttachments ||
+                  hasFailedAttachments ||
                   (!messageText.trim() && pendingAttachments.length === 0)
                 }
                 title={hasUploadingAttachments ? "첨부가 완료되면 전송할 수 있어요." : undefined}
@@ -2796,7 +4715,7 @@ export default function Messages() {
             <div className="min-w-0">
               <p className="text-sm font-bold text-[#12382D]">대화 정보</p>
               <p className="truncate text-xs text-gray-500">
-                {activeConversation.name}
+                {activeConversation?.name}
               </p>
             </div>
           </div>
@@ -2829,12 +4748,24 @@ export default function Messages() {
               <>
                 <div className="text-center mb-6">
                   <ImageWithFallback
-                    src={activeConversation.avatar}
-                    alt={activeConversation.name}
+                    src={activeConversation?.avatar}
+                    alt={activeConversation?.name || ""}
                     className="mx-auto mb-4 size-24 rounded-full object-cover ring-4 ring-[#A8F0E4]/40 shadow-lg"
                   />
-                  <h3 className="font-bold text-lg mb-1">{activeConversation.profileName}</h3>
-                  <p className="text-sm text-gray-600">{activeConversation.title}</p>
+                  <div className="mb-1 flex items-center justify-center gap-2">
+                    <span
+                      className={`inline-flex size-2.5 rounded-full ${
+                        activeConversation?.online ? "bg-[#00C853] shadow-[0_0_0_4px_rgba(0,200,83,0.14)]" : "bg-gray-300"
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <h3 className="font-bold text-lg">{activeConversation?.profileName}</h3>
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    {activeConversation?.title}
+                    <span className="mx-1.5 text-gray-300">·</span>
+                    {activeConversation?.online ? "메시지 가능" : "자리비움"}
+                  </p>
                 </div>
 
                 <div className="space-y-3 mb-6">
@@ -2850,14 +4781,14 @@ export default function Messages() {
                   <div>
                     <h4 className="font-medium mb-2">소개</h4>
                     <p className="text-sm text-gray-600">
-                      {activeConversation.bio}
+                      {activeConversation?.bio}
                     </p>
                   </div>
 
                   <div>
                     <h4 className="font-medium mb-2">공유된 미디어</h4>
                     <div className="grid grid-cols-3 gap-2">
-                      {activeConversation.sharedMedia.map((media) => (
+                      {activeConversation?.sharedMedia.map((media) => (
                         <button
                           key={media.id}
                           type="button"
@@ -2887,7 +4818,7 @@ export default function Messages() {
                       </div>
                       <button
                         type="button"
-                        onClick={handleLeaveConversation}
+                        onClick={handleDeleteConversation}
                         className="text-[0px] font-semibold text-[#FF5C3A] hover:text-[#FF5C3A]/80 transition-colors [&>span]:text-sm"
                       >
                         <span>대화방 나가기</span>
@@ -2961,6 +4892,10 @@ export default function Messages() {
                           progress === 100 && hasBothConfirmations(process.confirmations);
                         const approvalBadge = getProcessApprovalBadge(process, progress);
                         const approvalSummary = getProcessApprovalSummary(process, progress);
+                        const confirmationRoles: Array<keyof ProcessConfirmations> = [
+                          partnerProcessConfirmationRole,
+                          currentProcessConfirmationRole,
+                        ];
 
                         return (
                           <div
@@ -3056,7 +4991,7 @@ export default function Messages() {
                                     완료 확인
                                   </p>
                                   <p className="text-xs text-gray-500">
-                                    디자이너와 클라이언트가 모두 확인해야 완료됩니다.
+                                    {processCompletionGuideText}
                                   </p>
                                   <p className="mt-1 text-xs font-semibold text-[#00A88C]">
                                     {approvalSummary}
@@ -3067,78 +5002,87 @@ export default function Messages() {
                                 </span>
                               </div>
                               <div className="grid grid-cols-2 gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    toggleProcessConfirmation(process.id, "designer")
-                                  }
-                                  aria-pressed={process.confirmations.designer}
-                                  className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-all ${
-                                    process.confirmations.designer
-                                      ? "border-[#9EE7D0] bg-white text-[#12382D] shadow-[0_8px_20px_rgba(0,201,167,0.12)] ring-1 ring-[#DDF8EC]"
-                                      : "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
-                                  }`}
-                                >
-                                  <span className="flex items-center justify-center gap-2">
-                                    <span
-                                      className={`flex size-6 shrink-0 items-center justify-center rounded-full border transition-all ${
-                                        process.confirmations.designer
-                                          ? "border-[#00C9A7] bg-[#00C9A7] text-white"
-                                          : "border-gray-300 bg-white text-transparent"
+                                {confirmationRoles.map((role) => {
+                                  const isCurrentParticipant = role === "designer";
+                                  const canEditConfirmation =
+                                    isProcessConfirmationEditable(role);
+                                  const isConfirmed = process.confirmations[role];
+
+                                  return (
+                                    <button
+                                      key={`${process.id}-${role}`}
+                                      type="button"
+                                      onClick={() => {
+                                        if (!canEditConfirmation) return;
+                                        toggleProcessConfirmation(process.id, role);
+                                      }}
+                                      disabled={!canEditConfirmation}
+                                      aria-pressed={isConfirmed}
+                                      aria-disabled={!canEditConfirmation}
+                                      className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-all ${
+                                        isConfirmed
+                                          ? "border-[#9EE7D0] bg-white text-[#12382D] shadow-[0_8px_20px_rgba(0,201,167,0.12)] ring-1 ring-[#DDF8EC]"
+                                          : canEditConfirmation
+                                            ? "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
+                                            : "border-gray-200 bg-[#F3F4F6] text-gray-400"
                                       }`}
                                     >
-                                      <CheckCircle className="size-4" />
-                                    </span>
-                                    <span className="text-left leading-tight">
-                                      <span className="block">디자이너</span>
                                       <span
-                                        className={`block text-[11px] font-bold ${
-                                          process.confirmations.designer
-                                            ? "text-[#007E68]"
-                                            : "text-gray-400"
+                                        className={`flex items-center gap-2 ${
+                                          isCurrentParticipant
+                                            ? "justify-end text-right"
+                                            : "justify-start text-left"
                                         }`}
                                       >
-                                        {process.confirmations.designer ? "확인 완료" : "확인 대기"}
+                                        {isCurrentParticipant && (
+                                          <span className="min-w-0 flex-1 leading-tight">
+                                            <span className="block truncate">
+                                              {getProcessParticipantButtonTitle(role)}
+                                            </span>
+                                            <span
+                                              className={`block truncate text-[11px] font-bold ${
+                                                isConfirmed
+                                                  ? "text-[#007E68]"
+                                                  : "text-gray-400"
+                                              }`}
+                                            >
+                                              {`${getProcessParticipantButtonSubtitle(role)} · ${
+                                                isConfirmed ? "완료" : "대기"
+                                              }`}
+                                            </span>
+                                          </span>
+                                        )}
+                                        <span
+                                          className={`flex size-6 shrink-0 items-center justify-center rounded-full border transition-all ${
+                                            isConfirmed
+                                              ? "border-[#00C9A7] bg-[#00C9A7] text-white"
+                                              : "border-gray-300 bg-white text-transparent"
+                                          }`}
+                                        >
+                                          <CheckCircle className="size-4" />
+                                        </span>
+                                        {!isCurrentParticipant && (
+                                          <span className="min-w-0 flex-1 leading-tight">
+                                            <span className="block truncate">
+                                              {getProcessParticipantButtonTitle(role)}
+                                            </span>
+                                            <span
+                                              className={`block truncate text-[11px] font-bold ${
+                                                isConfirmed
+                                                  ? "text-[#007E68]"
+                                                  : "text-gray-400"
+                                              }`}
+                                            >
+                                              {`${getProcessParticipantButtonSubtitle(role)} · ${
+                                                isConfirmed ? "완료" : "대기"
+                                              }`}
+                                            </span>
+                                          </span>
+                                        )}
                                       </span>
-                                    </span>
-                                  </span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    toggleProcessConfirmation(process.id, "client")
-                                  }
-                                  aria-pressed={process.confirmations.client}
-                                  className={`rounded-lg border px-3 py-2.5 text-sm font-semibold transition-all ${
-                                    process.confirmations.client
-                                      ? "border-[#9EE7D0] bg-white text-[#12382D] shadow-[0_8px_20px_rgba(0,201,167,0.12)] ring-1 ring-[#DDF8EC]"
-                                      : "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
-                                  }`}
-                                >
-                                  <span className="flex items-center justify-center gap-2">
-                                    <span
-                                      className={`flex size-6 shrink-0 items-center justify-center rounded-full border transition-all ${
-                                        process.confirmations.client
-                                          ? "border-[#00C9A7] bg-[#00C9A7] text-white"
-                                          : "border-gray-300 bg-white text-transparent"
-                                      }`}
-                                    >
-                                      <CheckCircle className="size-4" />
-                                    </span>
-                                    <span className="text-left leading-tight">
-                                      <span className="block">클라이언트</span>
-                                      <span
-                                        className={`block text-[11px] font-bold ${
-                                          process.confirmations.client
-                                            ? "text-[#007E68]"
-                                            : "text-gray-400"
-                                        }`}
-                                      >
-                                        {process.confirmations.client ? "확인 완료" : "확인 대기"}
-                                      </span>
-                                    </span>
-                                  </span>
-                                </button>
+                                    </button>
+                                  );
+                                })}
                               </div>
                             </div>
                           </div>

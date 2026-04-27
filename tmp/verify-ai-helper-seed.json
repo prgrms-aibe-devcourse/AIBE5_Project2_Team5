@@ -1,0 +1,12 @@
+﻿{
+    "conversationId":  40,
+    "accessToken":  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMDIiLCJ1c2VySWQiOjEwMiwibG9naW5JZCI6InUxOTMwNDFAdC5pbyIsIm5hbWUiOiJVSSBTZW5kZXIiLCJuaWNrbmFtZSI6InVhMTkzMDQxIiwicm9sZSI6IkNMSUVOVCIsImlhdCI6MTc3NzE5MzA0MSwiZXhwIjoxNzc3MTk2NjQxfQ.6DvteSPNHQq0E6wQLtkc5RVE_ICbMTSUKyJb-tjaY3E",
+    "currentUser":  {
+                        "name":  "UI Sender",
+                        "profileImage":  null,
+                        "nickname":  "ua193041",
+                        "role":  "client",
+                        "email":  "u193041@t.io",
+                        "userId":  102
+                    }
+}

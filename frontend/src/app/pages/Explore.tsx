@@ -1,260 +1,139 @@
 import Navigation from "../components/Navigation";
+import { toast } from "sonner";
+import { apiRequest } from "../api/apiClient";
 import {
-  Search, Sparkles, Heart, Eye, Users, UserSearch, ImageOff,
-  LayoutGrid, Palette, Camera, PenTool, Box, Monitor, Building2,
-  Shirt, Megaphone, Scissors, Brush, Package, Gamepad2, Music,
-  ArrowRight, X, Plus, ChevronLeft, ChevronRight, Bookmark, Check, FolderPlus, Share2, MessageCircle, Send, MoreVertical, ExternalLink, Figma
+  Search, Sparkles, Heart, Users, UserSearch, ImageOff,
+  Palette, Camera, Box, Monitor,
+  ArrowRight, X, Bookmark, MessageCircle, Send,
+  ArrowUpDown,
+  Brush,
+  Building2,
+  Check,
+  Clock,
+  FolderPlus,
+  Gamepad2,
+  LayoutGrid,
+  Megaphone,
+  Music,
+  Package,
+  PenTool,
+  Scissors,
+  Shirt,
+  Star,
+  TrendingUp,
+  type LucideIcon
 } from "lucide-react";
-import { useMemo, useState, useEffect, useRef, useCallback } from "react";
-import { Link } from "react-router";
-import { motion, AnimatePresence, LayoutGroup } from "motion/react";
+import { useMemo, useState, useEffect, useRef, useCallback, JSX } from "react";
+import { Link, useNavigate } from "react-router";
+import { motion, AnimatePresence } from "motion/react";
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
+import { FeedDetailModal } from "../components/feed/FeedDetailModal";
+import { useFeedComments } from "../hooks/useFeedComments";
+import { useFeedCollections } from "../hooks/useFeedCollections";
 import { matchingCategories } from "../utils/matchingCategories";
+import {
+  getExploreFeedsApi,
+  getExploreDesignersApi,
+  type ExploreDesignerResponseDto,
+} from "../api/exploreApi";
+import { useFeedDetail } from "../hooks/useFeedDetail";
+import { toggleFeedPickApi } from "../api/feedApi";
+import type { CollectionFolderResponse } from "../api/collectionApi";
+import { createMessageConversationApi, sendConversationMessageApi } from "../api/messageApi";
+import { getCurrentUser } from "../utils/auth";
+import { getUserAvatar } from "../utils/avatar";
 import Footer from "../components/Footer";
+import type { FeedCardItem } from "../types/feed";
 
 const creatorProfiles = [
   {
     id: 1,
-    name: "김지은",
-    role: "브랜드 디자이너",
+    name: "김소연",
+    role: "브랜딩 디자이너",
     category: "브랜딩",
     avatar: "https://i.pravatar.cc/150?img=1",
     banner: "https://images.unsplash.com/photo-1623932078839-44eb01fbee63?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
     followers: "4.2K",
     works: 78,
-    bio: "브랜드 아이덴티티와 로고 디자인 전문",
+    bio: "브랜드 아이덴티티와 로고 시스템 작업을 주로 합니다.",
   },
   {
     id: 2,
     name: "박서준",
     role: "그래픽 디자이너",
-    category: "그래픽 디자인",
+    category: "그래픽",
     avatar: "https://i.pravatar.cc/150?img=2",
     banner: "https://images.unsplash.com/photo-1770581939371-326fc1537f10?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
     followers: "3.5K",
     works: 92,
-    bio: "타이포그래피와 포스터 디자인을 사랑합니다",
+    bio: "타이포그래피와 포스터 디자인을 중심으로 작업합니다.",
   },
   {
     id: 3,
-    name: "이민호",
+    name: "이하늘",
     role: "UI/UX 디자이너",
     category: "UI/UX",
     avatar: "https://i.pravatar.cc/150?img=3",
     banner: "https://images.unsplash.com/photo-1618761714954-0b8cd0026356?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
     followers: "5.1K",
     works: 134,
-    bio: "사용자 중심 인터페이스 설계 전문가",
+    bio: "사용자 중심 인터페이스와 서비스 설계를 다룹니다.",
   },
   {
     id: 4,
-    name: "최유나",
+    name: "최유진",
     role: "일러스트레이터",
-    category: "일러스트레이션",
+    category: "일러스트",
     avatar: "https://i.pravatar.cc/150?img=4",
     banner: "https://images.unsplash.com/photo-1700605295478-2478ac29d2ec?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
     followers: "2.9K",
     works: 67,
-    bio: "자연에서 영감을 받은 디지털 일러스트",
+    bio: "캐릭터와 에디토리얼 일러스트 작업을 합니다.",
   },
   {
     id: 5,
-    name: "정재현",
+    name: "정재훈",
     role: "패키지 디자이너",
-    category: "브랜딩",
+    category: "패키지",
     avatar: "https://i.pravatar.cc/150?img=5",
     banner: "https://images.unsplash.com/photo-1748765968965-7e18d4f7192b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
     followers: "3.3K",
     works: 85,
-    bio: "럭셔리 브랜드 패키지 디자인 전문",
+    bio: "리테일 브랜드 패키지와 라벨 시스템을 설계합니다.",
   },
   {
     id: 6,
     name: "강민지",
-    role: "건축 사진작가",
+    role: "사진작가",
     category: "포토그래피",
     avatar: "https://i.pravatar.cc/150?img=6",
     banner: "https://images.unsplash.com/photo-1646123202971-cb84915a4108?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
     followers: "6.8K",
     works: 203,
-    bio: "도시 건축의 기하학적 아름다움을 담습니다",
-  },
-  {
-    id: 7,
-    name: "윤서아",
-    role: "추상 아티스트",
-    category: "미술",
-    avatar: "https://i.pravatar.cc/150?img=7",
-    banner: "https://images.unsplash.com/photo-1705254613735-1abb457f8a60?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-    followers: "4.7K",
-    works: 119,
-    bio: "감정을 색과 형태로 표현하는 추상 작가",
-  },
-  {
-    id: 8,
-    name: "한지훈",
-    role: "제품 사진작가",
-    category: "포토그래피",
-    avatar: "https://i.pravatar.cc/150?img=8",
-    banner: "https://images.unsplash.com/photo-1682078234868-412ec5566118?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-    followers: "3.1K",
-    works: 58,
-    bio: "프리미엄 제품 사진 및 리터칭 전문",
-  },
-  {
-    id: 9,
-    name: "송혜교",
-    role: "3D 아티스트",
-    category: "3D Art",
-    avatar: "https://i.pravatar.cc/150?img=9",
-    banner: "https://images.unsplash.com/photo-1595411425732-e69c1abe2763?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-    followers: "2.4K",
-    works: 44,
-    bio: "독창적인 3D 캐릭터와 환경 디자인",
-  },
-  {
-    id: 10,
-    name: "오준혁",
-    role: "모션 그래픽 디자이너",
-    category: "그래픽 디자인",
-    avatar: "https://i.pravatar.cc/150?img=10",
-    banner: "https://images.unsplash.com/photo-1740174459691-5b93c2fa0592?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-    followers: "5.6K",
-    works: 156,
-    bio: "브랜드 스토리를 모션으로 전달합니다",
-  },
-  {
-    id: 11,
-    name: "임나영",
-    role: "패션 디자이너",
-    category: "패션",
-    avatar: "https://i.pravatar.cc/150?img=20",
-    banner: "https://images.unsplash.com/photo-1633533451997-8b6079082e3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-    followers: "7.2K",
-    works: 88,
-    bio: "미래 지향적 패션과 텍스타일 디자인",
-  },
-  {
-    id: 12,
-    name: "조현우",
-    role: "게임 아트 디렉터",
-    category: "게임 디자인",
-    avatar: "https://i.pravatar.cc/150?img=15",
-    banner: "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&w=400",
-    followers: "8.3K",
-    works: 231,
-    bio: "게임 세계관과 캐릭터 아트 전문가",
+    bio: "브랜드와 룩북 중심의 비주얼 촬영을 진행합니다.",
   },
 ];
 
-const projects = [
-  {
-    id: 1,
-    title: "Fluid Geometry Study",
-    author: "Alex Rivera",
-    badge: "NEW",
-    category: "그래픽 디자인",
-    likes: 1420,
-    views: 9800,
-    tags: ["3D", "추상", "브랜딩"],
-    imageUrl: "https://images.unsplash.com/photo-1595411425732-e69c1abe2763?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGdlb21ldHJpYyUyMHNoYXBlc3xlbnwxfHx8fDE3NzU2MzMzODZ8MA&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 2,
-    title: "Glassmorphism UI Kit",
-    author: "Elena Choi",
-    category: "UI/UX",
-    likes: 2310,
-    views: 14500,
-    tags: ["UI", "모바일", "프로토타입"],
-    imageUrl: "https://images.unsplash.com/photo-1772272935464-2e90d8218987?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx1aSUyMHV4JTIwZGVzaWduJTIwaW50ZXJmYWNlfGVufDF8fHx8MTc3NTU0MTE1MXww&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 3,
-    title: "Vibrant Patterns",
-    author: "Marc Chen",
-    category: "일러스트레이션",
-    likes: 980,
-    views: 7600,
-    tags: ["패턴", "컬러", "텍스타일"],
-    imageUrl: "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkaWdpdGFsJTIwYXJ0JTIwaWxsdXN0cmF0aW9ufGVufDF8fHx8MTc3NTU1ODM1OHww&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 4,
-    title: "Organic Flow Series",
-    author: "Sarah Jenkins",
-    category: "미술",
-    likes: 1240,
-    views: 8900,
-    tags: ["유기적", "페인팅", "실험"],
-    imageUrl: "https://images.unsplash.com/photo-1633533451997-8b6079082e3d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxicmFuZCUyMGlkZW50aXR5JTIwZGVzaWdufGVufDF8fHx8MTc3NTU2NDQ1MXww&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 5,
-    title: "Monochrome Branding",
-    author: "David Park",
-    category: "브랜딩",
-    likes: 1680,
-    views: 11200,
-    tags: ["브랜드", "타이포", "미니멀"],
-    imageUrl: "https://images.unsplash.com/photo-1718220216044-006f43e3a9b1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBvZmZpY2UlMjB3b3Jrc3BhY2V8ZW58MXx8fHwxNzc1NTU1MzcxfDA&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 6,
-    title: "Neon Flora Study",
-    author: "Ji-won Lee",
-    category: "포토그래피",
-    likes: 2050,
-    views: 13000,
-    tags: ["네온", "플로라", "매크로"],
-    imageUrl: "https://images.unsplash.com/photo-1623932078839-44eb01fbee63?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcmVhdGl2ZSUyMGRlc2lnbiUyMHdvcmt8ZW58MXx8fHwxNzc1NjAzODU5fDA&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 7,
-    title: "Gradient Dream",
-    author: "Sofi Kim",
-    category: "그래픽 디자인",
-    likes: 1520,
-    views: 10100,
-    tags: ["그라디언트", "포스터", "실험"],
-    imageUrl: "https://images.unsplash.com/photo-1740174459691-5b93c2fa0592?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb3Rpb24lMjBncmFwaGljcyUyMGFuaW1hdGlvbnxlbnwxfHx8fDE3NzU1OTI4Mzh8MA&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 8,
-    title: "Arch Theory",
-    author: "Tom Brooks",
-    category: "건축",
-    likes: 1100,
-    views: 7200,
-    tags: ["건축", "렌더", "구조"],
-    imageUrl: "https://images.unsplash.com/photo-1595411425732-e69c1abe2763?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGdlb21ldHJpYyUyMHNoYXBlc3xlbnwxfHx8fDE3NzU2MzMzODZ8MA&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 9,
-    title: "Deep Ocean UI",
-    author: "Luna Sky",
-    category: "UI/UX",
-    likes: 1870,
-    views: 12600,
-    tags: ["다크모드", "대시보드", "컴포넌트"],
-    imageUrl: "https://images.unsplash.com/photo-1772272935464-2e90d8218987?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx1aSUyMHV4JTIwZGVzaWduJTIwaW50ZXJmYWNlfGVufDF8fHx8MTc3NTU0MTE1MXww&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-  {
-    id: 10,
-    title: "Core Fusion",
-    author: "Ian Smith",
-    category: "제품 디자인",
-    likes: 1340,
-    views: 8700,
-    tags: ["제품", "컨셉", "렌더링"],
-    imageUrl: "https://images.unsplash.com/photo-1657584942205-c34fec47404d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkaWdpdGFsJTIwYXJ0JTIwaWxsdXN0cmF0aW9ufGVufDF8fHx8MTc3NTU1ODM1OHww&ixlib=rb-4.1.0&q=80&w=1080",
-  },
-];
+// 카테고리 카드 버튼용 배경 이미지 (Unsplash CDN, 작은 사이즈로 최적화)
+const CATEGORY_IMAGES: Record<string, string> = {
+  "그래픽 디자인": "https://images.unsplash.com/photo-1561070791-2526d30994b8?w=240&q=70&auto=format&fit=crop",
+  "포토그래피": "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=240&q=70&auto=format&fit=crop",
+  "일러스트레이션": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=240&q=70&auto=format&fit=crop",
+  "3D Art": "https://images.unsplash.com/photo-1633957897986-70e83293f3ff?w=240&q=70&auto=format&fit=crop",
+  "UI/UX": "https://images.unsplash.com/photo-1551650975-87deedd944c3?w=240&q=70&auto=format&fit=crop",
+  "건축": "https://images.unsplash.com/photo-1487958449943-2429e8be8625?w=240&q=70&auto=format&fit=crop",
+  "패션": "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=240&q=70&auto=format&fit=crop",
+  "광고": "https://images.unsplash.com/photo-1567446537708-ac4aa75c9c28?w=240&q=70&auto=format&fit=crop",
+  "공예": "https://images.unsplash.com/photo-1452860606245-08befc0ff44b?w=240&q=70&auto=format&fit=crop",
+  "미술": "https://images.unsplash.com/photo-1547891654-e66ed7ebb968?w=240&q=70&auto=format&fit=crop",
+  "제품 디자인": "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=240&q=70&auto=format&fit=crop",
+  "게임 디자인": "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=240&q=70&auto=format&fit=crop",
+  "사운드": "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=240&q=70&auto=format&fit=crop",
+};
 
-// ── 카테고리 아이콘 매핑 ──
-const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
   "그래픽 디자인": Palette,
   "포토그래피": Camera,
   "일러스트레이션": PenTool,
@@ -268,90 +147,261 @@ const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>
   "제품 디자인": Package,
   "게임 디자인": Gamepad2,
   "사운드": Music,
+  "브랜딩": Palette,
+  "패키지": Package,
 };
 
-// ── AI 검색 mock 응답 ──
 const AI_MOCK_RESPONSES: Record<string, { summary: string; designers: typeof creatorProfiles; tags: string[] }> = {
   default: {
-    summary: "요청하신 키워드와 관련된 디자이너를 분석했어요. 아래 크리에이터들이 잘 맞을 것 같습니다!",
+    summary: "요청하신 키워드와 잘 맞는 디자이너와 작업 스타일을 정리해봤습니다.",
     designers: creatorProfiles.slice(0, 3),
-    tags: ["브랜딩", "UI/UX", "일러스트레이션"],
+    tags: ["브랜딩", "UI/UX", "포트폴리오"],
+  },
+  branding: {
+    summary: "브랜드 아이덴티티와 비주얼 시스템을 잘 다루는 디자이너를 우선 추천합니다.",
+    designers: creatorProfiles.filter((profile) => [1, 2, 5].includes(profile.id)),
+    tags: ["브랜딩", "로고", "패키지"],
+  },
+  ui: {
+    summary: "서비스 설계와 화면 구조에 강한 UI/UX 디자이너를 중심으로 묶었습니다.",
+    designers: creatorProfiles.filter((profile) => [2, 3].includes(profile.id)),
+    tags: ["UI", "UX", "프로토타입"],
+  },
+  photo: {
+    summary: "비주얼 촬영과 룩북 스타일에 가까운 작업자를 우선 배치했습니다.",
+    designers: creatorProfiles.filter((profile) => profile.category === "포토그래피"),
+    tags: ["포토그래피", "룩북", "캠페인"],
   },
 };
 
-// ── 컬렉션 관련 ──
-type SavedCollection = { id: string; name: string; itemIds: number[]; updatedAt: string };
-const COLLECTION_KEY = "pickxel-explore-collections";
-const defaultCollections: SavedCollection[] = [
-  { id: "col-inspiration", name: "영감 모음", itemIds: [], updatedAt: new Date().toISOString() },
-  { id: "col-reference", name: "레퍼런스", itemIds: [], updatedAt: new Date().toISOString() },
-];
-const loadCollections = (): SavedCollection[] => {
-  try {
-    const raw = localStorage.getItem(COLLECTION_KEY);
-    if (!raw) return defaultCollections;
-    const parsed = JSON.parse(raw) as SavedCollection[];
-    return Array.isArray(parsed) ? parsed : defaultCollections;
-  } catch { return defaultCollections; }
-};
-
 export default function Explore() {
+  const navigate = useNavigate();
+  const currentUser = getCurrentUser();
+  const currentUserAvatar = getUserAvatar(
+    currentUser?.profileImage,
+    currentUser?.userId,
+    currentUser?.nickname,
+  );
+  const currentUserName = currentUser?.nickname || currentUser?.name || "내 프로필";
+
+  function toCommentAuthorRole(role: string) {
+    if (role === "CLIENT") return "프로젝트 클라이언트";
+    if (role === "DESIGNER") return "디자이너";
+    return role;
+  }
+
   const categories = matchingCategories;
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"feed" | "profile">("feed");
+  // 정렬 상태: 추천(서버 기본) | 최신(id 내림차순) | 인기(좋아요 내림차순)
+  const [sortBy, setSortBy] = useState<"recommended" | "latest" | "popular">("recommended");
+  const [isSortOpen, setIsSortOpen] = useState(false);
 
-  // 컬렉션
-  const [collections, setCollections] = useState<SavedCollection[]>(loadCollections);
-  const [collectionModalProject, setCollectionModalProject] = useState<typeof projects[0] | null>(null);
-  const [newCollectionName, setNewCollectionName] = useState("");
-  const [collectionNotice, setCollectionNotice] = useState("");
+  // 서버 데이터 상태
+  const [feeds, setFeeds] = useState<FeedCardItem[]>([]);
+  const [isFeedsLoading, setIsFeedsLoading] = useState(true);
+  const [designers, setDesigners] = useState<ExploreDesignerResponseDto[]>([]);
+  const [isDesignersLoading, setIsDesignersLoading] = useState(false);
 
-  useEffect(() => { localStorage.setItem(COLLECTION_KEY, JSON.stringify(collections)); }, [collections]);
+  // 페이지 상태
+  const [feedPage, setFeedPage] = useState(0);
+  const [hasMoreFeeds, setHasMoreFeeds] = useState(true);
+  const [isFetchingMoreFeeds, setIsFetchingMoreFeeds] = useState(false);
+  const [designerPage, setDesignerPage] = useState(0);
+  const [hasMoreDesigners, setHasMoreDesigners] = useState(true);
+  const [isFetchingMoreDesigners, setIsFetchingMoreDesigners] = useState(false);
 
-  const savedProjectIds = useMemo(() => new Set(collections.flatMap(c => c.itemIds)), [collections]);
+  const observerRef = useRef<HTMLDivElement>(null);
 
-  const openCollectionModal = (project: typeof projects[0], e: React.MouseEvent) => {
-    e.stopPropagation();
-    setCollectionModalProject(project);
-    setCollectionNotice("");
-    setNewCollectionName("");
-  };
+  // 상호작용 상태
+  const [likedItems, setLikedItems] = useState<Set<number>>(new Set());
+  const commentInputRef = useRef<HTMLInputElement | null>(null);
 
-  const saveToCollection = (colId: string) => {
-    if (!collectionModalProject) return;
-    const col = collections.find(c => c.id === colId);
-    setCollections(prev => prev.map(c => {
-      if (c.id !== colId || c.itemIds.includes(collectionModalProject.id)) return c;
-      return { ...c, itemIds: [collectionModalProject.id, ...c.itemIds], updatedAt: new Date().toISOString() };
-    }));
-    setCollectionNotice(`${col?.name ?? "컬렉션"}에 저장했어요.`);
-  };
+  // 모달 상태
+  const [selectedExploreFeed, setSelectedExploreFeed] = useState<FeedCardItem | null>(null);
+  const [commentFeedItems, setCommentFeedItems] = useState<FeedCardItem[]>([]);
+  const [modalImageIndex, setModalImageIndex] = useState(0);
+  const [startingProposalPostId, setStartingProposalPostId] = useState<number | null>(null);
 
-  const createCollectionAndSave = () => {
-    if (!collectionModalProject) return;
-    const name = newCollectionName.trim();
-    if (!name) return;
-    const newCol: SavedCollection = { id: `col-${Date.now()}`, name, itemIds: [collectionModalProject.id], updatedAt: new Date().toISOString() };
-    setCollections(prev => [newCol, ...prev]);
-    setCollectionNotice(`${name} 컬렉션을 만들고 저장했어요.`);
-    setNewCollectionName("");
-  };
 
-  // AI 검색
-  const [aiMode, setAiMode] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiResult, setAiResult] = useState<typeof AI_MOCK_RESPONSES["default"] | null>(null);
-  const [aiTypedText, setAiTypedText] = useState("");
+
+  const {
+    collections,
+    collectionPostIdsByFolder,
+    collectionModalFeed: collectionModalProject,
+    newCollectionName,
+    collectionSavedNotice: collectionNotice,
+    isCollectionSaving,
+    savedItemIds: savedProjectIds,
+    setNewCollectionName,
+    openCollectionModal,
+    closeCollectionModal,
+    saveToCollection,
+    createCollectionAndSave,
+  } = useFeedCollections<FeedCardItem>();
+
+  // 검색어 디바운스 처리
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const searchRef = useRef<HTMLInputElement>(null);
   const catScrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
-  
-  // 선택된 피드 모달 상태
-  const [selectedProjectForModal, setSelectedProjectForModal] = useState<any>(null);
 
-  // ── lenis smooth scroll ──
+  const {
+    commentText,
+    setCommentText,
+    commentSubmitError,
+    isSubmittingComment,
+    isCommentsLoading,
+    commentLoadError,
+    editingCommentId,
+    editingCommentText,
+    setEditingCommentText,
+    isUpdatingComment,
+    isDeletingCommentId,
+    selectedFeedComments,
+    handleSubmitComment,
+    handleCommentKeyDown,
+    startEditingComment,
+    cancelEditingComment,
+    handleUpdateComment,
+    handleDeleteComment,
+  } = useFeedComments<FeedCardItem, FeedCardItem>({
+    selectedFeed: selectedExploreFeed,
+    currentUser,
+    currentUserId: currentUser?.userId ?? null,
+    apiFeedItems: commentFeedItems,
+    setApiFeedItems: setCommentFeedItems,
+    setSelectedFeed: setSelectedExploreFeed,
+    toFeedCommentRole: toCommentAuthorRole,
+  });
+
+  // useFeedDetail 적용 전까지 사용하는 피드 상세 로딩 로직
+  const { isLoading: isFeedDetailLoading } = useFeedDetail({
+    selectedFeed: selectedExploreFeed,
+    setApiFeedItems: setFeeds as React.Dispatch<React.SetStateAction<FeedCardItem[]>>,
+    setSelectedFeed: setSelectedExploreFeed,
+  });
+
+  const openFeedDetail = (project: FeedCardItem) => {
+    setSelectedExploreFeed(project);
+    setModalImageIndex(0);
+  };
+
+  // 피드 ?≪뀡 ?ы띁
+  const toggleLike = async (id: number, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    try {
+      // 서버에 좋아요 토글 요청
+      const response = await toggleFeedPickApi(id);
+
+      // 1. 로컬 좋아요 상태 업데이트
+      setLikedItems(prev => {
+        const newSet = new Set(prev);
+        if (response.picked) newSet.add(id);
+        else newSet.delete(id);
+        return newSet;
+      });
+
+      // 2. 피드 목록의 좋아요 수와 상태 동기화
+      setFeeds(prevFeeds =>
+        prevFeeds.map(feed =>
+          feed.id === id
+            ? { ...feed, likes: response.pickCount, likedByMe: response.picked }
+            : feed
+        )
+      );
+
+      // 3. 상세 모달이 열려 있으면 모달 데이터도 함께 업데이트
+      if (selectedExploreFeed && selectedExploreFeed.id === id) {
+        setSelectedExploreFeed(prev =>
+          prev ? { ...prev, likes: response.pickCount, likedByMe: response.picked } : null
+        );
+      }
+    } catch (error) {
+      console.error("좋아요 처리 중 오류 발생:", error);
+      toast.error("좋아요 처리에 실패했습니다. 다시 시도해주세요.");
+    }
+  };
+
+  const handleShare = (item: FeedCardItem, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const copyToClipboard = () => {
+      navigator.clipboard
+        .writeText(window.location.href)
+        .then(() => toast.success("공유 링크가 클립보드에 복사되었습니다."))
+        .catch(() => toast.error("링크 복사에 실패했습니다."));
+    };
+    if (navigator.share) {
+      navigator
+        .share({ title: item.title, text: item.description || "", url: window.location.href })
+        .catch(() => copyToClipboard());
+    } else {
+      copyToClipboard();
+    }
+  };
+
+
+  const moveModalCarousel = (dir: -1 | 1, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (!selectedExploreFeed) return;
+    const images = selectedExploreFeed.images || [selectedExploreFeed.image];
+    if (images.length <= 1) return;
+    setModalImageIndex(prev => (prev + dir + images.length) % images.length);
+  };
+
+  const handleProposalClick = async (item: FeedCardItem, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+
+    if (!item.author?.userId) {
+      toast.error("상대방 정보를 찾을 수 없습니다.");
+      return;
+    }
+
+    if (currentUser?.userId === item.author.userId) {
+      toast.error("내 피드에는 제안을 보낼 수 없습니다.");
+      return;
+    }
+
+    const now = Date.now();
+    const proposalMessage = `안녕하세요. "${item.title}" 작업을 보고 프로젝트 제안을 드리고 싶어 연락드립니다. 작업 가능 여부와 일정, 견적 등을 이야기해보고 싶습니다.`;
+
+    setStartingProposalPostId(item.id);
+    try {
+      const conversation = await createMessageConversationApi(item.author.userId);
+      await sendConversationMessageApi(conversation.id, {
+        clientId: `explore-proposal-${item.id}-${now}`,
+        message: proposalMessage,
+        attachments: item.image
+          ? [
+              {
+                id: `explore-feed-${item.id}`,
+                type: "image",
+                src: item.image,
+                name: item.title,
+                uploadStatus: "ready",
+              },
+            ]
+          : [],
+      });
+
+      navigate(`/messages?conversationId=${conversation.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "대화를 시작하지 못했습니다.");
+    } finally {
+      setStartingProposalPostId(null);
+    }
+  };
+
+  // Lenis smooth scroll 설정
   useEffect(() => {
     const lenis = new Lenis({ lerp: 0.08, smoothWheel: true });
     
@@ -378,347 +428,518 @@ export default function Explore() {
   }, [checkCatScroll, activeTab]);
 
   const scrollCat = (dir: "left" | "right") => {
-    catScrollRef.current?.scrollBy({ left: dir === "left" ? -200 : 200, behavior: "smooth" });
+    const el = catScrollRef.current;
+    if (!el) return;
+    // 가시 영역의 약 80% 정도를 부드럽게 이동
+    const amount = Math.max(240, el.clientWidth * 0.8);
+    el.scrollBy({ left: dir === "left" ? -amount : amount, behavior: "smooth" });
   };
 
-  const filteredProjects = useMemo(() => {
-    return projects
-      .filter((p) => {
-        const q = searchQuery.toLowerCase();
-        const matchesSearch = p.title.toLowerCase().includes(q) || p.author.toLowerCase().includes(q);
-        const matchesCat = !selectedCategory || p.category === selectedCategory;
-        return matchesSearch && matchesCat;
-      })
-      .sort((a, b) => b.likes - a.likes);
-  }, [searchQuery, selectedCategory]);
-
-  const filteredProfiles = useMemo(() => {
-    const q = searchQuery.toLowerCase();
-    return creatorProfiles.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.role.toLowerCase().includes(q) || p.category.toLowerCase().includes(q),
-    );
-  }, [searchQuery]);
-
-  // AI 검색 실행
-  const runAiSearch = useCallback(() => {
-    if (!searchQuery.trim()) return;
-    setAiLoading(true);
-    setAiResult(null);
-    setAiTypedText("");
-    // mock: 1.2초 후 결과
-    setTimeout(() => {
-      const mock = AI_MOCK_RESPONSES.default;
-      setAiResult(mock);
-      setAiLoading(false);
-      // 타이핑 애니메이션
-      let i = 0;
-      const txt = mock.summary;
-      const interval = setInterval(() => {
-        i++;
-        setAiTypedText(txt.slice(0, i));
-        if (i >= txt.length) clearInterval(interval);
-      }, 25);
-    }, 1200);
-  }, [searchQuery]);
-
-  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && aiMode) {
-      e.preventDefault();
-      runAiSearch();
+  // 카테고리 레일 수평 스크롤 버튼
+  const handleCatWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      const el = catScrollRef.current;
+      if (el) {
+        el.scrollLeft += e.deltaY;
+      }
     }
   };
 
+  // 레이스 컨디션 방지를 위한 요청 ID 관리
+  const lastFeedsRequestId = useRef(0);
+  const lastDesignersRequestId = useRef(0);
+
+  // 피드 목록 조회 (초기 로드 + 무한 스크롤 공용)
+  const fetchFeeds = useCallback(async (pageNum: number, isInitial: boolean = false) => {
+    const requestId = ++lastFeedsRequestId.current;
+    try {
+      if (isInitial) setIsFeedsLoading(true);
+      else setIsFetchingMoreFeeds(true);
+
+      const data = await getExploreFeedsApi(selectedCategory || "all", debouncedSearchQuery, pageNum, 20);
+      
+      // 최신 요청이 아니면 상태 업데이트 무시
+      if (requestId !== lastFeedsRequestId.current) return;
+
+      const mappedFeeds: FeedCardItem[] = data.map(item => ({
+        id: item.postId,
+        feedKey: item.postId,
+        author: {
+          userId: item.userId,
+          name: item.nickname,
+          role: item.job || "디자이너",
+          avatar: getUserAvatar(item.profileImage, item.userId, item.nickname),
+          profileKey: String(item.userId),
+        },
+        title: item.title,
+        description: item.description || "",
+        image: item.imageUrl || "",
+        images: item.imageUrl ? [item.imageUrl] : [],
+        likes: item.pickCount,
+        comments: item.commentCount ?? 0,
+        tags: [item.category].filter(Boolean) as string[],
+        category: item.category || undefined,
+        likedByMe: item.picked,
+        isApiFeed: true
+      }));
+
+      if (isInitial) {
+        setFeeds(mappedFeeds);
+        const initiallyLiked = new Set<number>();
+        data.forEach(feed => { if (feed.picked) initiallyLiked.add(feed.postId); });
+        setLikedItems(initiallyLiked);
+      } else {
+        setFeeds(prev => [...prev, ...mappedFeeds]);
+        setLikedItems(prev => {
+          const newSet = new Set(prev);
+          data.forEach(feed => { if (feed.picked) newSet.add(feed.postId); });
+          return newSet;
+        });
+      }
+
+      setHasMoreFeeds(data.length === 20);
+    } catch (error) {
+      if (requestId === lastFeedsRequestId.current) {
+        console.error("피드 로딩 중 오류:", error);
+      }
+    } finally {
+      if (requestId === lastFeedsRequestId.current) {
+        setIsFeedsLoading(false);
+        setIsFetchingMoreFeeds(false);
+      }
+    }
+  }, [selectedCategory, debouncedSearchQuery]);
+
+  // 디자이너 목록 조회
+  const fetchDesigners = useCallback(async (pageNum: number, isInitial: boolean = false) => {
+    const requestId = ++lastDesignersRequestId.current;
+    try {
+      if (isInitial) setIsDesignersLoading(true);
+      else setIsFetchingMoreDesigners(true);
+
+      const data = await getExploreDesignersApi(debouncedSearchQuery, pageNum, 20);
+      
+      // 최신 요청이 아니면 상태 업데이트 무시
+      if (requestId !== lastDesignersRequestId.current) return;
+
+      if (isInitial) {
+        setDesigners(data);
+      } else {
+        setDesigners(prev => [...prev, ...data]);
+      }
+
+      setHasMoreDesigners(data.length === 20);
+    } catch (error) {
+      if (requestId === lastDesignersRequestId.current) {
+        console.error("디자이너 로딩 중 오류:", error);
+      }
+    } finally {
+      if (requestId === lastDesignersRequestId.current) {
+        setIsDesignersLoading(false);
+        setIsFetchingMoreDesigners(false);
+      }
+    }
+  }, [debouncedSearchQuery]);
+
+  // 검색/필터 변경 시 초기화 후 첫 페이지 로드
+  useEffect(() => {
+    setFeedPage(0);
+    setDesignerPage(0);
+    setHasMoreFeeds(true);
+    setHasMoreDesigners(true);
+
+    if (activeTab === "feed") {
+      fetchFeeds(0, true);
+    } else {
+      fetchDesigners(0, true);
+    }
+  }, [selectedCategory, debouncedSearchQuery, activeTab, fetchFeeds, fetchDesigners]);
+
+  // 페이지 번호 증가 시 추가 데이터 로드
+  useEffect(() => {
+    if (feedPage > 0 && activeTab === "feed") {
+      fetchFeeds(feedPage);
+    }
+  }, [feedPage, activeTab, fetchFeeds]);
+
+  useEffect(() => {
+    if (designerPage > 0 && activeTab === "profile") {
+      fetchDesigners(designerPage);
+    }
+  }, [designerPage, activeTab, fetchDesigners]);
+
+  // 무한 스크롤 Observer 설정
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (first.isIntersecting) {
+          if (activeTab === "feed" && hasMoreFeeds && !isFeedsLoading && !isFetchingMoreFeeds) {
+            setFeedPage(prev => prev + 1);
+          } else if (activeTab === "profile" && hasMoreDesigners && !isDesignersLoading && !isFetchingMoreDesigners) {
+            setDesignerPage(prev => prev + 1);
+          }
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentRef = observerRef.current;
+    if (currentRef) observer.observe(currentRef);
+    return () => { if (currentRef) observer.unobserve(currentRef); };
+  }, [activeTab, hasMoreFeeds, isFeedsLoading, isFetchingMoreFeeds, hasMoreDesigners, isDesignersLoading, isFetchingMoreDesigners]);
+
+  const filteredProjects = useMemo(() => {
+    const list = [...feeds];
+    if (sortBy === "latest") {
+      // createdAt이 없어서 id 내림차순으로 대체
+      list.sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
+    } else if (sortBy === "popular") {
+      list.sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0));
+    }
+    return list;
+  }, [feeds, sortBy]);
+
+  const sortLabel: Record<typeof sortBy, string> = {
+    recommended: "추천",
+    latest: "최신",
+    popular: "인기",
+  };
+
+  const filteredDesigners = useMemo(() => designers, [designers]);
+
+  // AI 채팅 하단 스크롤
+
+
+  // 댓글 모달 입력에서 전달받는 keydown 핸들러 자리 (현재 no-op)
+  const handleSearchKeyDown = (_e: React.KeyboardEvent) => {};
+
   return (
-    <div className="min-h-screen flex flex-col bg-[#F7F7F5]">
+    <div className="min-h-screen flex flex-col bg-[#FAFAF8]">
       <Navigation />
 
-      {/* ━━ 검색바 + AI 토글 + 탭 ━━ */}
-      <section className="relative z-30 flex justify-center">
-        <div className="bg-transparent w-full max-w-none px-0 pt-6 pb-2 mx-auto">
-          <div className="mx-auto w-full max-w-[1800px] px-5">
-            <div className="flex items-center gap-2.5">
+      {/* 탐색 검색바 */}
+      <section className="relative z-30">
+        <div className="max-w-[1800px] mx-auto px-5 pt-7 pb-3">
+          <div className="flex items-center h-12 rounded-full bg-white border border-gray-200/70 shadow-sm hover:border-gray-300 focus-within:border-[#00C9A7]/40 focus-within:shadow-[0_0_0_3px_rgba(0,201,167,0.1)] transition-all duration-300">
             {/* 검색 인풋 */}
-            <div className={`relative flex-1 rounded-xl transition-all duration-300 ${
-              aiMode
-                ? "bg-gradient-to-r from-[#00C9A7]/8 to-[#FF5C3A]/4 border-2 border-[#00C9A7]/30 shadow-[0_0_24px_rgba(0,201,167,0.1)]"
-                : "bg-white border border-gray-200/80 shadow-sm hover:border-gray-300 focus-within:border-[#00C9A7]/40 focus-within:shadow-[0_0_0_3px_rgba(0,201,167,0.1)]"
-            }`}>
-              {aiMode ? (
-                <Sparkles className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-[#00C9A7]" />
-              ) : (
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
-              )}
+            <div className="relative flex-1 min-w-0 flex items-center pl-5 pr-2">
+              <Search className="size-4 text-gray-400 shrink-0" />
               <input
                 ref={searchRef}
                 value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); if (aiResult) setAiResult(null); }}
-                onKeyDown={handleSearchKeyDown}
-                placeholder={aiMode ? "어떤 디자이너를 찾고 계세요? AI가 도와드릴게요..." : "pickxel에서 검색..."}
-                className="w-full h-10 pl-10 pr-4 bg-transparent text-sm text-[#0F0F0F] placeholder:text-gray-400 focus:outline-none rounded-xl"
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Pickxel에서 검색..."
+                className="w-full h-12 pl-3 pr-2 bg-transparent text-[14px] text-[#0F0F0F] placeholder:text-gray-400 focus:outline-none"
               />
               {searchQuery && (
-                <button onClick={() => { setSearchQuery(""); setAiResult(null); }} className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 hover:bg-gray-200/60 rounded-full transition-colors">
+                <button onClick={() => setSearchQuery("")} className="p-0.5 hover:bg-gray-100 rounded-full transition-colors shrink-0" aria-label="검색어 지우기">
                   <X className="size-3.5 text-gray-400" />
                 </button>
               )}
             </div>
 
-            {/* AI 토글 */}
-            <motion.button
-              whileTap={{ scale: 0.95 }}
-              onClick={() => { setAiMode(!aiMode); setAiResult(null); }}
-              className={`flex items-center gap-1.5 h-10 px-4 rounded-xl text-sm font-semibold transition-all shrink-0 ${
-                aiMode
-                  ? "bg-gradient-to-r from-[#00C9A7] to-[#00A88C] text-white shadow-lg shadow-[#00C9A7]/20"
-                  : "bg-white border border-gray-200/80 shadow-sm text-gray-600 hover:bg-gray-50 hover:text-[#00A88C]"
-              }`}
-            >
-              <Sparkles className="size-3.5" />
-              AI
-            </motion.button>
-
             <div className="w-px h-6 bg-gray-200 shrink-0" />
 
-            {/* 탭 토글 */}
-            <div className="flex rounded-lg bg-white border border-gray-200/80 shadow-sm p-0.5 shrink-0">
+            {/* segmented control (피드 / 프로필) */}
+            <div className="relative flex items-center px-1.5 shrink-0">
               <button
                 onClick={() => setActiveTab("feed")}
-                className={`flex items-center gap-1.5 px-3.5 h-9 rounded-md text-sm font-medium transition-all ${
-                  activeTab === "feed" ? "bg-[#00C9A7] text-white shadow-md shadow-[#00C9A7]/20" : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+                className={`relative flex items-center gap-1.5 h-9 px-3 rounded-full text-[13px] font-bold transition-colors z-[1] ${
+                  activeTab === "feed" ? "text-white" : "text-gray-500 hover:text-gray-800"
                 }`}
               >
-                <LayoutGrid className="size-3.5" /> 피드
+                {activeTab === "feed" && (
+                  <motion.div
+                    layoutId="explore-active-pill"
+                    className="absolute inset-0 bg-[#00C9A7] rounded-full shadow-sm z-0"
+                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                  />
+                )}
+                <LayoutGrid className={`relative z-[2] size-3.5 transition-colors ${activeTab === "feed" ? "text-white" : "text-gray-400"}`} />
+                <span className="relative z-[2]">피드</span>
               </button>
               <button
                 onClick={() => setActiveTab("profile")}
-                className={`flex items-center gap-1.5 px-3.5 h-9 rounded-md text-sm font-medium transition-all ${
-                  activeTab === "profile" ? "bg-[#00C9A7] text-white shadow-md shadow-[#00C9A7]/20" : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+                className={`relative flex items-center gap-1.5 h-9 px-3 rounded-full text-[13px] font-bold transition-colors z-[1] ${
+                  activeTab === "profile" ? "text-white" : "text-gray-500 hover:text-gray-800"
                 }`}
               >
-                <Users className="size-3.5" /> 프로필
+                {activeTab === "profile" && (
+                  <motion.div
+                    layoutId="explore-active-pill"
+                    className="absolute inset-0 bg-[#FF5C3A] rounded-full shadow-sm z-0"
+                    transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                  />
+                )}
+                <span className="relative z-[2]">프로필</span>
               </button>
             </div>
-          </div>
 
-          {/* AI 결과 패널 */}
-          <AnimatePresence>
-            {aiMode && (aiLoading || aiResult) && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.3 }}
-                className="overflow-hidden"
-              >
-                <div className="mt-3 p-5 bg-gradient-to-br from-white to-[#F0FDF9] rounded-2xl border border-[#00C9A7]/15 shadow-lg">
-                  {aiLoading ? (
-                    <div className="flex items-center gap-3">
-                      <div className="relative size-8">
-                        <div className="absolute inset-0 rounded-full border-2 border-[#00C9A7]/30 border-t-[#00C9A7] animate-spin" />
-                        <Sparkles className="absolute inset-1.5 size-5 text-[#00C9A7]" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-[#0F0F0F]">AI가 분석 중이에요...</p>
-                        <p className="text-xs text-gray-400">최적의 디자이너를 찾고 있습니다</p>
-                      </div>
-                    </div>
-                  ) : aiResult && (
-                    <div>
-                      <div className="flex items-start gap-2.5 mb-4">
-                        <div className="size-7 rounded-full bg-gradient-to-br from-[#00C9A7] to-[#00A88C] flex items-center justify-center shrink-0 mt-0.5 shadow-sm">
-                          <Sparkles className="size-3.5 text-white" />
-                        </div>
-                        <p className="text-sm text-gray-700 leading-relaxed">{aiTypedText}<span className="animate-pulse text-[#00C9A7]">|</span></p>
-                      </div>
-                      <div className="grid grid-cols-3 gap-3 mb-4">
-                        {aiResult.designers.map((d) => (
-                          <Link key={d.id} to={`/profile/${d.name}`} className="flex items-center gap-3 p-3 rounded-xl bg-white hover:bg-[#00C9A7]/5 border border-gray-100 hover:border-[#00C9A7]/30 transition-all group/ai shadow-sm">
-                            <ImageWithFallback src={d.avatar} alt={d.name} className="size-10 rounded-full ring-2 ring-white shadow-sm" />
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-[#0F0F0F] group-hover/ai:text-[#00A88C] transition-colors truncate">{d.name}</p>
-                              <p className="text-xs text-gray-500 truncate">{d.role}</p>
-                            </div>
-                          </Link>
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[10px] text-gray-400 font-medium">추천 카테고리</span>
-                        {aiResult.tags.map((t) => (
-                          <button key={t} onClick={() => { setSelectedCategory(t); setAiResult(null); setAiMode(false); }} className="text-xs px-2.5 py-1 rounded-full bg-[#00C9A7]/10 text-[#00A88C] font-medium hover:bg-[#00C9A7]/20 transition-colors">
-                            {t}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+            {/* 정렬 셀렉터 */}
+            <div className="w-px h-6 bg-gray-200 shrink-0" />
+            <div className="relative shrink-0 pr-2">
+                  <button
+                    onClick={() => setIsSortOpen((v) => !v)}
+                    className="flex items-center gap-1.5 h-9 px-3 rounded-full text-[13px] font-medium text-gray-700 hover:bg-gray-50 transition-all"
+                  >
+                    <ArrowUpDown className="size-3.5 text-gray-400" />
+                    <span>{sortLabel[sortBy]}</span>
+                  </button>
+                  <AnimatePresence>
+                    {isSortOpen && (
+                      <>
+                        <div className="fixed inset-0 z-30" onClick={() => setIsSortOpen(false)} />
+                        <motion.div
+                          initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                          transition={{ duration: 0.15 }}
+                          className="absolute right-0 top-full mt-2 z-40 w-44 rounded-xl bg-white border border-gray-200 shadow-xl py-1.5 overflow-hidden"
+                        >
+                          {([
+                            { key: "recommended", icon: Star, label: "추천", desc: "Pickxel 큐레이션" },
+                            { key: "latest", icon: Clock, label: "최신", desc: "최근 등록된 순" },
+                            { key: "popular", icon: TrendingUp, label: "인기", desc: "좋아요 많은 순" },
+                          ] as const).map(({ key, icon: Icon, label, desc }) => (
+                            <button
+                              key={key}
+                              onClick={() => { setSortBy(key); setIsSortOpen(false); }}
+                              className={`w-full flex items-start gap-2.5 px-3 py-2 text-left hover:bg-gray-50 transition-colors ${
+                                sortBy === key ? "bg-[#00C9A7]/5" : ""
+                              }`}
+                            >
+                              <Icon className={`size-3.5 mt-1 shrink-0 ${sortBy === key ? "text-[#00A88C]" : "text-gray-400"}`} />
+                              <div className="min-w-0">
+                                <p className={`text-[13px] font-semibold ${sortBy === key ? "text-[#00A88C]" : "text-gray-800"}`}>{label}</p>
+                                <p className="text-[11px] text-gray-400 truncate">{desc}</p>
+                              </div>
+                              {sortBy === key && <Check className="ml-auto size-3.5 text-[#00A88C] mt-1" />}
+                            </button>
+                          ))}
+                        </motion.div>
+                      </>
+                    )}
+                  </AnimatePresence>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ━━ 카테고리 필터 ━━ */}
+      {/* 탐색 카테고리 필터 */}
       {activeTab === "feed" && (
         <section className="bg-transparent pb-3">
-          <div className="max-w-[1800px] mx-auto px-5 relative">
-            {/* 좌측 페이드 + 화살표 */}
-            {canScrollLeft && (
-              <div className="absolute left-0 top-0 bottom-0 z-10 flex items-center">
-                <div className="w-20 h-full bg-gradient-to-r from-[#F7F7F5] via-[#F7F7F5]/80 to-transparent pointer-events-none absolute left-0" />
-                <button onClick={() => scrollCat("left")} className="relative z-10 ml-2 size-8 rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 shadow-sm flex items-center justify-center text-gray-500 hover:bg-white hover:text-gray-700 transition-all">
-                  <ChevronLeft className="size-4" />
-                </button>
-              </div>
-            )}
-            {/* 우측 페이드 + 화살표 */}
-            {canScrollRight && (
-              <div className="absolute right-0 top-0 bottom-0 z-10 flex items-center">
-                <div className="w-20 h-full bg-gradient-to-l from-[#F7F7F5] via-[#F7F7F5]/80 to-transparent pointer-events-none absolute right-0" />
-                <button onClick={() => scrollCat("right")} className="relative z-10 mr-2 ml-auto size-8 rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 shadow-sm flex items-center justify-center text-gray-500 hover:bg-white hover:text-gray-700 transition-all">
-                  <ChevronRight className="size-4" />
-                </button>
-              </div>
-            )}
-            <LayoutGroup>
-            <div
-              ref={catScrollRef}
-              data-cat-scroll
-              className="flex items-center gap-2 py-4 px-1 overflow-x-auto [&::-webkit-scrollbar]:hidden"
-              style={{ scrollbarWidth: "none" }}
-            >
-              {/* 전체 버튼 */}
-              <button
-                onClick={() => setSelectedCategory(null)}
-                className={`relative flex items-center gap-2 px-5 py-2.5 rounded-lg text-[13px] font-semibold whitespace-nowrap shrink-0 transition-colors duration-200 z-[1] ${
-                  !selectedCategory ? "text-white" : "text-gray-600 bg-white border border-gray-200/80 shadow-sm hover:bg-gray-50"
-                }`}
-              >
-                {!selectedCategory && (
-                  <motion.div
-                    layoutId="catIndicator"
-                    className="absolute inset-0 rounded-lg bg-gradient-to-r from-[#FF5C3A] to-[#00C9A7] shadow-lg shadow-[#FF5C3A]/20"
-                    transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                  />
-                )}
-                <span className="relative z-[1]">전체</span>
-              </button>
-              {categories.map((cat) => {
-                const Icon = CATEGORY_ICONS[cat] || Palette;
-                const isActive = selectedCategory === cat;
-                return (
+          <div className="max-w-[1800px] mx-auto px-5">
+            <div className="flex items-stretch gap-1.5 py-3 px-1">
+                  {/* 전체 버튼 */}
                   <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(isActive ? null : cat)}
-                    className={`relative flex items-center gap-2 px-5 py-2.5 rounded-lg text-[13px] font-semibold whitespace-nowrap shrink-0 transition-colors duration-200 z-[1] ${
-                      isActive ? "text-white" : "text-gray-600 bg-white border border-gray-200/80 shadow-sm hover:bg-gray-50"
+                    onClick={() => setSelectedCategory(null)}
+                    className={`relative h-[52px] flex-1 basis-0 min-w-0 rounded-md overflow-visible transition-all duration-200 ${
+                      !selectedCategory ? "scale-[1.03] shadow-lg shadow-[#00C9A7]/30" : "hover:-translate-y-0.5 hover:shadow-md"
                     }`}
                   >
-                    {isActive && (
-                      <motion.div
-                        layoutId="catIndicator"
-                        className="absolute inset-0 rounded-lg bg-gradient-to-r from-[#FF5C3A] to-[#00C9A7] shadow-lg shadow-[#FF5C3A]/20"
-                        transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                      />
-                    )}
-                    <Icon className="relative z-[1] size-4" />
-                    <span className="relative z-[1]">{cat}</span>
+                    {/* 배경 레이어 */}
+                    <span className="absolute inset-0 rounded-md overflow-hidden">
+                      <span className="absolute inset-0 bg-gradient-to-br from-[#00C9A7] via-[#00A88C] to-[#008F77]" />
+                    </span>
+                    {/* 선택 강조 glow */}
+                    <AnimatePresence>
+                      {!selectedCategory && (
+                        <motion.span
+                          key="all-active"
+                          className="absolute inset-0 rounded-md pointer-events-none"
+                          initial={{ opacity: 0, boxShadow: "0 0 0 2px rgba(0,201,167,0), 0 0 0 0px rgba(0,201,167,0), 0 0 0px rgba(0,201,167,0)" }}
+                          animate={{ opacity: 1, boxShadow: "0 0 0 2.5px #00C9A7, 0 0 0 6px rgba(0,201,167,0.2), 0 4px 22px rgba(0,201,167,0.4)" }}
+                          exit={{ opacity: 0, boxShadow: "0 0 0 2px rgba(0,201,167,0), 0 0 0 0px rgba(0,201,167,0), 0 0 0px rgba(0,201,167,0)" }}
+                          transition={{ duration: 0.28, ease: "easeOut" }}
+                        />
+                      )}
+                    </AnimatePresence>
+                    <span className="relative z-[1] flex items-center justify-center gap-1 h-full px-1 text-white">
+                      <LayoutGrid className="size-3.5 shrink-0" strokeWidth={2.2} />
+                      <span className="text-[12.5px] font-bold tracking-tight">전체</span>
+                    </span>
                   </button>
-                );
-              })}
+
+                  {categories.map((cat) => {
+                    const Icon = CATEGORY_ICONS[cat] || Palette;
+                    const image = CATEGORY_IMAGES[cat];
+                    const isActive = selectedCategory === cat;
+                    return (
+                      <button
+                        key={cat}
+                        onClick={() => setSelectedCategory(isActive ? null : cat)}
+                        className={`relative h-[52px] flex-1 basis-0 min-w-0 rounded-md overflow-visible bg-gray-800 transition-all duration-200 ${
+                          isActive ? "scale-[1.03] shadow-lg shadow-[#00C9A7]/25" : "hover:-translate-y-0.5 hover:shadow-md"
+                        }`}
+                      >
+                        {/* 이미지 + 오버레이 */}
+                        <span className="absolute inset-0 rounded-md overflow-hidden">
+                          {image && (
+                            <img
+                              src={image}
+                              alt=""
+                              loading="lazy"
+                              className={`absolute inset-0 w-full h-full object-cover transition-transform duration-500 ${
+                                isActive ? "scale-110" : "scale-100"
+                              }`}
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).style.display = "none";
+                              }}
+                            />
+                          )}
+                          <span
+                            className={`absolute inset-0 transition-opacity duration-200 ${
+                              isActive
+                                ? "bg-gradient-to-t from-black/65 via-black/45 to-black/25"
+                                : "bg-gradient-to-t from-black/80 via-black/60 to-black/40"
+                            }`}
+                          />
+                        </span>
+
+                        {/* 선택 강조 glow */}
+                        <AnimatePresence>
+                          {isActive && (
+                            <motion.span
+                              key={`active-${cat}`}
+                              className="absolute inset-0 rounded-md pointer-events-none"
+                              initial={{ opacity: 0, boxShadow: "0 0 0 2px rgba(0,201,167,0), 0 0 0 0px rgba(0,201,167,0), 0 0 0px rgba(0,201,167,0)" }}
+                              animate={{ opacity: 1, boxShadow: "0 0 0 2.5px #00C9A7, 0 0 0 6px rgba(0,201,167,0.2), 0 4px 22px rgba(0,201,167,0.4)" }}
+                              exit={{ opacity: 0, boxShadow: "0 0 0 2px rgba(0,201,167,0), 0 0 0 0px rgba(0,201,167,0), 0 0 0px rgba(0,201,167,0)" }}
+                              transition={{ duration: 0.28, ease: "easeOut" }}
+                            />
+                          )}
+                        </AnimatePresence>
+
+                        {/* 콘텐츠 */}
+                        <span className="relative z-[1] flex items-center justify-center gap-1.5 h-full px-2 text-white">
+                          <Icon className="size-3.5 shrink-0" />
+                          <span
+                            className="text-[13px] font-bold tracking-tight text-center leading-tight whitespace-nowrap"
+                            style={{ textShadow: "0 1px 4px rgba(0,0,0,0.85), 0 0 2px rgba(0,0,0,0.6)" }}
+                          >
+                            {cat}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
             </div>
-            </LayoutGroup>
-          </div>
         </section>
       )}
 
-      {/* ━━ 메인 콘텐츠 (flex-1로 푸터 하단 고정) ━━ */}
+      {/* 탐색 메인 콘텐츠 */}
       <div className="flex-1">
-        {/* ━━ 피드 탭: 균일 그리드 ━━ */}
+        {/* 피드 移대뱶 洹몃━??*/}
         {activeTab === "feed" && (
           <section className="max-w-[1800px] mx-auto px-5 pt-1 pb-16">
-            {filteredProjects.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {filteredProjects.map((project, index) => (
-                  <motion.div
-                    key={project.id}
-                    initial={{ opacity: 0, y: 30 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true, margin: "-60px" }}
-                    transition={{ delay: (index % 4) * 0.08, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-                    className="group cursor-pointer pb-2"
-                    onClick={() => setSelectedProjectForModal(project)}
-                  >
-                    <div className="relative rounded-2xl overflow-hidden bg-white shadow-[0_2px_8px_rgba(0,0,0,0.06)] group-hover:shadow-[0_20px_50px_rgba(0,0,0,0.12)] group-hover:-translate-y-2 transition-all duration-500 ease-out">
-                      {/* 이미지 (고정 비율) */}
-                      <div className="relative aspect-[4/3] overflow-hidden">
-                        <ImageWithFallback
-                          src={project.imageUrl}
-                          alt={project.title}
-                          className="w-full h-full object-cover group-hover:scale-[1.08] transition-transform duration-700 ease-out"
-                        />
-                        {/* 호버 오버레이: 상단 비네팅 + 하단 그라디언트 */}
-                        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-400 pointer-events-none" />
+            {isFeedsLoading ? (
+              // 로딩 스피너
+              <div className="flex justify-center py-20">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00C9A7]"></div>
+              </div>
+            ) : filteredProjects.length > 0 ? (
+              <>
+                {/* 카드 그리드: 모든 카드는 4:3 비율 */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
+                  {filteredProjects.map((project, index) => {
+                    const isSaved = savedProjectIds.has(project.id);
+                    const isLiked = likedItems.has(project.id) || project.likedByMe;
+                    return (
+                      <motion.div
+                        key={project.id}
+                        initial={{ opacity: 0, y: 24 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true, margin: "-60px" }}
+                        transition={{ delay: (index % 5) * 0.06, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                        className="group cursor-pointer"
+                        onClick={() => openFeedDetail(project)}
+                      >
+                        {/* 이미지 카드 (4:3 고정) */}
+                        <div className="relative aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] group-hover:shadow-[0_18px_40px_rgba(0,0,0,0.14)] transition-shadow duration-500">
+                          <ImageWithFallback
+                            src={project.image || ""}
+                            alt={project.title}
+                            className="w-full h-full object-cover block group-hover:scale-[1.03] transition-transform duration-700 ease-out"
+                          />
 
-                        {/* 우상단: 저장 버튼 (pill) */}
-                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 -translate-y-1 group-hover:translate-y-0 transition-all duration-300 z-10">
+                          {/* 카테고리 배지 */}
+                          {project.category && (
+                            <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 -translate-y-1 group-hover:translate-y-0 transition-all duration-300 z-10">
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-md text-[11px] font-semibold text-[#0F0F0F] shadow-sm">
+                                {project.category}
+                              </span>
+                            </div>
+                          )}
+
                           <button
                             onClick={(e) => { e.stopPropagation(); openCollectionModal(project, e); }}
-                            className={`flex items-center gap-1.5 h-8 px-3.5 rounded-full text-xs font-semibold shadow-lg cursor-pointer hover:scale-105 active:scale-95 transition-all duration-200 ${
-                              savedProjectIds.has(project.id)
-                                ? "bg-[#00C9A7] text-white shadow-[#00C9A7]/30 hover:bg-[#00b89a]"
-                                : "bg-black/60 backdrop-blur-xl text-white hover:bg-black/80 border border-white/15"
-                            }`}
                             title="컬렉션에 저장"
+                            className={`absolute top-0 right-3 z-10 flex flex-col items-center justify-center gap-0.5 w-9 pt-2.5 pb-4 opacity-0 group-hover:opacity-100 transition-all duration-300 active:brightness-90 ${
+                              isSaved
+                                ? "bg-[#FF5C3A]"
+                                : "bg-[#1C1C1C] hover:bg-[#333]"
+                            }`}
+                            style={{
+                              clipPath: "polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 11px), 0 100%)",
+                              boxShadow: "0 4px 10px rgba(0,0,0,0.3)"
+                            }}
                           >
-                            <Bookmark className={`size-3.5 ${savedProjectIds.has(project.id) ? "fill-white" : ""}`} />
-                            {savedProjectIds.has(project.id) ? "저장됨" : "저장"}
+                            <Bookmark className={`size-3.5 text-white ${isSaved ? "fill-white" : ""}`} />
+                            <span className="text-[10px] font-bold text-white tracking-tight leading-none">
+                              {isSaved ? "저장됨" : "저장"}
+                            </span>
                           </button>
+
+                          {/* 하단 오버레이 */}
+                          <div className="absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
                         </div>
 
-                        {/* 하단 정보 오버레이 */}
-                        <div className="absolute inset-x-0 bottom-0 flex flex-col justify-end p-4">
-                          <div className="translate-y-3 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-400 delay-75">
-                            <div className="flex items-end justify-between">
-                              <div className="min-w-0 flex-1">
-                                <p className="text-white font-bold text-[15px] leading-tight mb-1 truncate" style={{ textShadow: "0 1px 8px rgba(0,0,0,0.5)" }}>{project.title}</p>
-                                <p className="text-white/80 text-sm" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.4)" }}>{project.author}</p>
-                              </div>
-                              <div className="flex gap-1.5 shrink-0 ml-3">
-                                <span className="flex items-center gap-1 bg-black/40 backdrop-blur-xl text-white text-[11px] px-2.5 py-1 rounded-full font-medium">
-                                  <Heart className="size-3 fill-white" />{project.likes}
-                                </span>
-                                <span className="flex items-center gap-1 bg-black/40 backdrop-blur-xl text-white text-[11px] px-2.5 py-1 rounded-full font-medium">
-                                  <Eye className="size-3" />{project.views}
-                                </span>
-                              </div>
+                        {/* 카드 메타 캡션 */}
+                        <div className="pt-2.5 px-0.5 pb-2">
+                          <h3 className="font-semibold text-[13.5px] text-[#0F0F0F] truncate group-hover:text-[#00A88C] transition-colors duration-300 leading-snug">
+                            {project.title}
+                          </h3>
+                          <div className="mt-1 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                              <ImageWithFallback
+                                src={project.author.avatar}
+                                alt={project.author.name}
+                                className="size-4 rounded-full ring-1 ring-gray-100 shrink-0 object-cover"
+                              />
+                              <p className="text-[11.5px] text-gray-500 font-medium truncate">{project.author.name}</p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0 text-[11px] text-gray-400 font-medium">
+                              <span className="flex items-center gap-0.5">
+                                <Heart className={`size-3 ${isLiked ? "fill-[#FF5C3A] text-[#FF5C3A]" : ""}`} />
+                                {project.likes}
+                              </span>
+                              <span className="flex items-center gap-0.5">
+                                <MessageCircle className="size-3" />
+                                {project.comments ?? 0}
+                              </span>
                             </div>
                           </div>
                         </div>
-                        {project.badge && (
-                          <span className="absolute top-3 left-3 bg-gradient-to-r from-[#FF5C3A] to-[#FF7A5C] text-white text-[11px] font-bold px-3 py-1 rounded-full shadow-lg shadow-[#FF5C3A]/30">
-                            {project.badge}
-                          </span>
-                        )}
-                      </div>
-                      {/* 하단 정보 */}
-                      <div className="px-4 py-3.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <h3 className="font-semibold text-sm text-[#0F0F0F] truncate group-hover:text-[#00A88C] transition-colors duration-300">{project.title}</h3>
-                            <p className="text-xs text-gray-400 mt-1">{project.author}</p>
-                          </div>
-                          <span className="text-[11px] bg-[#F3F4F6] text-gray-500 px-2.5 py-1 rounded-lg font-medium shrink-0">
-                            {project.category}
-                          </span>
-                        </div>
-                      </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+
+                {/* 무한 스크롤 로딩 상태 */}
+                <div ref={observerRef} className="h-20 flex items-center justify-center mt-10">
+                  {isFetchingMoreFeeds && (
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#00C9A7]"></div>
+                      <p className="text-xs text-gray-400 font-medium">새로운 피드를 불러오는 중...</p>
                     </div>
-                  </motion.div>
-                ))}
-              </div>
+                  )}
+                  {!hasMoreFeeds && filteredProjects.length > 0 && (
+                    <p className="text-sm text-gray-400">모든 피드를 확인했습니다 ✨</p>
+                  )}
+                </div>
+              </>
             ) : (
               <div className="flex flex-col items-center justify-center py-32">
                 <div className="w-24 h-24 rounded-full bg-gray-100 flex items-center justify-center mb-5 animate-pulse">
@@ -738,65 +959,114 @@ export default function Explore() {
           </section>
         )}
 
-        {/* ━━ 프로필 탭 ━━ */}
+        {/* 디자이너 목록 */}
         {activeTab === "profile" && (
           <section className="max-w-[1800px] mx-auto px-5 py-6">
             <div className="mb-5 flex items-center gap-2">
               <Users className="size-4 text-[#00C9A7]" />
-              <span className="text-sm font-semibold text-[#374151]">크리에이터 {filteredProfiles.length}명</span>
-              {searchQuery && <span className="text-sm text-gray-400">— "{searchQuery}"</span>}
+              <span className="text-sm font-semibold text-[#374151]">디자이너 {filteredDesigners.length}명</span>
+              {searchQuery && <span className="text-sm text-gray-400">검색어 "{searchQuery}"</span>}
             </div>
-            {filteredProfiles.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {filteredProfiles.map((profile, index) => (
-                  <motion.div
-                    key={profile.id}
-                    initial={{ opacity: 0, y: 30 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true, margin: "-40px" }}
-                    transition={{ delay: (index % 4) * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-                    className="group pb-2"
-                  >
-                    <Link to={`/profile/${profile.name}`} className="flex h-[156px] bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)] group-hover:border-[#00C9A7]/40 group-hover:shadow-[0_16px_40px_rgba(0,0,0,0.1)] group-hover:-translate-y-1 transition-all duration-500">
-                      {/* 좌측: 배너 */}
-                      <div className="w-32 shrink-0 relative overflow-hidden">
-                        <ImageWithFallback
-                          src={profile.banner}
-                          alt={profile.name}
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent to-black/10" />
-                      </div>
-                      {/* 우측: 정보 */}
-                      <div className="flex-1 p-3.5 flex flex-col justify-between min-w-0">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1.5">
-                            <ImageWithFallback src={profile.avatar} alt={profile.name} className="size-9 rounded-full ring-2 ring-[#00C9A7]/15 shadow-sm shrink-0" />
-                            <div className="min-w-0">
-                              <h3 className="font-bold text-sm text-[#0F0F0F] group-hover:text-[#00A88C] transition-colors truncate leading-tight">{profile.name}</h3>
-                              <p className="text-[11px] text-gray-500 truncate">{profile.role}</p>
-                            </div>
-                          </div>
-                          <span className="inline-block text-[10px] font-semibold bg-[#A8F0E4]/25 text-[#00A88C] px-2 py-0.5 rounded-full mb-1.5">{profile.category}</span>
-                          <p className="text-[11px] text-gray-400 line-clamp-1 leading-relaxed">{profile.bio}</p>
-                        </div>
-                        <div className="flex items-center gap-3 mt-auto pt-2 border-t border-gray-50 text-[10px]">
-                          <span className="text-gray-500"><strong className="text-[#0F0F0F] text-xs">{profile.followers}</strong> 팔로워</span>
-                          <span className="text-gray-500"><strong className="text-[#0F0F0F] text-xs">{profile.works}</strong> 작품</span>
-                          <ArrowRight className="ml-auto size-3 text-gray-300 group-hover:text-[#00A88C] transition-colors" />
-                        </div>
-                      </div>
-                    </Link>
-                  </motion.div>
-                ))}
+            {isDesignersLoading ? (
+              <div className="flex justify-center py-20">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00C9A7]"></div>
               </div>
+            ) : filteredDesigners.length > 0 ? (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+                  {filteredDesigners.map((profile, index) => (
+                    <motion.div
+                      key={profile.userId}
+                      initial={{ opacity: 0, y: 24 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true, margin: "-40px" }}
+                      transition={{ delay: (index % 5) * 0.06, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                      className="group"
+                    >
+                      <Link
+                        to={`/profile/${profile.nickname}`}
+                        className="block bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] group-hover:border-[#00C9A7]/40 group-hover:shadow-[0_18px_40px_rgba(0,0,0,0.1)] group-hover:-translate-y-1 transition-all duration-500"
+                      >
+                        {/* 상단 배너 (16:9) */}
+                        <div className="relative aspect-[16/9] overflow-hidden bg-[#F9FAFB]">
+                          {profile.bannerImage ? (
+                            <>
+                              <ImageWithFallback
+                                src={profile.bannerImage}
+                                alt={profile.nickname}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
+                            </>
+                          ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-gradient-to-br from-gray-50 to-gray-100/50 border-b border-gray-100">
+                              <ImageOff className="size-6 text-gray-300 group-hover:scale-110 transition-transform duration-500" />
+                              <span className="text-[9px] font-bold text-gray-300 uppercase tracking-[0.2em] px-2 text-center leading-tight">
+                                대표 이미지가 없습니다
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 본문 영역 */}
+                        <div className="px-4 pb-4 pt-0 -mt-8 relative">
+                          {/* 프로필 아바타 */}
+                          <ImageWithFallback
+                            src={getUserAvatar(profile.profileImage, profile.userId, profile.nickname)}
+                            alt={profile.nickname}
+                            className="size-16 rounded-full ring-4 ring-white shadow-md object-cover mb-3"
+                          />
+                          <h3 className="font-bold text-[15px] text-[#0F0F0F] group-hover:text-[#00A88C] transition-colors truncate leading-tight">
+                            {profile.nickname}
+                          </h3>
+                          <p className="text-[12px] text-gray-500 mt-0.5 truncate">
+                            {profile.job || "디자이너"}
+                          </p>
+                          <p className="text-[12px] text-gray-400 mt-2 line-clamp-2 leading-relaxed min-h-[34px]">
+                            {profile.introduction || "멋진 작업을 만들어가는 디자이너입니다."}
+                          </p>
+
+                          {/* 메타 정보 */}
+                          <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-[12px]">
+                            <div className="flex items-center gap-3">
+                              <span className="text-gray-500">
+                                <strong className="text-[#0F0F0F] text-[13px] font-bold">{profile.followCount}</strong>{" "}
+                                <span className="text-[11px]">팔로워</span>
+                              </span>
+                              <span className="w-px h-3 bg-gray-200" />
+                              <span className="text-gray-500">
+                                <strong className="text-[#0F0F0F] text-[13px] font-bold">{profile.postCount}</strong>{" "}
+                                <span className="text-[11px]">작품</span>
+                              </span>
+                            </div>
+                            <ArrowRight className="size-3.5 text-gray-300 group-hover:text-[#00A88C] group-hover:translate-x-0.5 transition-all" />
+                          </div>
+                        </div>
+                      </Link>
+                    </motion.div>
+                  ))}
+                </div>
+
+                {/* 무한 스크롤 로딩 상태 (디자이너) */}
+                <div ref={observerRef} className="h-20 flex items-center justify-center mt-10">
+                  {isFetchingMoreDesigners && (
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#00C9A7]"></div>
+                      <p className="text-xs text-gray-400 font-medium">디자이너를 불러오는 중...</p>
+                    </div>
+                  )}
+                  {!hasMoreDesigners && filteredDesigners.length > 0 && (
+                    <p className="text-sm text-gray-400">모든 디자이너를 확인했습니다 ✨</p>
+                  )}
+                </div>
+              </>
             ) : (
               <div className="flex flex-col items-center justify-center py-32">
                 <div className="w-24 h-24 rounded-full bg-gray-100 flex items-center justify-center mb-5 animate-pulse">
                   <UserSearch className="size-12 text-gray-300" />
                 </div>
                 <h3 className="text-lg font-semibold text-gray-700 mb-1">
-                  {searchQuery ? `"${searchQuery}"에 해당하는 크리에이터가 없습니다` : "크리에이터를 찾을 수 없습니다"}
+                  {searchQuery ? `"${searchQuery}"에 해당하는 디자이너가 없습니다` : "디자이너를 찾을 수 없습니다"}
                 </h3>
                 <p className="text-sm text-gray-400 mb-5">다른 이름이나 분야로 검색해보세요.</p>
                 {searchQuery && (
@@ -810,306 +1080,152 @@ export default function Explore() {
         )}
       </div>
 
-      {/* ── 피드 상세 모달 ── */}
-      <AnimatePresence>
-        {selectedProjectForModal && (() => {
-          const authorProfile = creatorProfiles.find(p => p.name === selectedProjectForModal.author) || {
-            name: selectedProjectForModal.author,
-            role: '크리에이터',
-            avatar: `https://i.pravatar.cc/150?u=${selectedProjectForModal.author}`
-          };
 
-          return (
-            <div 
-              className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
-              onClick={() => setSelectedProjectForModal(null)}
-            >
-              <div 
-                className="bg-white rounded-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex h-[90vh]">
-                  {/* Left Side - Image */}
-                  <div className="flex-1 bg-[#0F0F0F] flex items-center justify-center relative">
-                    <ImageWithFallback
-                      src={selectedProjectForModal.imageUrl}
-                      alt={selectedProjectForModal.title}
-                      className="max-w-full max-h-full object-contain"
-                    />
+      {selectedExploreFeed && (
+        <FeedDetailModal
+          selectedFeed={selectedExploreFeed}
+          activeModalImage={
+            (selectedExploreFeed.images ?? [selectedExploreFeed.image])[modalImageIndex] ??
+            selectedExploreFeed.image
+          }
+          selectedFeedImages={selectedExploreFeed.images ?? [selectedExploreFeed.image]}
+          modalImageIndex={modalImageIndex}
+          savedItemIds={savedProjectIds}
+          selectedFeedComments={selectedFeedComments}
+          isFeedDetailLoading={isFeedDetailLoading}
+          feedDetailError={null}
+          commentSubmitError={commentSubmitError}
+          commentLoadError={commentLoadError}
+          isCommentsLoading={isCommentsLoading}
+          editingCommentId={editingCommentId}
+          editingCommentText={editingCommentText}
+          isUpdatingComment={isUpdatingComment}
+          isDeletingCommentId={isDeletingCommentId}
+          commentText={commentText}
+          isSubmittingComment={isSubmittingComment}
+          currentUserAvatar={currentUserAvatar}
+          currentUserName={currentUserName}
+          commentInputRef={commentInputRef}
+          formatFeedDateTime={(value?: string) => {
+            if (!value) return null;
+            const parsedDate = new Date(value);
+            if (Number.isNaN(parsedDate.getTime())) return null;
+            return parsedDate.toLocaleString("ko-KR", {
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+          }}
+          isFeedLiked={() => Boolean(selectedExploreFeed.likedByMe)}
+          getLikeCount={() => selectedExploreFeed.likes}
+          getCommentCount={() => selectedExploreFeed.comments}
+          onClose={() => {
+            setSelectedExploreFeed(null);
+            setCommentFeedItems([]);
+            setModalImageIndex(0);
+          }}
+          onMoveModalCarousel={moveModalCarousel}
+          onSetModalImageIndex={(index, e) => {
+            e.stopPropagation();
+            setModalImageIndex(index);
+          }}
+          onToggleLike={(_, e) => toggleLike(selectedExploreFeed.id, e)}
+          onOpenCollectionModal={(_, e) => openCollectionModal(selectedExploreFeed, e)}
+          onShare={(_, e) => handleShare(selectedExploreFeed, e)}
+          onProposalClick={(_, e) => handleProposalClick(selectedExploreFeed, e)}
+          onStartEditingComment={startEditingComment}
+          onEditingCommentTextChange={setEditingCommentText}
+          onUpdateComment={handleUpdateComment}
+          onCancelEditingComment={cancelEditingComment}
+          onDeleteComment={handleDeleteComment}
+          onCommentTextChange={setCommentText}
+          onCommentKeyDown={handleSearchKeyDown}
+          onSubmitComment={handleSubmitComment}
+        />
+      )}
 
-                    {/* Close Button */}
-                    <button
-                      onClick={() => setSelectedProjectForModal(null)}
-                      className="absolute top-4 left-4 p-2 bg-black/50 hover:bg-black/70 backdrop-blur-md text-white rounded-full transition-all border border-white/20"
-                    >
-                      <X className="size-6" />
-                    </button>
-                  </div>
 
-                  {/* Right Side - Details & Comments */}
-                  <div className="w-[400px] flex flex-col bg-white">
-                    {/* Author Header */}
-                    <div className="p-5 border-b border-gray-200">
-                      <div className="flex items-center justify-between mb-4">
-                        <Link 
-                          to={`/profile/${authorProfile.name}`}
-                          className="flex items-center gap-3 hover:opacity-80 transition-opacity"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <ImageWithFallback
-                            src={authorProfile.avatar}
-                            alt={authorProfile.name}
-                            className="size-12 rounded-full ring-2 ring-[#00C9A7]"
-                          />
-                          <div>
-                            <h4 className="font-bold text-sm">{authorProfile.name}</h4>
-                            <p className="text-xs text-gray-500">{authorProfile.role}</p>
-                          </div>
-                        </Link>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#FFB6A6] bg-[#FF5C3A] px-3.5 text-[0px] font-bold text-white shadow-[0_8px_18px_rgba(255,92,58,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#E94F2F] hover:shadow-[0_10px_22px_rgba(255,92,58,0.28)] focus:outline-none focus:ring-2 focus:ring-[#FFB6A6] focus:ring-offset-2 [&>span]:text-xs"
-                          >
-                            <Send className="size-3.5" />
-                            <span>프로젝트 제안</span>
-                            제안하기
-                          </button>
-                          <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                            <MoreVertical className="size-5 text-gray-600" />
-                          </button>
-                        </div>
-                      </div>
 
-                      {/* Title & Description */}
-                      <h2 className="font-bold text-xl mb-2">{selectedProjectForModal.title}</h2>
-                      <p className="text-sm text-gray-600 mb-3">{authorProfile.name}님의 유니크한 {selectedProjectForModal.category} 포트폴리오 프로젝트입니다.</p>
-
-                      {/* Tags */}
-                      {selectedProjectForModal.category && (
-                        <div className="mb-3">
-                          <span className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-1.5 text-xs font-bold text-[#B13A21]">
-                            {selectedProjectForModal.category}
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex flex-wrap gap-2">
-                        {selectedProjectForModal.tags?.map((tag: string, index: number) => (
-                          <span
-                            key={index}
-                            className="px-3 py-1 bg-[#A8F0E4]/30 backdrop-blur-sm text-[#00A88C] rounded-full text-xs font-medium hover:bg-[#00C9A7]/90 hover:backdrop-blur-md hover:text-white cursor-pointer transition-all border border-[#00C9A7]/20"
-                          >
-                            {tag.startsWith("#") ? tag : `#${tag}`}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Actions Bar */}
-                    <div className="p-4 border-b border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                          <button
-                            type="button"
-                            className={`flex items-center gap-2 transition-colors text-gray-600 hover:text-[#FF5C3A]`}
-                          >
-                            <Heart className="size-6" />
-                            <span className="font-semibold">{selectedProjectForModal.likes}</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="flex items-center gap-2 text-gray-600 hover:text-[#00C9A7] transition-colors"
-                          >
-                            <MessageCircle className="size-6" />
-                            <span className="font-semibold">24</span>
-                          </button>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            className="p-2 hover:bg-[#A8F0E4]/20 rounded-lg text-gray-600 hover:text-[#00A88C] transition-colors"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCollectionModalProject(selectedProjectForModal);
-                              setSelectedProjectForModal(null);
-                            }}
-                          >
-                            <Bookmark className="size-5" />
-                          </button>
-                          <button
-                            className="p-2 hover:bg-[#A8F0E4]/20 rounded-lg text-gray-600 hover:text-[#00A88C] transition-colors"
-                          >
-                            <Share2 className="size-5" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Comments Section */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                      <div className="flex gap-3">
-                        <ImageWithFallback
-                          src="https://i.pravatar.cc/150?img=33"
-                          alt="Commenter"
-                          className="size-10 rounded-full ring-2 ring-[#A8F0E4]/30 flex-shrink-0"
-                        />
-                        <div className="flex-1">
-                          <div className="bg-[#F7F7F5] rounded-lg p-3">
-                            <div className="flex items-center justify-between mb-1">
-                              <h5 className="font-semibold text-sm">김지호</h5>
-                              <span className="text-[10px] text-gray-500">2시간 전</span>
-                            </div>
-                            <p className="text-xs text-gray-500 mb-2">프론트엔드 개발자</p>
-                            <p className="text-sm text-gray-800">정말 놀라운 작업물이네요! 컬러 조합이 환상적입니다.</p>
-                          </div>
-                          <button
-                            type="button"
-                            className="text-xs mt-1 ml-3 transition-colors text-gray-500 hover:text-[#00C9A7]"
-                          >
-                            좋아요 5개
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Comment Input */}
-                    <div className="p-4 border-t border-gray-200">
-                      <div className="flex items-center gap-3">
-                        <ImageWithFallback
-                          src="https://i.pravatar.cc/150?img=20"
-                          alt="My Avatar"
-                          className="size-10 rounded-full ring-2 ring-[#00C9A7]"
-                        />
-                        <div className="flex-1 relative">
-                          <input
-                            type="text"
-                            placeholder="댓글을 입력하세요..."
-                            className="w-full px-4 py-3 pr-12 bg-[#F7F7F5] rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7] transition-all"
-                          />
-                          <button 
-                            type="button"
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-gradient-to-r from-[#00C9A7]/90 to-[#00A88C]/90 backdrop-blur-md text-white rounded-full hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-white/30"
-                          >
-                            <Send className="size-4" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-      </AnimatePresence>
-
-      {/* Floating Add */}
-      <motion.div whileHover={{ scale: 1.1, rotate: 45 }} whileTap={{ scale: 0.9 }} className="fixed bottom-8 right-8 z-50">
-        <Link to="/projects/new" className="bg-gradient-to-br from-[#00C9A7] to-[#00A88C] text-white size-14 rounded-full shadow-xl flex items-center justify-center ring-4 ring-white">
-          <Plus className="size-6" />
-        </Link>
-      </motion.div>
-
-      <Footer />
-
-      {/* ━━ 컬렉션 저장 모달 ━━ */}
+      {/* 컬렉션 저장 모달 */}
       <AnimatePresence>
         {collectionModalProject && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black/55 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
-            onClick={() => setCollectionModalProject(null)}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+            onClick={() => closeCollectionModal()}
           >
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-              className="bg-white rounded-2xl w-full max-w-md shadow-2xl border border-white/40 overflow-hidden"
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* 헤더 */}
-              <div className="p-5 border-b border-gray-100 flex items-start justify-between gap-4">
+              <div className="p-5 border-b border-gray-100 flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-[#00A88C] mb-1">컬렉션 저장</p>
-                  <h3 className="font-bold text-xl text-[#0F0F0F]">어디에 저장할까요?</h3>
-                  <p className="text-sm text-gray-500 mt-1 line-clamp-1">{collectionModalProject.title}</p>
+                  <h3 className="font-bold text-lg text-[#0F0F0F]">컬렉션에 저장</h3>
+                  <p className="text-xs text-gray-500 mt-0.5 truncate max-w-[280px]">{collectionModalProject.title}</p>
                 </div>
-                <button
-                  onClick={() => setCollectionModalProject(null)}
-                  className="size-9 rounded-lg hover:bg-gray-100 flex items-center justify-center text-gray-500 hover:text-[#0F0F0F] transition-colors"
-                >
-                  <X className="size-5" />
+                <button onClick={() => closeCollectionModal()} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                  <X className="size-5 text-gray-400" />
                 </button>
               </div>
 
-              {/* 컬렉션 목록 */}
-              <div className="p-5 space-y-4">
-                <div className="space-y-2 max-h-[240px] overflow-y-auto">
-                  {collections.map((col) => {
-                    const isSaved = col.itemIds.includes(collectionModalProject.id);
-                    return (
-                      <button
-                        key={col.id}
-                        onClick={() => saveToCollection(col.id)}
-                        className={`w-full p-3 rounded-xl border flex items-center justify-between gap-3 text-left transition-all ${
-                          isSaved
-                            ? "bg-[#E7FAF6] border-[#00C9A7] text-[#007D69]"
-                            : "bg-white border-gray-200 hover:border-[#00C9A7] hover:bg-[#F2FFFC]"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className={`size-11 rounded-lg flex items-center justify-center shrink-0 ${
-                            isSaved ? "bg-[#00C9A7] text-white" : "bg-[#F7F7F5] text-[#00A88C]"
-                          }`}>
-                            {isSaved ? <Check className="size-5" /> : <Bookmark className="size-5" />}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-semibold text-sm truncate">{col.name}</p>
-                            <p className="text-xs text-gray-500">{col.itemIds.length}개 저장됨</p>
-                          </div>
-                        </div>
-                        {isSaved && <span className="text-xs font-bold text-[#00A88C] shrink-0">저장됨</span>}
-                      </button>
-                    );
-                  })}
-                </div>
+              <div className="p-5 space-y-2 max-h-[400px] overflow-y-auto">
+                {collections.map((col) => {
+                  const isSaved = (collectionPostIdsByFolder[col.folderId] ?? []).includes(collectionModalProject?.id ?? -1);
 
-                {/* 새 컬렉션 만들기 */}
-                <form
-                  onSubmit={(e) => { e.preventDefault(); createCollectionAndSave(); }}
-                  className="pt-4 border-t border-gray-100"
-                >
-                  <label className="text-sm font-bold text-[#0F0F0F] mb-2 block">새 컬렉션 만들기</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newCollectionName}
-                      onChange={(e) => setNewCollectionName(e.target.value)}
-                      placeholder="예: 메인페이지 레퍼런스"
-                      className="flex-1 px-3 py-2.5 rounded-lg bg-[#F7F7F5] border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7] focus:border-transparent"
-                    />
+                  return (
                     <button
-                      type="submit"
-                      disabled={!newCollectionName.trim()}
-                      className="px-4 py-2.5 rounded-lg bg-[#0F0F0F] text-white text-sm font-semibold hover:bg-[#00A88C] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                      key={col.folderId}
+                      onClick={() => saveToCollection(col.folderId)}
+                      className={`w-full p-3 rounded-lg border flex items-center justify-between gap-3 text-left transition-all ${
+                        isSaved ? "bg-[#F5FFFB] border-[#00C9A7] text-[#007E68]" : "bg-white border-gray-200 hover:border-[#00C9A7] hover:bg-[#F5FFFB]"
+                      }`}
                     >
-                      <FolderPlus className="size-4" />
-                      만들기
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`size-11 rounded-lg flex items-center justify-center shrink-0 ${isSaved ? "bg-[#00C9A7] text-white" : "bg-[#F7F7F5] text-[#00A88C]"}`}>
+                          {isSaved ? <Check className="size-5" /> : <Bookmark className="size-5" />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm truncate">{col.folderName}</p>
+                          <p className="text-xs text-gray-500">{col.itemCount}개 저장됨</p>
+                        </div>
+                      </div>
+                      {isSaved && <span className="text-xs font-bold text-[#00A88C] shrink-0">저장됨</span>}
                     </button>
-                  </div>
-                </form>
+                  );
+                })}
+              </div>
 
-                {/* 저장 완료 알림 */}
-                {collectionNotice && (
-                  <motion.p
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="px-3 py-2 rounded-lg bg-[#E7FAF6] text-[#007D69] text-sm font-semibold"
+              <div className="p-5 border-t border-gray-100">
+                <label className="text-sm font-bold text-[#0F0F0F] mb-2 block">새 컬렉션 만들기</label>
+                <form 
+                  onSubmit={(e) => { e.preventDefault(); createCollectionAndSave(); }}
+                  className="flex gap-2"
+                >
+                  <input
+                    type="text"
+                    value={newCollectionName}
+                    onChange={(e) => setNewCollectionName(e.target.value)}
+                    placeholder="예) 메인 페이지 레퍼런스"
+                    className="flex-1 px-3 py-2.5 rounded-lg bg-[#F7F7F5] border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7]"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newCollectionName.trim()}
+                    className="px-4 py-2.5 bg-[#0F0F0F] text-white rounded-lg text-sm font-bold hover:bg-[#00A88C] disabled:opacity-30 transition-all flex items-center gap-2"
                   >
+                    <FolderPlus className="size-4" />
+                    만들기
+                  </button>
+                </form>
+                {collectionNotice && (
+                  <motion.p initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="text-center text-sm font-semibold text-[#00C9A7] mt-4 bg-[#E7FAF6] py-2 rounded-lg">
                     {collectionNotice}
                   </motion.p>
                 )}
@@ -1118,6 +1234,7 @@ export default function Explore() {
           </motion.div>
         )}
       </AnimatePresence>
+      <Footer />
     </div>
   );
 }

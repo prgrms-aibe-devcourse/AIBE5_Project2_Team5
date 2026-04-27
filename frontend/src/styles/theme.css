@@ -11,6 +11,18 @@
   --brand-black: #0F0F0F;
   --brand-charcoal: #1C1C1C;
   --brand-off-white: #F7F7F5;
+  --brand-landing-bg: #FBF9F6;
+  --brand-landing-surface: #F5F0EB;
+  --brand-landing-soft: #FAF8F5;
+  --brand-landing-border: rgba(45, 42, 38, 0.08);
+  --brand-landing-text: #2D2A26;
+  --brand-landing-text-sub: #7A746D;
+  --brand-landing-hero-overlay: rgba(251, 249, 246, 0.3);
+  --brand-landing-night-bg: #0C1222;
+  --brand-landing-night-text: #F0EDE8;
+  --brand-landing-night-overlay: rgba(12, 18, 34, 0.35);
+  --brand-landing-glow-mint: rgba(0, 201, 167, 0.4);
+  --brand-landing-glow-coral: rgba(255, 92, 58, 0.35);
   
   --background: #ffffff;
   --foreground: #0F0F0F;

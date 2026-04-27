@@ -1,11 +1,21 @@
 HELP.md
-.gradle
+.gradle/
+.gradle-user-home/
 build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
 !**/frontend/node_modules/
-node_modules/
+
+### FrontEnd ###
+frontend/node_modules/
+dist/
+.vite/
+
+*.localjav
+.env./gradlew bootRun.local
+.env.*.local
+
 
 ### STS ###
 .apt_generated
@@ -43,8 +53,9 @@ node_modules/
 .pnpm-store/
 dist/
 out/
-.env
+/.env
 *.local
+*.log
 .DS_Store
 Thumbs.db
 
@@ -54,3 +65,8 @@ Thumbs.db
 ### Root-level accidental npm files ###
 /package.json
 /package-lock.json
+
+/api/
+/api_temp/
+
+CLAUDE.md

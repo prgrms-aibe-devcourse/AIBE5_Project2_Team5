@@ -9,13 +9,13 @@
 그러나 적합한 디자이너를 찾거나, 디자이너가 자신의 역량을 효과적으로 알리는 데에는 여전히 많은 어려움이 존재한다.
 
 이에 본 플랫폼은 디자이너와 의뢰인의 간극을 메우는 것을 목표로 삼았다.<br>
-**디자이너는 자신의 포트폴리오, 경력, 전문 분야를 등록하여 자신의 역량을 홍보할 수 있으며,**  
+**디자이너는 자신의 포트폴리오, 경력, 전문 분야를 등록하여 자신의 역량을 홍보할 수 있으며,**
 **의뢰인은 프로젝트 요구사항에 맞는 디자이너를 검색하거나 직접 의뢰를 요청할 수 있다.**
 
-또한, 실시간 메시지 기능을 통해 원활한 커뮤니케이션을 지원하고, 프로젝트 진행 상태를 관리할 수 있는 기능을 제공하여 협업의 효율성을 높인다.  
+또한, 실시간 메시지 기능을 통해 원활한 커뮤니케이션을 지원하고, 프로젝트 진행 상태를 관리할 수 있는 기능을 제공하여 협업의 효율성을 높인다.
 나아가, 사용자 간의 평가 및 리뷰 시스템을 도입하여 신뢰 기반의 생태계를 구축하고자 한다.
 
-본 시스템은 사용자 친화적인 UI/UX와 안정적인 백엔드 구조를 기반으로, 프리랜서 디자이너 시장의 접근성을 높이고,   
+본 시스템은 사용자 친화적인 UI/UX와 안정적인 백엔드 구조를 기반으로, 프리랜서 디자이너 시장의 접근성을 높이고,
 양측 모두에게 실질적인 가치를 제공하는 것을 목표로 한다.
 
 ## 📌 프로젝트 기획서
@@ -27,41 +27,46 @@
 
 ## 🛠 기술 스택
 
-| **프론트엔드**  | **백엔드**         | **DataBase**       | **Build Tool** |
-|------------|-----------------|--------------------|----------------|
-| TypeScript | Java 21         | Oracle DataBase    | Gradle         |
-| React      | Spring Boot     | H2 DataBase (테스트용) |                |
-| Tailwind   | Spring Data JPA |                    |                |
-| CSS        | Spring Security |                    |                |
-| figma      |                 |                    |                |
+| **구분** | **기술** |
+|---|---|
+| **Frontend** | React, TypeScript, Vite, Tailwind CSS, CSS, React Router |
+| **UI / UX** | Radix UI, Lucide React, MUI, Figma |
+| **Backend** | Java 21, Spring Boot, Spring Data JPA, Spring Security, Spring Validation, Spring WebSocket |
+| **Auth** | JWT, OAuth2, Google Login, Kakao Login |
+| **AI** | Google Gemini API, RAG (Retrieval-Augmented Generation) |
+| **Database** | Oracle Database, H2 Database (테스트용) |
+| **Storage** | Cloudflare R2 |
+| **Infra / SDK** | AWS SDK S3 (Cloudflare R2 연동) |
+| **Build Tool** | Gradle |
+| **Test** | JUnit 5, Spring Boot Test, Spring Security Test |
+| **Collaboration** | Figma, Notion |
 
 #### ♣️ Backend
-
 - Java 21
 - Spring Boot
 - Spring Data JPA
 - Spring Security
+- Spring Validation
+- Spring WebSocket
 
 #### ♠️ DataBase
 
 - Oracle Database
 - H2 Database (테스트용)
 
-#### ♥️ Build Tool
+## ✨ 주요 기능 (Key Features)
 
-- Gradle
+### 1. 피드형 포트폴리오 (Feed-style Portfolio)
+- **가변형 그리드 레이아웃:** `react-responsive-masonry`를 활용하여 디자인 결과물을 핀터레스트 스타일로 시각화.
+- **최적화된 렌더링:** `Skeleton UI`와 `Image Fallback` 로직을 통해 안정적인 이미지 로딩 경험 제공.
 
-#### ♦️️ Frontend
-- TypeScript
-- React
-- CSS
-- Tailwind
-- Figma
+### 2. 폴더형 컬렉션 (Collections)
+- **아카이빙 시스템:** 마음에 드는 디자인을 개인화된 폴더별로 저장하고 관리하는 기능.
+- **실시간 UI 동기화:** 커스텀 훅을 통해 앱 전역에서 저장 상태를 즉각적으로 반영.
 
-#### 🧩 기타
-- Lombok (코드 간결화)
-- DevTools (개발 편의성 향상)
-- Validation (데이터 검증)
+### 3. 프로젝트 매칭 (Project Matching)
+- **정교한 카테고리 필터링:** 디자인 세부 분야별 매칭 알고리즘을 통해 최적의 파트너 연결.
+- **위치 및 도구 기반 검색:** 디자이너의 활동 지역 및 보유 기술 스택을 기반으로 한 정밀 검색 지원.
 
 ## 👥 팀원 소개
 
@@ -72,45 +77,48 @@
 | 정재운 | 팀원 |       |
 | 김재준 | 팀원 |       |
 
-## ✨ 주요 기능
+## 📂 디렉토리 구조 (Directory Structure)
 
-### 1️⃣ 개인화된 메인 피드
-- 사용자는 디자이너들의 포트폴리오를 피드 방식으로 볼 수 있다
-- 유저의 팔로우 목록을 기반으로 선호하는 디자이너의 최신 게시물을 우선적으로 노출하는 로직 구현
-
-### 2️⃣ 카테고리 기반 탐색
-- 그래픽 디자인, 포토그래피, 일러스트레이션, 3D Art 등 카테고리별 디자인을 실시간으로 탐색 가능
-
-### 3️⃣ 폴더형 컬렉션 시스템
-- 사용자가 직접 폴더를 생성하고 관심 있는 포스트를 분류하여 저장할 수 있는 아카이빙 기능
-
-### 4️⃣ 실시간 채팅방
-- 고객과 디자이너는 실시간으로 대화방에서 연락하며 협업할 수 있는 커뮤니케이션 가능
-
-### 5️⃣ 디자인 공고 및 의뢰
-- 클라이언트가 구인 공고(projects/new)를 올리고 디자이너가 이를 지원하는 프로젝트 매칭 시스템
-
-
-## 📂 디렉토리 구조
-```Markdown
-pixel_project2/
-├─ config/                  
-│      
-├─ common/
-│ ├─ enums/                 
-│
-├─ controller/               
-│
-├─ service/                 
-│ └─ impl/                 
-│
-├─ Entity/                   
-│
-└─ DTO/                      
-│
-└─ Repository/
+```markdown
+Pickxel/
+├── frontend/                # Vite + React 기반 프론트엔드
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── api/         # Axios 기반 API 통신 모듈
+│   │   │   ├── components/  # 공통 컴포넌트 및 Shadcn UI
+│   │   │   ├── hooks/       # 비즈니스 로직 분리 (Custom Hooks)
+│   │   │   ├── pages/       # 서비스 주요 화면
+│   │   │   └── types/       # TypeScript 타입 정의
+├── src/main/                # Spring Boot 기반 백엔드
+│   ├── java/com/example/    # Java 소스 코드
+│   └── resources/
+│       ├── db/              # Oracle DB 스키마 및 초기화 SQL
+│       └── application.yml  # 서버 설정 파일
+└── README.md
 ```
 
+---
+
+## 💡 트러블 슈팅 (Troubleshooting)
+#### 1. WebSocket 연결 안정성 확보
+- [문제]
+  - 페이지 이동 시 소켓 연결이 빈번하게 끊기는 현상.
+- [해결]
+  - WebSocket 연결을 전역 Context로 관리하고, 자동 재연결 로직을 적용하여 안정성을 개선했습니다.
+
+#### 2. 소셜 로그인 유저 데이터 통합
+- [문제]
+  - 로그인 제공자별 식별 체계 차이로 인한 DB 저장 충돌.
+- [해결]
+  - 유저 테이블에 제공자 정보를 추가하여 식별자 구조를 유연하게 설계하고 데이터를 통합했습니다.
+
+#### 3. 대용량 이미지 렌더링 최적화
+- [문제]
+  - 고해상도 이미지가 포함된 피드 로딩 시 성능 저하 발생.
+- [해결]
+  - Lazy Loading 기법과 스켈레톤 UI를 도입하여 초기 로딩 속도와 사용자 체감 성능을 개선했습니다.
+
+---
 
 ## 🤝 Team Convention
 
@@ -171,7 +179,7 @@ t1 ~ t7   (작업 브랜치)
 
 #### 📌 Pull Request(PR) 정책
 
-본 프로젝트는 안정적인 코드 통합과 배포를 위해  
+본 프로젝트는 안정적인 코드 통합과 배포를 위해
 Pull Request 기반 협업 방식을 사용합니다.
 
 ##### **main 브랜치**
@@ -206,7 +214,7 @@ Pull Request 기반 협업 방식을 사용합니다.
     - 팀장 승인 필수
     - 오류가 존재하는 코드 merge 금지
 
---- 
+---
 
 ### 🔹 트러블 슈팅 & 해결 방식
 

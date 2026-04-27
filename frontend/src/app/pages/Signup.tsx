@@ -1,9 +1,11 @@
 import { ArrowRight, Building2, CheckCircle, Lock, Mail, Palette, User, X } from "lucide-react";
-import { Link, Navigate, useNavigate } from "react-router";
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
-import { isAuthenticated, setAuthenticated, setCurrentUser, type UserRole } from "../utils/auth";
+import kakaoTalkLogo from "../assets/kakao-talk-logo.png";
+import { checkNicknameAvailabilityApi, getGoogleOAuthUrl, getKakaoOAuthUrl, signupApi } from "../api/authApi";
+import { clearAuthenticated, isAuthenticated, type UserRole } from "../utils/auth";
 
 const showcaseItems = [
   {
@@ -33,6 +35,35 @@ const stepVariants = {
   exit: { opacity: 0, y: -10, height: 0 },
 };
 
+const NAME_MIN_LENGTH = 2;
+const NAME_MAX_LENGTH = 30;
+const EMAIL_MAX_LENGTH = 30;
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 20;
+
+type SignupErrors = {
+  name?: string;
+  nickname?: string;
+  email?: string;
+  role?: string;
+  password?: string;
+  confirmPassword?: string;
+  terms?: string;
+  form?: string;
+};
+
+type SignupLocationState = {
+  message?: string;
+};
+
+const isPasswordInRange = (password: string) =>
+  password.length >= PASSWORD_MIN_LENGTH && password.length <= PASSWORD_MAX_LENGTH;
+const isNameInRange = (name: string) => {
+  const length = name.trim().length;
+  return length >= NAME_MIN_LENGTH && length <= NAME_MAX_LENGTH;
+};
+const isEmailValid = (email: string) => /^\S+@\S+$/.test(email.trim());
+
 function Logo({ className = "" }: { className?: string }) {
   return (
     <Link to="/" className={`flex items-center gap-2 ${className}`}>
@@ -51,10 +82,28 @@ function Logo({ className = "" }: { className?: string }) {
 
 export default function Signup() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const openedSocialSignupRef = useRef(false);
+  const locationState = location.state as SignupLocationState | null;
+  const socialSignupPrompt = typeof locationState?.message === "string" ? locationState.message : "";
   const [activeShowcaseIndex, setActiveShowcaseIndex] = useState(0);
   const [pendingSocialProvider, setPendingSocialProvider] = useState<"Google" | "카카오" | null>(null);
+  const [socialName, setSocialName] = useState("");
+  const [socialNickname, setSocialNickname] = useState("");
+  const [socialEmail, setSocialEmail] = useState("");
+  const [socialSignupError, setSocialSignupError] = useState("");
+  const [socialNicknameCheckMessage, setSocialNicknameCheckMessage] = useState("");
+  const [checkedSocialNickname, setCheckedSocialNickname] = useState("");
+  const [isCheckingSocialNickname, setIsCheckingSocialNickname] = useState(false);
+  const [isSignupCompleteOpen, setIsSignupCompleteOpen] = useState(false);
+  const [completedSignupEmail, setCompletedSignupEmail] = useState("");
+  const [signupErrors, setSignupErrors] = useState<SignupErrors>({});
+  const [isPasswordConfirmed, setIsPasswordConfirmed] = useState(false);
+  const [agreedTerms, setAgreedTerms] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
+    nickname: "",
     email: "",
     password: "",
     confirmPassword: "",
@@ -69,67 +118,284 @@ export default function Signup() {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    if (openedSocialSignupRef.current) {
+      return;
+    }
+    if (searchParams.get("social") !== "kakao" || searchParams.get("mode") !== "signup") {
+      return;
+    }
+
+    openedSocialSignupRef.current = true;
+    setSignupErrors({});
+    setSocialName(formData.name.trim());
+    setSocialNickname(formData.nickname.trim());
+    setSocialEmail(formData.email.trim());
+    setSocialSignupError("");
+    setSocialNicknameCheckMessage("");
+    setCheckedSocialNickname("");
+    setPendingSocialProvider("카카오");
+  }, [formData.email, formData.name, formData.nickname, searchParams]);
+
   if (isAuthenticated()) {
     return <Navigate to="/feed" replace />;
   }
 
-  const handleSignup = (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (formData.password !== formData.confirmPassword) {
-      alert("비밀번호가 일치하지 않습니다.");
-      return;
+
+    const nextErrors: SignupErrors = {};
+    if (!formData.name.trim()) {
+      nextErrors.name = "이름을 입력해주세요.";
+    } else if (!isNameInRange(formData.name)) {
+      nextErrors.name = "이름은 2자 이상 30자 이하로 입력해주세요.";
+    }
+    if (!formData.nickname.trim()) {
+      nextErrors.nickname = "닉네임을 입력해주세요.";
+    }
+    if (!formData.email.trim()) {
+      nextErrors.email = "이메일을 입력해주세요.";
+    } else if (!isEmailValid(formData.email)) {
+      nextErrors.email = "이메일에는 @를 포함해서 입력해주세요.";
     }
     if (!formData.role) {
-      alert("역할을 선택해주세요.");
+      nextErrors.role = "역할을 선택해주세요.";
+    }
+    if (!formData.password) {
+      nextErrors.password = "비밀번호를 입력해주세요.";
+    } else if (!isPasswordInRange(formData.password)) {
+      nextErrors.password = "비밀번호는 8자 이상 20자 이하로 입력해주세요.";
+    }
+    if (!formData.confirmPassword) {
+      nextErrors.confirmPassword = "비밀번호를 한 번 더 입력해주세요.";
+    } else if (formData.password !== formData.confirmPassword) {
+      nextErrors.confirmPassword = "비밀번호가 일치하지 않습니다.";
+    } else if (!isPasswordConfirmed) {
+      nextErrors.confirmPassword = "비밀번호 확인 버튼을 눌러주세요.";
+    }
+    if (!agreedTerms) {
+      nextErrors.terms = "이용약관과 개인정보처리방침에 동의해주세요.";
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setSignupErrors(nextErrors);
       return;
     }
 
     const selectedRole = formData.role as UserRole;
-    setCurrentUser({
-      name: formData.name.trim(),
-      email: formData.email.trim(),
-      role: selectedRole,
-    });
-    setAuthenticated(true);
-    navigate("/feed", { replace: true });
+    try {
+      await signupApi({
+        loginId: formData.email.trim(),
+        password: formData.password,
+        name: formData.name.trim(),
+        nickname: formData.nickname.trim(),
+        role: selectedRole.toUpperCase() as "CLIENT" | "DESIGNER",
+      });
+
+      clearAuthenticated();
+      setCompletedSignupEmail(formData.email.trim());
+      setIsSignupCompleteOpen(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "회원가입에 실패했습니다.";
+      const apiErrors: SignupErrors = {};
+      if (message.includes("아이디") || message.includes("이메일")) {
+        apiErrors.email = message;
+      } else if (message.includes("닉네임")) {
+        apiErrors.nickname = message;
+      } else if (message.includes("비밀번호")) {
+        apiErrors.password = message;
+      } else {
+        apiErrors.form = message;
+      }
+      setSignupErrors(apiErrors);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
+    const fieldName = e.target.name as keyof typeof formData;
+    setFormData((current) => ({
+      ...current,
+      [fieldName]: e.target.value,
+    }));
+    setSignupErrors((errors) => ({ ...errors, [fieldName]: undefined, form: undefined }));
+
+    if (fieldName === "password" || fieldName === "confirmPassword") {
+      setIsPasswordConfirmed(false);
+    }
+  };
+
+  const handleRoleChange = (role: string) => {
+    setFormData((current) => ({ ...current, role }));
+    setSignupErrors((errors) => ({ ...errors, role: undefined, form: undefined }));
+  };
+
+  const goToLoginAfterSignup = () => {
+    navigate("/login", {
+      replace: true,
+      state: {
+        message: "회원가입이 완료되었습니다. 로그인해주세요.",
+      },
     });
+  };
+
+  const handleTermsChange = (checked: boolean) => {
+    setAgreedTerms(checked);
+    setSignupErrors((errors) => ({ ...errors, terms: undefined, form: undefined }));
+  };
+
+  const handleConfirmPassword = () => {
+    if (!formData.confirmPassword) {
+      setIsPasswordConfirmed(false);
+      setSignupErrors((errors) => ({
+        ...errors,
+        confirmPassword: "비밀번호를 한 번 더 입력해주세요.",
+        form: undefined,
+      }));
+      return;
+    }
+
+    if (!isPasswordInRange(formData.password)) {
+      setIsPasswordConfirmed(false);
+      setSignupErrors((errors) => ({
+        ...errors,
+        password: "비밀번호는 8자 이상 20자 이하로 입력해주세요.",
+        confirmPassword: "먼저 비밀번호 규칙을 확인해주세요.",
+        form: undefined,
+      }));
+      return;
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      setIsPasswordConfirmed(false);
+      setSignupErrors((errors) => ({
+        ...errors,
+        confirmPassword: "비밀번호가 일치하지 않습니다.",
+        form: undefined,
+      }));
+      return;
+    }
+
+    setIsPasswordConfirmed(true);
+    setSignupErrors((errors) => ({ ...errors, confirmPassword: undefined, form: undefined }));
   };
 
   const startSocialSignup = (provider: "Google" | "카카오") => {
+    setSignupErrors({});
+    setSocialName(formData.name.trim());
+    setSocialNickname(formData.nickname.trim());
+    setSocialEmail(formData.email.trim());
+    setSocialSignupError("");
+    setSocialNicknameCheckMessage("");
+    setCheckedSocialNickname("");
     setPendingSocialProvider(provider);
   };
 
+  const handleCheckSocialNickname = async () => {
+    const nickname = socialNickname.trim();
+    setSocialSignupError("");
+    setSocialNicknameCheckMessage("");
+    setCheckedSocialNickname("");
+
+    if (!nickname) {
+      setSocialSignupError("닉네임을 입력해주세요.");
+      return;
+    }
+    if (nickname.length > 10) {
+      setSocialSignupError("닉네임은 10자 이하로 입력해주세요.");
+      return;
+    }
+
+    try {
+      setIsCheckingSocialNickname(true);
+      const result = await checkNicknameAvailabilityApi(nickname);
+      if (!result.available) {
+        setSocialSignupError("이미 사용 중인 닉네임입니다.");
+        return;
+      }
+
+      setCheckedSocialNickname(result.nickname);
+      setSocialNicknameCheckMessage("사용 가능한 닉네임입니다.");
+    } catch (error) {
+      setSocialSignupError(error instanceof Error ? error.message : "닉네임 중복 확인에 실패했습니다.");
+    } finally {
+      setIsCheckingSocialNickname(false);
+    }
+  };
+
   const completeSocialSignup = (role: UserRole) => {
-    setCurrentUser({
-      name: role === "designer" ? "소셜 디자이너" : "소셜 클라이언트",
-      email: `${pendingSocialProvider === "Google" ? "google" : "kakao"}@pickxel.local`,
-      role,
+    if (!pendingSocialProvider) {
+      return;
+    }
+
+    const nickname = socialNickname.trim();
+    const name = socialName.trim();
+    if (!name) {
+      setSocialSignupError("이름을 입력해주세요.");
+      return;
+    }
+    if (!isNameInRange(name)) {
+      setSocialSignupError("이름은 2자 이상 30자 이하로 입력해주세요.");
+      return;
+    }
+    if (!nickname) {
+      setSocialSignupError("닉네임을 입력해주세요.");
+      return;
+    }
+    if (nickname.length > 10) {
+      setSocialSignupError("닉네임은 10자 이하로 입력해주세요.");
+      return;
+    }
+    if (checkedSocialNickname !== nickname) {
+      setSocialSignupError("닉네임 중복 확인을 먼저 해주세요.");
+      return;
+    }
+
+    const email = socialEmail.trim();
+    if (pendingSocialProvider === "카카오") {
+      if (!email) {
+        setSocialSignupError("카카오 회원가입에 사용할 이메일을 입력해주세요.");
+        return;
+      }
+      if (email.length > EMAIL_MAX_LENGTH) {
+        setSocialSignupError("이메일은 30자 이하로 입력해주세요.");
+        return;
+      }
+      if (!isEmailValid(email)) {
+        setSocialSignupError("이메일에 @를 포함해서 입력해주세요.");
+        return;
+      }
+    }
+
+    const oauthUrl = pendingSocialProvider === "카카오" ? getKakaoOAuthUrl : getGoogleOAuthUrl;
+    window.location.href = oauthUrl({
+      mode: "signup",
+      role: role.toUpperCase() as "CLIENT" | "DESIGNER",
+      name,
+      nickname,
+      email: pendingSocialProvider === "카카오" ? email : undefined,
+      redirectTo: "/feed",
     });
-    setAuthenticated(true);
-    navigate("/feed", { replace: true });
   };
 
   const hasName = formData.name.trim().length > 0;
+  const hasNickname = formData.nickname.trim().length > 0;
   const hasEmail = formData.email.trim().length > 0;
   const hasRole = formData.role !== "";
   const hasPassword = formData.password.length > 0;
   const hasConfirmPassword = formData.confirmPassword.length > 0;
+  const isNameLengthValid = isNameInRange(formData.name);
+  const isPasswordLengthValid = isPasswordInRange(formData.password);
   const activeStep =
     1 +
     Number(hasName) +
+    Number(hasNickname) +
     Number(hasEmail) +
     Number(hasRole) +
     Number(hasPassword);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#F7F7F5] text-[#0F0F0F]">
-      <div className="absolute inset-0 opacity-70 [background-image:linear-gradient(90deg,rgba(15,15,15,0.04)_1px,transparent_1px),linear-gradient(rgba(15,15,15,0.04)_1px,transparent_1px)] [background-size:44px_44px]" />
+    <div className="relative min-h-screen overflow-hidden bg-[var(--brand-landing-bg)] text-[#0F0F0F]">
+      <div className="absolute inset-0 opacity-60 [background-image:linear-gradient(90deg,rgba(15,15,15,0.03)_1px,transparent_1px),linear-gradient(rgba(15,15,15,0.03)_1px,transparent_1px)] [background-size:44px_44px]" />
       <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#FF5C3A,#00C9A7,#FF5C3A)]" />
 
       {floatingPixels.map((pixel, index) => (
@@ -147,20 +413,20 @@ export default function Signup() {
         />
       ))}
 
-      <main className="relative mx-auto grid min-h-screen max-w-[1180px] grid-cols-1 items-center gap-10 px-6 py-10 lg:grid-cols-[0.95fr_1.05fr]">
+      <main className="relative mx-auto grid min-h-screen max-w-[1420px] grid-cols-1 items-center gap-8 px-4 py-6 sm:px-6 lg:grid-cols-[1.02fr_0.98fr]">
         <section className="hidden lg:block">
-          <Logo className="mb-8" />
+          <Logo className="mb-6" />
 
           <motion.div
             initial={{ opacity: 0, x: -36 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.7, ease: "easeOut" }}
-            className="relative h-[650px] overflow-hidden rounded-lg bg-[#0F0F0F]"
+            className="relative h-[700px] overflow-hidden rounded-[30px] border border-black/10 bg-[#0F0F0F] p-4 shadow-[0_28px_64px_rgba(15,15,15,0.28)]"
           >
             {showcaseItems.map((item, index) => (
               <motion.div
                 key={item.label}
-                className="absolute inset-0"
+                className="absolute inset-4 overflow-hidden rounded-[24px]"
                 initial={false}
                 animate={{
                   opacity: index === activeShowcaseIndex ? 1 : 0,
@@ -175,8 +441,11 @@ export default function Signup() {
                 />
               </motion.div>
             ))}
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0F0F0F]/75 via-[#0F0F0F]/16 to-transparent" />
-            <div className="absolute bottom-8 left-8 right-8 text-white">
+            <div className="absolute left-7 top-7 z-10 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
+              onboarding studio
+            </div>
+            <div className="absolute inset-4 rounded-[24px] bg-gradient-to-t from-[#0F0F0F]/80 via-[#0F0F0F]/18 to-transparent" />
+            <div className="absolute bottom-10 left-9 right-9 z-10 text-white">
               <motion.div
                 key={showcaseItems[activeShowcaseIndex].label}
                 initial={{ opacity: 0, y: 16 }}
@@ -184,7 +453,7 @@ export default function Signup() {
                 transition={{ duration: 0.45 }}
                 className="mb-6"
               >
-                <h2 className="text-5xl font-bold leading-tight">당신의 감각이 필요한 곳으로</h2>
+                <h2 className="text-5xl font-black uppercase leading-[0.9]">Build Your<br />Creative Profile</h2>
                 <p className="mt-4 max-w-[440px] text-sm leading-relaxed text-gray-200">
                   포트폴리오를 발견하고, 프로젝트를 제안하고, 좋은 협업을 시작하세요.
                 </p>
@@ -211,7 +480,7 @@ export default function Signup() {
           initial={{ opacity: 0, x: 36 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.7, ease: "easeOut" }}
-          className="w-full max-w-xl justify-self-center lg:justify-self-end"
+          className="w-full max-w-2xl justify-self-center lg:justify-self-end"
         >
           <Logo className="mb-8 justify-center lg:hidden" />
 
@@ -220,17 +489,17 @@ export default function Signup() {
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45, delay: 0.1 }}
-              className="mb-3 text-sm font-semibold text-[#00A88C]"
+              className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-[#00A88C]"
             >
-              Join pickxel
+              Join Pickxel
             </motion.p>
             <motion.h1
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.18 }}
-              className="mb-2 text-3xl font-bold"
+              className="mb-2 text-4xl font-black uppercase leading-[0.95]"
             >
-              픽셀 크리에이티브 커뮤니티에 가입하세요
+              Start Your Design Journey
             </motion.h1>
             <motion.p
               initial={{ opacity: 0, y: 18 }}
@@ -246,9 +515,9 @@ export default function Signup() {
             initial={{ opacity: 0, y: 26 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.32 }}
-            className="rounded-lg border border-gray-200 bg-white/95 p-8 shadow-2xl backdrop-blur-md"
+            className="rounded-[26px] border border-black/10 bg-white/95 p-8 shadow-[0_22px_52px_rgba(15,15,15,0.16)] backdrop-blur-md"
           >
-            <form onSubmit={handleSignup} className="space-y-5">
+            <form onSubmit={handleSignup} noValidate className="space-y-5">
               <div>
                 <label htmlFor="name" className="mb-2 block text-sm font-medium text-gray-700">
                   먼저 이름을 알려주세요
@@ -261,15 +530,67 @@ export default function Signup() {
                     name="name"
                     value={formData.name}
                     onChange={handleChange}
-                    className="h-12 w-full rounded-lg border border-gray-200 bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10"
+                    maxLength={NAME_MAX_LENGTH}
+                    aria-invalid={Boolean(signupErrors.name)}
+                    aria-describedby={signupErrors.name ? "signup-name-error" : undefined}
+                    className={`h-12 w-full rounded-xl border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                      signupErrors.name ? "border-[#FF5C3A]" : "border-gray-200"
+                    }`}
                     placeholder="홍길동"
-                    required
                   />
                 </div>
+                <div className="mt-2 rounded-lg bg-[#F7F7F5] px-3 py-2 text-xs text-gray-600">
+                  <p className={hasName && isNameLengthValid ? "font-medium text-[#00A88C]" : ""}>
+                    이름은 2자 이상 30자 이하로 입력해주세요.
+                  </p>
+                </div>
+                {signupErrors.name && (
+                  <p id="signup-name-error" className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                    {signupErrors.name}
+                  </p>
+                )}
               </div>
 
               <AnimatePresence initial={false}>
                 {hasName && (
+                  <motion.div
+                    key="nickname-step"
+                    variants={stepVariants}
+                    initial="hidden"
+                    animate="visible"
+                    exit="exit"
+                    transition={{ duration: 0.35, ease: "easeOut" }}
+                    className="overflow-hidden"
+                  >
+                    <label htmlFor="nickname" className="mb-2 block text-sm font-medium text-gray-700">
+                      프로필에 보일 닉네임을 정해주세요
+                    </label>
+                    <div className="relative">
+                      <User className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        id="nickname"
+                        name="nickname"
+                        value={formData.nickname}
+                        onChange={handleChange}
+                        maxLength={10}
+                        aria-invalid={Boolean(signupErrors.nickname)}
+                        aria-describedby={signupErrors.nickname ? "signup-nickname-error" : undefined}
+                        className={`h-12 w-full rounded-xl border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                          signupErrors.nickname ? "border-[#FF5C3A]" : "border-gray-200"
+                        }`}
+                        placeholder="닉네임"
+                      />
+                    </div>
+                    {signupErrors.nickname && (
+                      <p id="signup-nickname-error" className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                        {signupErrors.nickname}
+                      </p>
+                    )}
+                  </motion.div>
+                )}
+
+                {hasName && hasNickname && (
                   <motion.div
                     key="email-step"
                     variants={stepVariants}
@@ -290,15 +611,29 @@ export default function Signup() {
                         name="email"
                         value={formData.email}
                         onChange={handleChange}
-                        className="h-12 w-full rounded-lg border border-gray-200 bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10"
+                        maxLength={EMAIL_MAX_LENGTH}
+                        aria-invalid={Boolean(signupErrors.email)}
+                        aria-describedby={signupErrors.email ? "signup-email-error" : undefined}
+                        className={`h-12 w-full rounded-xl border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                          signupErrors.email ? "border-[#FF5C3A]" : "border-gray-200"
+                        }`}
                         placeholder="your@email.com"
-                        required
                       />
                     </div>
+                    {signupErrors.email && (
+                      <p id="signup-email-error" className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                        {signupErrors.email}
+                      </p>
+                    )}
+                    {!signupErrors.email && (
+                      <p className="mt-2 text-xs text-gray-500">
+                        이메일에는 @를 포함해서 입력해주세요.
+                      </p>
+                    )}
                   </motion.div>
                 )}
 
-                {hasName && hasEmail && (
+                {hasName && hasNickname && hasEmail && (
                   <motion.div
                     key="role-step"
                     variants={stepVariants}
@@ -333,8 +668,8 @@ export default function Signup() {
                             type="button"
                             whileHover={{ y: -2 }}
                             whileTap={{ scale: 0.98 }}
-                            onClick={() => setFormData({ ...formData, role: role.id })}
-                            className={`rounded-lg border p-4 text-left transition-all ${
+                            onClick={() => handleRoleChange(role.id)}
+                            className={`rounded-xl border p-4 text-left transition-all ${
                               isSelected
                                 ? "border-[#00C9A7] bg-[#A8F0E4]/20 shadow-lg shadow-[#00C9A7]/10"
                                 : "border-gray-200 bg-white hover:border-[#00C9A7]/50"
@@ -352,10 +687,15 @@ export default function Signup() {
                         );
                       })}
                     </div>
+                    {signupErrors.role && (
+                      <p className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                        {signupErrors.role}
+                      </p>
+                    )}
                   </motion.div>
                 )}
 
-                {hasName && hasEmail && hasRole && (
+                {hasName && hasNickname && hasEmail && hasRole && (
                   <motion.div
                     key="password-step"
                     variants={stepVariants}
@@ -376,15 +716,29 @@ export default function Signup() {
                         name="password"
                         value={formData.password}
                         onChange={handleChange}
-                        className="h-12 w-full rounded-lg border border-gray-200 bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10"
+                        maxLength={PASSWORD_MAX_LENGTH}
+                        aria-invalid={Boolean(signupErrors.password)}
+                        aria-describedby="signup-password-rule signup-password-error"
+                        className={`h-12 w-full rounded-xl border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                          signupErrors.password ? "border-[#FF5C3A]" : "border-gray-200"
+                        }`}
                         placeholder="비밀번호"
-                        required
                       />
                     </div>
+                    <div id="signup-password-rule" className="mt-2 rounded-lg bg-[#F7F7F5] px-3 py-2 text-xs text-gray-600">
+                      <p className={hasPassword && isPasswordLengthValid ? "font-medium text-[#00A88C]" : ""}>
+                        비밀번호는 8자 이상 20자 이하로 입력해주세요.
+                      </p>
+                    </div>
+                    {signupErrors.password && (
+                      <p id="signup-password-error" className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                        {signupErrors.password}
+                      </p>
+                    )}
                   </motion.div>
                 )}
 
-                {hasName && hasEmail && hasRole && hasPassword && (
+                {hasName && hasNickname && hasEmail && hasRole && hasPassword && (
                   <motion.div
                     key="confirm-password-step"
                     variants={stepVariants}
@@ -397,23 +751,46 @@ export default function Signup() {
                     <label htmlFor="confirmPassword" className="mb-2 block text-sm font-medium text-gray-700">
                       한 번 더 확인할게요
                     </label>
-                    <div className="relative">
-                      <Lock className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
-                      <input
-                        type="password"
-                        id="confirmPassword"
-                        name="confirmPassword"
-                        value={formData.confirmPassword}
-                        onChange={handleChange}
-                        className="h-12 w-full rounded-lg border border-gray-200 bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10"
-                        placeholder="한 번 더 입력"
-                        required
-                      />
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Lock className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                        <input
+                          type="password"
+                          id="confirmPassword"
+                          name="confirmPassword"
+                          value={formData.confirmPassword}
+                          onChange={handleChange}
+                          maxLength={PASSWORD_MAX_LENGTH}
+                          aria-invalid={Boolean(signupErrors.confirmPassword)}
+                          aria-describedby={signupErrors.confirmPassword ? "signup-confirm-password-error" : undefined}
+                          className={`h-12 w-full rounded-xl border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                            signupErrors.confirmPassword ? "border-[#FF5C3A]" : "border-gray-200"
+                          }`}
+                          placeholder="한 번 더 입력"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleConfirmPassword}
+                        className="h-12 shrink-0 rounded-xl border border-[#00C9A7] px-4 text-sm font-semibold text-[#007C69] transition-colors hover:bg-[#E8FFF9]"
+                      >
+                        확인
+                      </button>
                     </div>
+                    {signupErrors.confirmPassword && (
+                      <p id="signup-confirm-password-error" className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                        {signupErrors.confirmPassword}
+                      </p>
+                    )}
+                    {isPasswordConfirmed && !signupErrors.confirmPassword && (
+                      <p className="mt-2 text-xs font-medium text-[#00A88C]">
+                        비밀번호가 일치합니다.
+                      </p>
+                    )}
                   </motion.div>
                 )}
 
-                {hasName && hasEmail && hasRole && hasPassword && hasConfirmPassword && (
+                {hasName && hasNickname && hasEmail && hasRole && hasPassword && hasConfirmPassword && (
                   <motion.div
                     key="submit-step"
                     variants={stepVariants}
@@ -423,23 +800,40 @@ export default function Signup() {
                     transition={{ duration: 0.35, ease: "easeOut" }}
                     className="space-y-5 overflow-hidden"
                   >
+                    <div>
                     <label className="flex items-start gap-2">
-                      <input type="checkbox" className="mt-1 h-4 w-4 rounded border-gray-300 text-[#00C9A7] focus:ring-[#00C9A7]" required />
+                      <input
+                        type="checkbox"
+                        checked={agreedTerms}
+                        onChange={(event) => handleTermsChange(event.target.checked)}
+                        className="mt-1 h-4 w-4 rounded border-gray-300 text-[#00C9A7] focus:ring-[#00C9A7]"
+                      />
                       <span className="text-sm text-gray-600">
                         <a href="#" className="text-[#00A88C] hover:underline">이용약관</a> 및{" "}
                         <a href="#" className="text-[#00A88C] hover:underline">개인정보처리방침</a>에 동의합니다.
                       </span>
                     </label>
+                    {signupErrors.terms && (
+                      <p className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                        {signupErrors.terms}
+                      </p>
+                    )}
+                    </div>
 
                     <motion.button
                       type="submit"
                       whileHover={{ y: -1 }}
                       whileTap={{ scale: 0.98 }}
-                      className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#00C9A7] font-semibold text-[#0F0F0F] shadow-lg shadow-[#00C9A7]/20 transition-colors hover:bg-[#00A88C]"
+                      className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#00C9A7] font-semibold text-[#0F0F0F] shadow-lg shadow-[#00C9A7]/20 transition-colors hover:bg-[#00A88C]"
                     >
                       회원가입
                       <ArrowRight className="size-5" />
                     </motion.button>
+                    {signupErrors.form && (
+                      <p className="text-xs font-medium text-[#FF5C3A]">
+                        {signupErrors.form}
+                      </p>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -470,7 +864,7 @@ export default function Signup() {
               <button
                 type="button"
                 onClick={() => startSocialSignup("Google")}
-                className="flex h-12 items-center justify-center gap-3 rounded-lg border border-gray-200 bg-white px-4 transition-colors hover:bg-gray-50"
+                className="flex h-12 items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white px-4 transition-colors hover:bg-gray-50"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -484,29 +878,65 @@ export default function Signup() {
               <button
                 type="button"
                 onClick={() => startSocialSignup("카카오")}
-                className="flex h-12 items-center justify-center gap-3 rounded-lg bg-[#FEE500] px-4 transition-colors hover:bg-[#FDD835]"
+                className="flex h-12 items-center justify-center gap-3 rounded-xl bg-[#FEE500] px-4 transition-colors hover:bg-[#FDD835]"
               >
-                <svg className="h-5 w-5" viewBox="0 0 24 24">
-                  <path fill="#000000" d="M3.0273 10.9441c0 3.9802 2.4648 7.3789 6.7383 7.3789 2.2148 0 3.6953-0.8789 4.8281-2.1367l-1.9688-1.5234c-0.5859 0.7031-1.4297 1.2891-2.8594 1.2891-1.8398 0-3.1406-1.1367-3.5156-2.7539h8.6133c0.0703-0.293 0.1172-0.6328 0.1172-1.0078 0-3.5508-2.332-7.3789-6.457-7.3789-3.8516 0-6.5508 3.4219-6.5508 7.1328zm3.2227-1.2891c0.2461-1.8164 1.4648-2.8711 3.3281-2.8711 1.7109 0 2.9063 1.0078 3.0938 2.8711z"/>
-                </svg>
+                <img src={kakaoTalkLogo} alt="" className="h-6 w-6 rounded-[6px]" />
                 <span className="font-medium text-gray-900">카카오</span>
               </button>
             </div>
           </motion.div>
         </motion.section>
       </main>
+      {isSignupCompleteOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, y: 18, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="w-full max-w-md rounded-lg bg-white p-7 text-center shadow-2xl"
+          >
+            <div className="mx-auto mb-5 grid size-14 place-items-center rounded-full bg-[#A8F0E4]/35 text-[#00A88C]">
+              <CheckCircle className="size-8" />
+            </div>
+            <p className="text-sm font-bold text-[#00A88C]">회원가입 완료</p>
+            <h2 className="mt-2 text-2xl font-bold text-[#0F0F0F]">
+              회원가입이 완료되었습니다
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-gray-600">
+              {completedSignupEmail ? `${completedSignupEmail} 계정으로 가입됐어요. ` : ""}
+              로그인 페이지에서 다시 로그인해주세요.
+            </p>
+            <button
+              type="button"
+              onClick={goToLoginAfterSignup}
+              className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#00C9A7] font-bold text-[#0F0F0F] shadow-lg shadow-[#00C9A7]/20 transition-colors hover:bg-[#00A88C]"
+            >
+              로그인하기
+              <ArrowRight className="size-5" />
+            </button>
+          </motion.div>
+        </div>
+      )}
       {pendingSocialProvider && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
           <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-2xl">
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <p className="mb-1 text-sm font-semibold text-[#00A88C]">
-                  {pendingSocialProvider} 인증 완료
+                <p className="mb-1 flex items-center gap-2 text-sm font-semibold text-[#00A88C]">
+                  {pendingSocialProvider === "카카오" && (
+                    <img src={kakaoTalkLogo} alt="" className="h-5 w-5 rounded-[5px]" />
+                  )}
+                  {pendingSocialProvider} 회원가입
                 </p>
-                <h2 className="text-2xl font-bold">역할을 선택해주세요</h2>
+                <h2 className="text-2xl font-bold">이름과 역할을 선택해주세요</h2>
                 <p className="mt-2 text-sm text-gray-600">
-                  이 선택에 따라 프로필에 디자이너 또는 클라이언트 배지가 표시됩니다.
+                  최초 소셜 가입 시 입력한 이름과 선택한 역할이 저장됩니다.
                 </p>
+                {socialSignupPrompt && (
+                  <p className="mt-3 rounded-lg bg-[#FFF7F4] px-3 py-2 text-sm font-medium text-[#C2412D]">
+                    {socialSignupPrompt}
+                  </p>
+                )}
               </div>
               <button
                 type="button"
@@ -516,6 +946,99 @@ export default function Signup() {
               >
                 <X className="size-5" />
               </button>
+            </div>
+
+            <div className="mb-5">
+              <label htmlFor="social-name" className="mb-2 block text-sm font-medium text-gray-700">
+                이름
+              </label>
+              <div className="relative">
+                <User className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                <input
+                  id="social-name"
+                  type="text"
+                  maxLength={NAME_MAX_LENGTH}
+                  value={socialName}
+                  onChange={(event) => {
+                    setSocialName(event.target.value);
+                    setSocialSignupError("");
+                  }}
+                  className={`h-11 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                    socialSignupError ? "border-[#FF5C3A]" : "border-gray-200"
+                  }`}
+                  placeholder="2자 이상 30자 이하"
+                />
+              </div>
+              <p className="mb-4 mt-2 text-xs text-gray-500">프로필에 표시할 실제 이름을 입력해주세요.</p>
+
+              <label htmlFor="social-nickname" className="mb-2 block text-sm font-medium text-gray-700">
+                닉네임
+              </label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <User className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                  <input
+                    id="social-nickname"
+                    type="text"
+                    maxLength={10}
+                    value={socialNickname}
+                    onChange={(event) => {
+                      setSocialNickname(event.target.value);
+                      setSocialSignupError("");
+                      setSocialNicknameCheckMessage("");
+                      setCheckedSocialNickname("");
+                    }}
+                    className={`h-11 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                      socialSignupError ? "border-[#FF5C3A]" : "border-gray-200"
+                    }`}
+                    placeholder="10자 이하"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCheckSocialNickname}
+                  disabled={isCheckingSocialNickname}
+                  className="h-11 shrink-0 rounded-lg border border-[#00C9A7] px-4 text-sm font-semibold text-[#007C69] transition-colors hover:bg-[#E8FFF9] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isCheckingSocialNickname ? "확인 중" : "중복 확인"}
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-gray-500">
+                {pendingSocialProvider === "카카오"
+                  ? "이메일은 pickxel 계정용으로 직접 입력합니다."
+                  : "이메일은 Google 계정 정보로 가져옵니다."}
+              </p>
+              {socialNicknameCheckMessage && !socialSignupError && (
+                <p className="mt-2 text-xs font-medium text-[#00A88C]">{socialNicknameCheckMessage}</p>
+              )}
+              {pendingSocialProvider === "카카오" && (
+                <div className="mt-4">
+                  <label htmlFor="social-email" className="mb-2 block text-sm font-medium text-gray-700">
+                    이메일
+                  </label>
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                    <input
+                      id="social-email"
+                      type="email"
+                      maxLength={EMAIL_MAX_LENGTH}
+                      value={socialEmail}
+                      onChange={(event) => {
+                        setSocialEmail(event.target.value);
+                        setSocialSignupError("");
+                      }}
+                      className={`h-11 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                        socialSignupError ? "border-[#FF5C3A]" : "border-gray-200"
+                      }`}
+                      placeholder="your@email.com"
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-gray-500">이메일에 @를 포함해서 입력해주세요.</p>
+                </div>
+              )}
+              {socialSignupError && (
+                <p className="mt-2 text-xs font-medium text-[#FF5C3A]">{socialSignupError}</p>
+              )}
             </div>
 
             <div className="grid gap-3">

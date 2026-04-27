@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import Footer from "../components/Footer";
 import {
   Funnel,
@@ -10,16 +11,20 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import Navigation from "../components/Navigation";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import {
-  type CollectionFeedItem,
-  type SavedCollection,
-  loadCollectibleFeedItems,
-  loadSavedCollections,
-  saveCollections,
-} from "../utils/collectionState";
+  getMyCollectionsApi,
+  getCollectionFolderApi,
+  createCollectionFolderApi,
+  renameCollectionFolderApi,
+  deleteCollectionFolderApi,
+  removeFeedFromCollectionApi,
+  reorderCollectionFoldersApi,
+  type CollectionFolderResponse,
+  type CollectionFolderDetailResponse,
+} from "../api/collectionApi";
 
 type CollectionFilter = "all" | "with-items" | "empty" | "recent";
 
@@ -42,85 +47,79 @@ const getRelativeUpdateLabel = (updatedAt: string) => {
 };
 
 export default function Collections() {
-  const [collections, setCollections] = useState<SavedCollection[]>(() => loadSavedCollections());
-  const [feedItems, setFeedItems] = useState<CollectionFeedItem[]>(() => loadCollectibleFeedItems());
+  const [collections, setCollections] = useState<CollectionFolderResponse[]>([]);
+  const [selectedCollection, setSelectedCollection] = useState<CollectionFolderDetailResponse | null>(null);
   const [activeFilter, setActiveFilter] = useState<CollectionFilter>("all");
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
-  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
-  const [openCollectionMenuId, setOpenCollectionMenuId] = useState<string | null>(null);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<number | null>(null);
+  const [openCollectionMenuId, setOpenCollectionMenuId] = useState<number | null>(null);
   const [editingCollectionName, setEditingCollectionName] = useState("");
   const [isReorderMode, setIsReorderMode] = useState(false);
-  const [draggingCollectionId, setDraggingCollectionId] = useState<string | null>(null);
+  const [draggingCollectionId, setDraggingCollectionId] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [collectionToDeleteId, setCollectionToDeleteId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
-    saveCollections(collections);
-  }, [collections]);
-
-  useEffect(() => {
-    document.body.style.backgroundColor = "#F7F7F5";
-    return () => {
-      document.body.style.backgroundColor = "";
-    };
+    void loadCollections();
   }, []);
 
-  useEffect(() => {
-    setFeedItems(loadCollectibleFeedItems());
-  }, []);
-
-  const feedItemMap = useMemo(
-    () => new Map(feedItems.map((item) => [item.id, item])),
-    [feedItems]
-  );
+  async function loadCollections() {
+    try {
+      setIsLoading(true);
+      const data = await getMyCollectionsApi();
+      setCollections(data);
+    } catch (err) {
+      setError("컬렉션을 불러오지 못했습니다.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   const filteredCollections = useMemo(() => {
     const orderedCollections =
       activeFilter === "recent"
         ? [...collections].sort((left, right) => {
-            return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+            const dateL = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+            const dateR = right.createdAt ? new Date(right.createdAt).getTime() : 0;
+            return dateR - dateL;
           })
         : collections;
 
     if (activeFilter === "all" || activeFilter === "recent") return orderedCollections;
     if (activeFilter === "with-items") {
-      return orderedCollections.filter((collection) => collection.itemIds.length > 0);
+      return orderedCollections.filter((collection) => collection.itemCount > 0);
     }
-    return orderedCollections.filter((collection) => collection.itemIds.length === 0);
+    return orderedCollections.filter((collection) => collection.itemCount === 0);
   }, [activeFilter, collections]);
 
-  const selectedCollection = useMemo(
-    () => collections.find((collection) => collection.id === selectedCollectionId) ?? null,
-    [collections, selectedCollectionId]
-  );
-
   const selectedCollectionItems = useMemo(() => {
-    if (!selectedCollection) return [];
-    return selectedCollection.itemIds
-      .map((itemId) => feedItemMap.get(itemId))
-      .filter((item): item is CollectionFeedItem => Boolean(item));
-  }, [feedItemMap, selectedCollection]);
+    return selectedCollection?.feeds ?? [];
+  }, [selectedCollection]);
 
-  const handleCreateCollection = () => {
+  const handleCreateCollection = async () => {
     const trimmedName = newCollectionName.trim();
     if (!trimmedName) return;
 
-    const newCollection: SavedCollection = {
-      id: `collection-${Date.now()}`,
-      name: trimmedName,
-      itemIds: [],
-      updatedAt: new Date().toISOString(),
-    };
-
-    setCollections((prev) => [newCollection, ...prev]);
-    setNewCollectionName("");
-    setShowCreateModal(false);
+    try {
+      await createCollectionFolderApi(trimmedName);
+      setNewCollectionName("");
+      setShowCreateModal(false);
+      void loadCollections();
+    } catch (err) {
+      toast.error("컬렉션 생성에 실패했습니다.");
+    }
   };
 
-  const moveCollectionToIndex = (collectionId: string, targetCollectionId: string) => {
+  const moveCollectionToIndex = (collectionId: number, targetCollectionId: number) => {
+    // API doesn't support reordering yet, keeping local UI state for now
     setCollections((prev) => {
-      const currentIndex = prev.findIndex((collection) => collection.id === collectionId);
-      const targetIndex = prev.findIndex((collection) => collection.id === targetCollectionId);
+      const currentIndex = prev.findIndex((collection) => collection.folderId === collectionId);
+      const targetIndex = prev.findIndex((collection) => collection.folderId === targetCollectionId);
       if (currentIndex === -1 || targetIndex === -1 || currentIndex === targetIndex) return prev;
 
       const next = [...prev];
@@ -130,12 +129,32 @@ export default function Collections() {
     });
   };
 
-  const deleteCollection = (collectionId: string) => {
-    setCollections((prev) => prev.filter((collection) => collection.id !== collectionId));
-    if (selectedCollectionId === collectionId) {
+  const deleteCollection = async (collectionId: number) => {
+    console.log("Proceeding with API delete call for ID:", collectionId);
+    try {
+      await deleteCollectionFolderApi(collectionId);
+      console.log("Delete API success");
+      
+      setIsDeleteDialogOpen(false);
+      setCollectionToDeleteId(null);
       setSelectedCollectionId(null);
+      setSelectedCollection(null);
+      setOpenCollectionMenuId(null);
+      
+      void loadCollections();
+    } catch (err) {
+      console.error("Delete API failed:", err);
+      toast.error("컬렉션 삭제에 실패했습니다.");
     }
-    setOpenCollectionMenuId(null);
+  };
+
+  const openDeleteConfirm = (e: React.MouseEvent, id: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log("Opening custom delete confirm for ID:", id);
+    setCollectionToDeleteId(id);
+    setIsDeleteDialogOpen(true);
+    setOpenCollectionMenuId(null); // 메뉴 닫기
   };
 
   const startReorderMode = () => {
@@ -144,58 +163,77 @@ export default function Collections() {
     setOpenCollectionMenuId(null);
   };
 
-  const stopReorderMode = () => {
+  const stopReorderMode = async () => {
     setIsReorderMode(false);
     setDraggingCollectionId(null);
+    
+    // 변경된 순서를 서버에 저장
+    const folderIds = collections.map(c => c.folderId);
+    console.log("Saving reordered folder IDs:", folderIds);
+    
+    try {
+      await reorderCollectionFoldersApi(folderIds);
+      console.log("Reorder saved successfully");
+      void loadCollections(); // 서버의 정렬된 최신 데이터 다시 불러오기
+    } catch (err) {
+      console.error("Reorder failed:", err);
+      toast.error("순서 저장에 실패했습니다.");
+      void loadCollections(); // 실패 시 원래 순서로 복구
+    }
   };
 
-  const handleCollectionDragStart = (collectionId: string) => {
+  const handleCollectionDragStart = (collectionId: number) => {
     if (!isReorderMode) return;
     setDraggingCollectionId(collectionId);
   };
 
-  const handleCollectionDrop = (targetCollectionId: string) => {
+  const handleCollectionDrop = (targetCollectionId: number) => {
     if (!draggingCollectionId || draggingCollectionId === targetCollectionId) return;
     moveCollectionToIndex(draggingCollectionId, targetCollectionId);
     setDraggingCollectionId(null);
   };
 
-  const handleOpenCollectionDetail = (collectionId: string) => {
+  const handleOpenCollectionDetail = async (collectionId: number) => {
     setSelectedCollectionId(collectionId);
-    const collection = collections.find((item) => item.id === collectionId);
-    setEditingCollectionName(collection?.name ?? "");
+    const folder = collections.find((item) => item.folderId === collectionId);
+    setEditingCollectionName(folder?.folderName ?? "");
+    
+    try {
+      const detail = await getCollectionFolderApi(collectionId);
+      setSelectedCollection(detail);
+    } catch (err) {
+      toast.error("컬렉션 상세 정보를 불러오지 못했습니다.");
+    }
   };
 
-  const handleRenameSelectedCollection = () => {
-    if (!selectedCollection || !editingCollectionName.trim()) return;
+  const handleRenameSelectedCollection = async () => {
+    if (!selectedCollectionId || !editingCollectionName.trim()) return;
+    console.log("Renaming collection:", selectedCollectionId, "to:", editingCollectionName.trim());
 
-    setCollections((prev) =>
-      prev.map((collection) =>
-        collection.id === selectedCollection.id
-          ? {
-              ...collection,
-              name: editingCollectionName.trim(),
-              updatedAt: new Date().toISOString(),
-            }
-          : collection
-      )
-    );
+    try {
+      await renameCollectionFolderApi(selectedCollectionId, editingCollectionName.trim());
+      console.log("Rename successful");
+      void loadCollections();
+      if (selectedCollection) {
+        setSelectedCollection({ ...selectedCollection, folderName: editingCollectionName.trim() });
+      }
+    } catch (err) {
+      console.error("Rename failed:", err);
+      toast.error("이름 수정에 실패했습니다.");
+    }
   };
 
-  const handleRemoveFeedFromCollection = (itemId: number) => {
-    if (!selectedCollection) return;
+  const handleRemoveFeedFromCollection = async (postId: number) => {
+    if (!selectedCollectionId) return;
 
-    setCollections((prev) =>
-      prev.map((collection) =>
-        collection.id === selectedCollection.id
-          ? {
-              ...collection,
-              itemIds: collection.itemIds.filter((storedItemId) => storedItemId !== itemId),
-              updatedAt: new Date().toISOString(),
-            }
-          : collection
-      )
-    );
+    try {
+      await removeFeedFromCollectionApi(selectedCollectionId, postId);
+      const detail = await getCollectionFolderApi(selectedCollectionId);
+      setSelectedCollection(detail);
+      void loadCollections();
+    } catch (err) {
+      toast.error("피드 제거에 실패했습니다.");
+    }
   };
 
   return (
@@ -276,48 +314,45 @@ export default function Collections() {
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {filteredCollections.map((collection) => {
-            const previewItems = collection.itemIds
-              .map((itemId) => feedItemMap.get(itemId))
-              .filter((item): item is CollectionFeedItem => Boolean(item))
-              .slice(0, 3);
+            const previewItems = collection.previewImageUrls.slice(0, 3);
 
             return (
               <div
-                key={collection.id}
-                onClick={() => handleOpenCollectionDetail(collection.id)}
+                key={collection.folderId}
+                onClick={() => handleOpenCollectionDetail(collection.folderId)}
                 draggable={isReorderMode && activeFilter === "all"}
-                onDragStart={() => handleCollectionDragStart(collection.id)}
+                onDragStart={() => handleCollectionDragStart(collection.folderId)}
                 onDragOver={(event) => {
                   if (!isReorderMode) return;
                   event.preventDefault();
                 }}
-                onDrop={() => handleCollectionDrop(collection.id)}
+                onDrop={() => handleCollectionDrop(collection.folderId)}
                 onDragEnd={() => setDraggingCollectionId(null)}
                 className={`relative cursor-pointer overflow-visible rounded-2xl bg-white shadow-sm transition-shadow hover:shadow-lg ${
-                  draggingCollectionId === collection.id ? "opacity-60 ring-2 ring-[#00C9A7]" : ""
+                  draggingCollectionId === collection.folderId ? "opacity-60 ring-2 ring-[#00C9A7]" : ""
                 } ${isReorderMode && activeFilter === "all" ? "cursor-grab" : ""}`}
               >
                 <div className="relative h-64 bg-gray-100 p-1">
-                  {collection.itemIds.length > 0 ? (
+                  {collection.itemCount > 0 ? (
                     <div className="grid h-full grid-cols-2 gap-1">
-                      {previewItems.map((item, index) => (
+                      {previewItems.map((url, index) => (
                         <div
-                          key={item.id}
+                          key={`${collection.folderId}-${index}`}
                           className={`relative overflow-hidden rounded ${
                             index === 0 ? "col-span-1 row-span-2" : "col-span-1"
                           }`}
                         >
                           <ImageWithFallback
-                            src={item.image}
-                            alt={item.title}
+                            src={url}
+                            alt={collection.folderName}
                             className="h-full w-full object-cover"
                           />
                         </div>
                       ))}
-                      {collection.itemIds.length > 3 && (
+                      {collection.itemCount > 3 && (
                         <div className="flex items-center justify-center rounded bg-black/85 text-white">
                           <span className="text-xl font-semibold">
-                            +{collection.itemIds.length - 3}
+                            +{collection.itemCount - 3}
                           </span>
                         </div>
                       )}
@@ -339,9 +374,9 @@ export default function Collections() {
                       </div>
                     )}
                     <div>
-                    <h3 className="mb-1 text-lg font-semibold">{collection.name}</h3>
+                    <h3 className="mb-1 text-lg font-semibold">{collection.folderName}</h3>
                     <p className="text-sm text-[#5F5E5A]">
-                      피드 {collection.itemIds.length}개 · {getRelativeUpdateLabel(collection.updatedAt)}
+                      피드 {collection.itemCount}개 · {collection.createdAt ? getRelativeUpdateLabel(collection.createdAt) : "날짜 없음"}
                     </p>
                     </div>
                   </div>
@@ -349,7 +384,7 @@ export default function Collections() {
                     onClick={(event) => {
                       event.stopPropagation();
                       setOpenCollectionMenuId((prev) =>
-                        prev === collection.id ? null : collection.id
+                        prev === collection.folderId ? null : collection.folderId
                       );
                     }}
                     className="rounded-lg p-2 hover:bg-[#F1EFE8]"
@@ -358,7 +393,7 @@ export default function Collections() {
                   </button>
                 </div>
 
-                {openCollectionMenuId === collection.id && (
+                {openCollectionMenuId === collection.folderId && (
                   <div className="absolute right-4 top-[20.5rem] z-20 w-44 rounded-2xl border border-gray-200 bg-white p-2 shadow-xl">
                     <button
                       onClick={(event) => {
@@ -371,10 +406,7 @@ export default function Collections() {
                       순서 변경
                     </button>
                     <button
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        deleteCollection(collection.id);
-                      }}
+                      onClick={(event) => openDeleteConfirm(event, collection.folderId)}
                       className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-red-500 hover:bg-red-50"
                     >
                       <Trash2 className="size-4" />
@@ -471,7 +503,10 @@ export default function Collections() {
       {selectedCollection && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
-          onClick={() => setSelectedCollectionId(null)}
+          onClick={() => {
+            setSelectedCollectionId(null);
+            setSelectedCollection(null);
+          }}
         >
           <div
             className="w-full max-w-6xl rounded-3xl bg-white shadow-2xl"
@@ -494,7 +529,7 @@ export default function Collections() {
                     이름 수정
                   </button>
                   <button
-                    onClick={() => deleteCollection(selectedCollection.id)}
+                    onClick={(e) => openDeleteConfirm(e, selectedCollection.folderId)}
                     className="flex items-center gap-1 rounded-xl border border-red-200 px-3 py-2 text-sm text-red-500 hover:bg-red-50"
                   >
                     <Trash2 className="size-4" />
@@ -506,7 +541,10 @@ export default function Collections() {
                 </p>
               </div>
               <button
-                onClick={() => setSelectedCollectionId(null)}
+                onClick={() => {
+                  setSelectedCollectionId(null);
+                  setSelectedCollection(null);
+                }}
                 className="rounded-full border border-gray-200 p-2 text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-700"
               >
                 <X className="size-5" />
@@ -518,11 +556,11 @@ export default function Collections() {
                 <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
                   {selectedCollectionItems.map((item) => (
                     <article
-                      key={item.id}
+                      key={item.postId}
                       className="overflow-hidden rounded-2xl border border-gray-200 bg-white"
                     >
                       <ImageWithFallback
-                        src={item.image}
+                        src={item.thumbnailImageUrl ?? ""}
                         alt={item.title}
                         className="h-56 w-full object-cover"
                       />
@@ -533,22 +571,22 @@ export default function Collections() {
                           {item.description}
                         </p>
                         <div className="mt-4 flex items-center gap-3">
-                          <img
-                            src={item.author.avatar}
-                            alt={item.author.name}
+                          <ImageWithFallback
+                            src={item.authorProfileImage ?? ""}
+                            alt={item.authorNickname}
                             className="size-10 rounded-full object-cover"
                           />
                           <div>
-                            <p className="text-sm font-semibold text-[#0F0F0F]">{item.author.name}</p>
-                            <p className="text-xs text-gray-500">{item.author.role}</p>
+                            <p className="text-sm font-semibold text-[#0F0F0F]">{item.authorNickname}</p>
+                            <p className="text-xs text-gray-500">디자이너</p>
                           </div>
                         </div>
                         <div className="mt-4 flex gap-4 text-xs text-gray-500">
-                          <span>좋아요 {item.likes}</span>
-                          <span>댓글 {item.comments}</span>
+                          <span>좋아요 {item.pickCount ?? 0}</span>
+                          <span>댓글 {item.commentCount}</span>
                         </div>
                         <button
-                          onClick={() => handleRemoveFeedFromCollection(item.id)}
+                          onClick={() => handleRemoveFeedFromCollection(item.postId)}
                           className="mt-4 rounded-xl border border-red-200 px-3 py-2 text-sm text-red-500 hover:bg-red-50"
                         >
                           피드 제거
@@ -570,6 +608,48 @@ export default function Collections() {
           </div>
         </div>
       )}
+      {/* 삭제 확인 커스텀 모달 */}
+      <AnimatePresence>
+        {isDeleteDialogOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsDeleteDialogOpen(false)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"
+            >
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-500">
+                <Trash2 className="size-6" />
+              </div>
+              <h3 className="mb-2 text-lg font-bold text-gray-900">컬렉션 삭제</h3>
+              <p className="mb-6 text-sm text-gray-500">
+                정말 이 컬렉션을 삭제하시겠습니까? 컬렉션 내의 저장된 피드 정보가 모두 삭제되며, 이 작업은 되돌릴 수 없습니다.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setIsDeleteDialogOpen(false)}
+                  className="flex-1 rounded-xl bg-gray-100 py-3 text-sm font-semibold text-gray-600 hover:bg-gray-200 transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={() => collectionToDeleteId && deleteCollection(collectionToDeleteId)}
+                  className="flex-1 rounded-xl bg-red-500 py-3 text-sm font-semibold text-white hover:bg-red-600 transition-colors shadow-lg shadow-red-200"
+                >
+                  삭제하기
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

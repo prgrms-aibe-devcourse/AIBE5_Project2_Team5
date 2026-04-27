@@ -13,3 +13,92 @@ export const matchingCategories = [
   "게임 디자인",
   "사운드",
 ];
+
+export const designerJobOptions = [
+  "브랜딩 디자이너",
+  "그래픽 디자이너",
+  "UI 디자이너",
+  "UX 디자이너",
+  "UI/UX 디자이너",
+  "제품 디자이너",
+  "패키지 디자이너",
+  "패션 디자이너",
+  "게임 디자이너",
+  "사운드 디자이너",
+  "모션 그래픽 디자이너",
+  "3D 아티스트",
+  "일러스트레이터",
+  "포토그래퍼",
+  "공예가",
+  "건축가",
+  "공간 디자이너",
+  "광고 디자이너",
+  "미술가",
+];
+
+const designerJobLabelByCategory: Record<string, string> = {
+  "그래픽 디자인": "그래픽 디자이너",
+  "포토그래피": "포토그래퍼",
+  "일러스트레이션": "일러스트레이터",
+  "3D Art": "3D 아티스트",
+  "UI/UX": "UI/UX 디자이너",
+  "건축": "건축가",
+  "패션": "패션 디자이너",
+  "광고": "광고 디자이너",
+  "공예": "공예가",
+  "미술": "미술가",
+  "제품 디자인": "제품 디자이너",
+  "게임 디자인": "게임 디자이너",
+  "사운드": "사운드 디자이너",
+};
+
+export const normalizeDesignerJobLabel = (value?: string | null) => {
+  const trimmedValue = value?.trim();
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  return designerJobLabelByCategory[trimmedValue] ?? trimmedValue;
+};
+
+const categoryLabelByCode: Record<string, string> = {
+  GRAPHIC_DESIGN: "그래픽 디자인",
+  PHOTOGRAPHY: "포토그래피",
+  ILLUSTRATION: "일러스트레이션",
+  THREED_ART: "3D Art",
+  UI_UX: "UI/UX",
+  ARCHITECTURE: "건축",
+  FASHION: "패션",
+  ADVERTISEMENT: "광고",
+  CRAFT: "공예",
+  FINE_ART: "미술",
+  PRODUCT_DESIGN: "제품 디자인",
+  GAME_DESIGN: "게임 디자인",
+  SOUND: "사운드",
+};
+
+const postTypeLabelByCode: Record<string, string> = {
+  PORTFOLIO: "포트폴리오",
+  JOB_POST: "프로젝트",
+};
+
+export const normalizeCategoryLabel = (value?: string | null) => {
+  const trimmedValue = value?.trim();
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  return categoryLabelByCode[trimmedValue] ?? trimmedValue;
+};
+
+export const normalizePostTypeLabel = (value?: string | null) => {
+  const trimmedValue = value?.trim();
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  return postTypeLabelByCode[trimmedValue] ?? trimmedValue;
+};
