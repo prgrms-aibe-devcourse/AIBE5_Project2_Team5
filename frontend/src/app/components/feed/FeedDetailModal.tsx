@@ -36,6 +36,7 @@ type FeedDetailModalProps = {
   currentUserAvatar: string;
   currentUserName: string;
   commentInputRef: React.RefObject<HTMLInputElement | null>;
+  isNight?: boolean;
   formatFeedDateTime: (value?: string) => string | null;
   isFeedLiked: (item: BaseFeedItem) => boolean;
   getLikeCount: (item: BaseFeedItem) => number;
@@ -78,6 +79,7 @@ export function FeedDetailModal({
   currentUserAvatar,
   currentUserName,
   commentInputRef,
+  isNight = false,
   formatFeedDateTime,
   isFeedLiked,
   getLikeCount,
@@ -98,16 +100,23 @@ export function FeedDetailModal({
   onCommentKeyDown,
   onSubmitComment,
 }: FeedDetailModalProps) {
+  const d = isNight;
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      className={`fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm ${
+        d ? "bg-black/80" : "bg-black/70"
+      }`}
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-2xl"
+        className={`max-h-[90vh] w-full max-w-6xl overflow-hidden rounded-2xl shadow-2xl transition-colors duration-500 ${
+          d ? "bg-[#1a1f2e]" : "bg-white"
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex h-[90vh]">
+          {/* Image panel */}
           <div className="relative flex flex-1 items-center justify-center bg-[#0F0F0F]">
             <ImageWithFallback
               src={activeModalImage}
@@ -161,8 +170,18 @@ export function FeedDetailModal({
             </button>
           </div>
 
-          <div className="flex w-[400px] flex-col bg-white">
-            <div className="border-b border-gray-200 p-5">
+          {/* Detail panel */}
+          <div
+            className={`flex w-[400px] flex-col transition-colors duration-500 ${
+              d ? "bg-[#1a1f2e]" : "bg-white"
+            }`}
+          >
+            {/* Author + meta */}
+            <div
+              className={`border-b p-5 ${
+                d ? "border-white/[0.06]" : "border-gray-200"
+              }`}
+            >
               <div className="mb-4 flex items-center gap-3">
                 <Link
                   to={`/profile/${encodeURIComponent(selectedFeed.author.profileKey ?? selectedFeed.author.name)}`}
@@ -178,10 +197,26 @@ export function FeedDetailModal({
                     className="size-12 shrink-0 rounded-full ring-2 ring-[#00C9A7]"
                   />
                   <div className="min-w-0">
-                    <h4 className="truncate text-sm font-bold">{selectedFeed.author.name}</h4>
-                    <p className="truncate text-xs text-gray-500">{selectedFeed.author.role}</p>
+                    <h4
+                      className={`truncate text-sm font-bold ${
+                        d ? "text-white" : ""
+                      }`}
+                    >
+                      {selectedFeed.author.name}
+                    </h4>
+                    <p
+                      className={`truncate text-xs ${
+                        d ? "text-white/40" : "text-gray-500"
+                      }`}
+                    >
+                      {selectedFeed.author.role}
+                    </p>
                     {formatFeedDateTime(selectedFeed.createdAt) && (
-                      <p className="mt-1 text-[11px] text-gray-400">
+                      <p
+                        className={`mt-1 text-[11px] ${
+                          d ? "text-white/25" : "text-gray-400"
+                        }`}
+                      >
                         {formatFeedDateTime(selectedFeed.createdAt)}
                       </p>
                     )}
@@ -197,14 +232,28 @@ export function FeedDetailModal({
                 </button>
               </div>
 
-              <h2 className="mb-2 text-xl font-bold">{selectedFeed.title}</h2>
-              <p className="mb-3 text-sm text-gray-600">
+              <h2
+                className={`mb-2 text-xl font-bold ${d ? "text-white" : ""}`}
+              >
+                {selectedFeed.title}
+              </h2>
+              <p
+                className={`mb-3 text-sm ${
+                  d ? "text-white/50" : "text-gray-600"
+                }`}
+              >
                 {selectedFeed.description || "등록된 상세 설명이 없습니다."}
               </p>
 
               {selectedFeed.category && (
                 <div className="mb-3">
-                  <span className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-1.5 text-xs font-bold text-[#B13A21]">
+                  <span
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${
+                      d
+                        ? "border-[#FF5C3A]/20 bg-[#FF5C3A]/10 text-[#FF8A70]"
+                        : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
+                    }`}
+                  >
                     {selectedFeed.category}
                   </span>
                 </div>
@@ -214,7 +263,11 @@ export function FeedDetailModal({
                 {selectedFeed.tags.map((tag, index) => (
                   <span
                     key={index}
-                    className="cursor-pointer rounded-full border border-[#00C9A7]/20 bg-[#A8F0E4]/30 px-3 py-1 text-xs font-medium text-[#00A88C] transition-all hover:bg-[#00C9A7]/90 hover:text-white"
+                    className={`cursor-pointer rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+                      d
+                        ? "border-[#00C9A7]/15 bg-[#00C9A7]/10 text-[#00C9A7]/80 hover:bg-[#00C9A7]/25"
+                        : "border-[#00C9A7]/20 bg-[#A8F0E4]/30 text-[#00A88C] hover:bg-[#00C9A7]/90 hover:text-white"
+                    }`}
                   >
                     {tag.startsWith("#") ? tag : `#${tag}`}
                   </span>
@@ -232,8 +285,12 @@ export function FeedDetailModal({
                       onClick={(event) => event.stopPropagation()}
                       className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
                         integration.provider === "figma"
-                          ? "border-[#BDEFD8] bg-[#F5FFFB] text-[#007E68]"
-                          : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
+                          ? d
+                            ? "border-[#00C9A7]/20 bg-[#00C9A7]/10 text-[#00C9A7]"
+                            : "border-[#BDEFD8] bg-[#F5FFFB] text-[#007E68]"
+                          : d
+                            ? "border-[#FF5C3A]/20 bg-[#FF5C3A]/10 text-[#FF8A70]"
+                            : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
                       }`}
                     >
                       {integration.provider === "figma" ? (
@@ -249,14 +306,23 @@ export function FeedDetailModal({
               )}
             </div>
 
-            <div className="border-b border-gray-200 p-4">
+            {/* Actions bar */}
+            <div
+              className={`border-b p-4 ${
+                d ? "border-white/[0.06]" : "border-gray-200"
+              }`}
+            >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <button
                     type="button"
                     onClick={(e) => onToggleLike(selectedFeed, e)}
                     className={`flex items-center gap-2 transition-colors ${
-                      isFeedLiked(selectedFeed) ? "text-[#FF5C3A]" : "text-gray-600 hover:text-[#FF5C3A]"
+                      isFeedLiked(selectedFeed)
+                        ? "text-[#FF5C3A]"
+                        : d
+                          ? "text-white/40 hover:text-[#FF5C3A]"
+                          : "text-gray-600 hover:text-[#FF5C3A]"
                     }`}
                     aria-pressed={isFeedLiked(selectedFeed)}
                   >
@@ -266,7 +332,11 @@ export function FeedDetailModal({
                   <button
                     type="button"
                     onClick={() => commentInputRef.current?.focus()}
-                    className="flex items-center gap-2 text-gray-600 transition-colors hover:text-[#00C9A7]"
+                    className={`flex items-center gap-2 transition-colors ${
+                      d
+                        ? "text-white/40 hover:text-[#00C9A7]"
+                        : "text-gray-600 hover:text-[#00C9A7]"
+                    }`}
                   >
                     <MessageCircle className="size-6" />
                     <span className="font-semibold">{getCommentCount(selectedFeed)}</span>
@@ -279,7 +349,9 @@ export function FeedDetailModal({
                     className={`rounded-lg p-2 transition-all ${
                       savedItemIds.has(selectedFeed.id)
                         ? "border border-white/30 bg-[#00C9A7]/90 text-white"
-                        : "text-gray-600 hover:bg-[#A8F0E4]/20 hover:text-[#00A88C]"
+                        : d
+                          ? "text-white/40 hover:bg-white/5 hover:text-[#00C9A7]"
+                          : "text-gray-600 hover:bg-[#A8F0E4]/20 hover:text-[#00A88C]"
                     }`}
                     aria-label="컬렉션에 저장"
                     title="컬렉션에 저장"
@@ -288,7 +360,11 @@ export function FeedDetailModal({
                   </button>
                   <button
                     onClick={(e) => onShare(selectedFeed, e)}
-                    className="rounded-lg p-2 text-gray-600 transition-colors hover:bg-[#A8F0E4]/20 hover:text-[#00A88C]"
+                    className={`rounded-lg p-2 transition-colors ${
+                      d
+                        ? "text-white/40 hover:bg-white/5 hover:text-[#00C9A7]"
+                        : "text-gray-600 hover:bg-[#A8F0E4]/20 hover:text-[#00A88C]"
+                    }`}
                     aria-label="공유"
                   >
                     <Share2 className="size-5" />
@@ -297,34 +373,65 @@ export function FeedDetailModal({
               </div>
             </div>
 
+            {/* Comments */}
             <div className="flex-1 space-y-4 overflow-y-auto p-4">
               {isFeedDetailLoading && (
-                <div className="rounded-lg bg-[#F7F7F5] px-3 py-2 text-sm text-gray-500">
+                <div
+                  className={`rounded-lg px-3 py-2 text-sm ${
+                    d ? "bg-white/5 text-white/40" : "bg-[#F7F7F5] text-gray-500"
+                  }`}
+                >
                   피드 상세를 불러오는 중입니다.
                 </div>
               )}
               {feedDetailError && (
-                <div className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-2 text-sm text-[#B13A21]">
+                <div
+                  className={`rounded-lg border px-3 py-2 text-sm ${
+                    d
+                      ? "border-[#FF5C3A]/20 bg-[#FF5C3A]/10 text-[#FF8A70]"
+                      : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
+                  }`}
+                >
                   {feedDetailError}
                 </div>
               )}
               {commentSubmitError && (
-                <div className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-2 text-sm text-[#B13A21]">
+                <div
+                  className={`rounded-lg border px-3 py-2 text-sm ${
+                    d
+                      ? "border-[#FF5C3A]/20 bg-[#FF5C3A]/10 text-[#FF8A70]"
+                      : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
+                  }`}
+                >
                   {commentSubmitError}
                 </div>
               )}
               {commentLoadError && (
-                <div className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-2 text-sm text-[#B13A21]">
+                <div
+                  className={`rounded-lg border px-3 py-2 text-sm ${
+                    d
+                      ? "border-[#FF5C3A]/20 bg-[#FF5C3A]/10 text-[#FF8A70]"
+                      : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
+                  }`}
+                >
                   {commentLoadError}
                 </div>
               )}
               {isCommentsLoading && selectedFeedComments.length === 0 && (
-                <div className="rounded-lg bg-[#F7F7F5] px-3 py-2 text-sm text-gray-500">
+                <div
+                  className={`rounded-lg px-3 py-2 text-sm ${
+                    d ? "bg-white/5 text-white/40" : "bg-[#F7F7F5] text-gray-500"
+                  }`}
+                >
                   댓글 목록을 불러오는 중입니다.
                 </div>
               )}
               {!isCommentsLoading && !commentLoadError && selectedFeedComments.length === 0 && (
-                <div className="rounded-lg bg-[#F7F7F5] px-3 py-2 text-sm text-gray-500">
+                <div
+                  className={`rounded-lg px-3 py-2 text-sm ${
+                    d ? "bg-white/5 text-white/40" : "bg-[#F7F7F5] text-gray-500"
+                  }`}
+                >
                   첫 댓글을 남겨보세요.
                 </div>
               )}
@@ -342,11 +449,17 @@ export function FeedDetailModal({
                     <ImageWithFallback
                       src={comment.author.avatar}
                       alt={comment.author.name}
-                      className="size-10 rounded-full ring-2 ring-[#A8F0E4]/30"
+                      className={`size-10 rounded-full ring-2 ${
+                        d ? "ring-[#00C9A7]/20" : "ring-[#A8F0E4]/30"
+                      }`}
                     />
                   </Link>
                   <div className="flex-1">
-                    <div className="rounded-lg bg-[#F7F7F5] p-3">
+                    <div
+                      className={`rounded-lg p-3 ${
+                        d ? "bg-white/5" : "bg-[#F7F7F5]"
+                      }`}
+                    >
                       <div className="mb-1 flex items-center justify-between">
                         <Link
                           to={`/profile/${encodeURIComponent(comment.author.profileKey ?? comment.author.name)}`}
@@ -354,19 +467,31 @@ export function FeedDetailModal({
                             event.stopPropagation();
                             onClose();
                           }}
-                          className="text-sm font-semibold transition-colors hover:text-[#00A88C]"
+                          className={`text-sm font-semibold transition-colors hover:text-[#00A88C] ${
+                            d ? "text-white/90" : ""
+                          }`}
                         >
                           {comment.author.name}
                         </Link>
                       </div>
-                      <p className="mb-2 text-xs text-gray-500">{comment.author.role}</p>
+                      <p
+                        className={`mb-2 text-xs ${
+                          d ? "text-white/30" : "text-gray-500"
+                        }`}
+                      >
+                        {comment.author.role}
+                      </p>
                       {editingCommentId === comment.id ? (
                         <div className="space-y-2">
                           <input
                             type="text"
                             value={editingCommentText}
                             onChange={(e) => onEditingCommentTextChange(e.target.value)}
-                            className="w-full rounded-lg border border-[#BDEFD8] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7]"
+                            className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#00C9A7] ${
+                              d
+                                ? "border-white/10 bg-[#0C1222] text-white"
+                                : "border-[#BDEFD8] bg-white"
+                            }`}
                           />
                           <div className="flex items-center gap-2">
                             <button
@@ -380,14 +505,24 @@ export function FeedDetailModal({
                             <button
                               type="button"
                               onClick={onCancelEditingComment}
-                              className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600"
+                              className={`rounded-md border px-3 py-1.5 text-xs font-semibold ${
+                                d
+                                  ? "border-white/10 text-white/50"
+                                  : "border-gray-200 text-gray-600"
+                              }`}
                             >
                               취소
                             </button>
                           </div>
                         </div>
                       ) : (
-                        <p className="text-sm text-gray-800">{comment.content}</p>
+                        <p
+                          className={`text-sm ${
+                            d ? "text-white/70" : "text-gray-800"
+                          }`}
+                        >
+                          {comment.content}
+                        </p>
                       )}
                     </div>
                     <div className="ml-3 mt-1 flex items-center gap-3">
@@ -396,7 +531,11 @@ export function FeedDetailModal({
                           <button
                             type="button"
                             onClick={() => onStartEditingComment(comment)}
-                            className="text-xs text-gray-500 hover:text-[#00A88C]"
+                            className={`text-xs transition-colors ${
+                              d
+                                ? "text-white/30 hover:text-[#00C9A7]"
+                                : "text-gray-500 hover:text-[#00A88C]"
+                            }`}
                           >
                             수정
                           </button>
@@ -404,7 +543,11 @@ export function FeedDetailModal({
                             type="button"
                             onClick={() => onDeleteComment(comment.id)}
                             disabled={isDeletingCommentId === comment.id}
-                            className="text-xs text-gray-500 hover:text-[#FF5C3A] disabled:opacity-50"
+                            className={`text-xs transition-colors disabled:opacity-50 ${
+                              d
+                                ? "text-white/30 hover:text-[#FF5C3A]"
+                                : "text-gray-500 hover:text-[#FF5C3A]"
+                            }`}
                           >
                             삭제
                           </button>
@@ -416,7 +559,12 @@ export function FeedDetailModal({
               ))}
             </div>
 
-            <div className="border-t border-gray-200 p-4">
+            {/* Comment input */}
+            <div
+              className={`border-t p-4 ${
+                d ? "border-white/[0.06]" : "border-gray-200"
+              }`}
+            >
               <div className="flex items-center gap-3">
                 <ImageWithFallback
                   src={currentUserAvatar}
@@ -431,7 +579,11 @@ export function FeedDetailModal({
                     onChange={(e) => onCommentTextChange(e.target.value)}
                     onKeyDown={onCommentKeyDown}
                     placeholder="댓글을 입력해주세요..."
-                    className="w-full rounded-full bg-[#F7F7F5] px-4 py-3 pr-12 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-[#00C9A7]"
+                    className={`w-full rounded-full px-4 py-3 pr-12 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-[#00C9A7] ${
+                      d
+                        ? "bg-white/5 text-white placeholder-white/25"
+                        : "bg-[#F7F7F5]"
+                    }`}
                   />
                   <button
                     type="button"

@@ -394,8 +394,8 @@ export default function Signup() {
     Number(hasPassword);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#F7F7F5] text-[#0F0F0F]">
-      <div className="absolute inset-0 opacity-70 [background-image:linear-gradient(90deg,rgba(15,15,15,0.04)_1px,transparent_1px),linear-gradient(rgba(15,15,15,0.04)_1px,transparent_1px)] [background-size:44px_44px]" />
+    <div className="relative min-h-screen overflow-hidden bg-[var(--brand-landing-bg)] text-[#0F0F0F]">
+      <div className="absolute inset-0 opacity-60 [background-image:linear-gradient(90deg,rgba(15,15,15,0.03)_1px,transparent_1px),linear-gradient(rgba(15,15,15,0.03)_1px,transparent_1px)] [background-size:44px_44px]" />
       <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#FF5C3A,#00C9A7,#FF5C3A)]" />
 
       {floatingPixels.map((pixel, index) => (
@@ -413,20 +413,20 @@ export default function Signup() {
         />
       ))}
 
-      <main className="relative mx-auto grid min-h-screen max-w-[1180px] grid-cols-1 items-center gap-10 px-6 py-10 lg:grid-cols-[0.95fr_1.05fr]">
+      <main className="relative mx-auto grid min-h-screen max-w-[1420px] grid-cols-1 items-center gap-8 px-4 py-6 sm:px-6 lg:grid-cols-[1.02fr_0.98fr]">
         <section className="hidden lg:block">
-          <Logo className="mb-8" />
+          <Logo className="mb-6" />
 
           <motion.div
             initial={{ opacity: 0, x: -36 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.7, ease: "easeOut" }}
-            className="relative h-[650px] overflow-hidden rounded-lg bg-[#0F0F0F]"
+            className="relative h-[700px] overflow-hidden rounded-[30px] border border-black/10 bg-[#0F0F0F] p-4 shadow-[0_28px_64px_rgba(15,15,15,0.28)]"
           >
             {showcaseItems.map((item, index) => (
               <motion.div
                 key={item.label}
-                className="absolute inset-0"
+                className="absolute inset-4 overflow-hidden rounded-[24px]"
                 initial={false}
                 animate={{
                   opacity: index === activeShowcaseIndex ? 1 : 0,
@@ -441,8 +441,11 @@ export default function Signup() {
                 />
               </motion.div>
             ))}
-            <div className="absolute inset-0 bg-gradient-to-t from-[#0F0F0F]/75 via-[#0F0F0F]/16 to-transparent" />
-            <div className="absolute bottom-8 left-8 right-8 text-white">
+            <div className="absolute left-7 top-7 z-10 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
+              onboarding studio
+            </div>
+            <div className="absolute inset-4 rounded-[24px] bg-gradient-to-t from-[#0F0F0F]/80 via-[#0F0F0F]/18 to-transparent" />
+            <div className="absolute bottom-10 left-9 right-9 z-10 text-white">
               <motion.div
                 key={showcaseItems[activeShowcaseIndex].label}
                 initial={{ opacity: 0, y: 16 }}
@@ -450,7 +453,7 @@ export default function Signup() {
                 transition={{ duration: 0.45 }}
                 className="mb-6"
               >
-                <h2 className="text-5xl font-bold leading-tight">당신의 감각이 필요한 곳으로</h2>
+                <h2 className="text-5xl font-black uppercase leading-[0.9]">Build Your<br />Creative Profile</h2>
                 <p className="mt-4 max-w-[440px] text-sm leading-relaxed text-gray-200">
                   포트폴리오를 발견하고, 프로젝트를 제안하고, 좋은 협업을 시작하세요.
                 </p>
@@ -477,7 +480,7 @@ export default function Signup() {
           initial={{ opacity: 0, x: 36 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.7, ease: "easeOut" }}
-          className="w-full max-w-xl justify-self-center lg:justify-self-end"
+          className="w-full max-w-2xl justify-self-center lg:justify-self-end"
         >
           <Logo className="mb-8 justify-center lg:hidden" />
 
@@ -486,17 +489,17 @@ export default function Signup() {
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45, delay: 0.1 }}
-              className="mb-3 text-sm font-semibold text-[#00A88C]"
+              className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-[#00A88C]"
             >
-              Join pickxel
+              Join Pickxel
             </motion.p>
             <motion.h1
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.18 }}
-              className="mb-2 text-3xl font-bold"
+              className="mb-2 text-4xl font-black uppercase leading-[0.95]"
             >
-              픽셀 크리에이티브 커뮤니티에 가입하세요
+              Start Your Design Journey
             </motion.h1>
             <motion.p
               initial={{ opacity: 0, y: 18 }}
@@ -512,7 +515,7 @@ export default function Signup() {
             initial={{ opacity: 0, y: 26 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.32 }}
-            className="rounded-lg border border-gray-200 bg-white/95 p-8 shadow-2xl backdrop-blur-md"
+            className="rounded-[26px] border border-black/10 bg-white/95 p-8 shadow-[0_22px_52px_rgba(15,15,15,0.16)] backdrop-blur-md"
           >
             <form onSubmit={handleSignup} noValidate className="space-y-5">
               <div>
@@ -530,7 +533,7 @@ export default function Signup() {
                     maxLength={NAME_MAX_LENGTH}
                     aria-invalid={Boolean(signupErrors.name)}
                     aria-describedby={signupErrors.name ? "signup-name-error" : undefined}
-                    className={`h-12 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                    className={`h-12 w-full rounded-xl border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
                       signupErrors.name ? "border-[#FF5C3A]" : "border-gray-200"
                     }`}
                     placeholder="홍길동"
@@ -573,7 +576,7 @@ export default function Signup() {
                         maxLength={10}
                         aria-invalid={Boolean(signupErrors.nickname)}
                         aria-describedby={signupErrors.nickname ? "signup-nickname-error" : undefined}
-                        className={`h-12 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                        className={`h-12 w-full rounded-xl border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
                           signupErrors.nickname ? "border-[#FF5C3A]" : "border-gray-200"
                         }`}
                         placeholder="닉네임"
@@ -611,7 +614,7 @@ export default function Signup() {
                         maxLength={EMAIL_MAX_LENGTH}
                         aria-invalid={Boolean(signupErrors.email)}
                         aria-describedby={signupErrors.email ? "signup-email-error" : undefined}
-                        className={`h-12 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                        className={`h-12 w-full rounded-xl border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
                           signupErrors.email ? "border-[#FF5C3A]" : "border-gray-200"
                         }`}
                         placeholder="your@email.com"
@@ -666,7 +669,7 @@ export default function Signup() {
                             whileHover={{ y: -2 }}
                             whileTap={{ scale: 0.98 }}
                             onClick={() => handleRoleChange(role.id)}
-                            className={`rounded-lg border p-4 text-left transition-all ${
+                            className={`rounded-xl border p-4 text-left transition-all ${
                               isSelected
                                 ? "border-[#00C9A7] bg-[#A8F0E4]/20 shadow-lg shadow-[#00C9A7]/10"
                                 : "border-gray-200 bg-white hover:border-[#00C9A7]/50"
@@ -716,7 +719,7 @@ export default function Signup() {
                         maxLength={PASSWORD_MAX_LENGTH}
                         aria-invalid={Boolean(signupErrors.password)}
                         aria-describedby="signup-password-rule signup-password-error"
-                        className={`h-12 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                        className={`h-12 w-full rounded-xl border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
                           signupErrors.password ? "border-[#FF5C3A]" : "border-gray-200"
                         }`}
                         placeholder="비밀번호"
@@ -760,7 +763,7 @@ export default function Signup() {
                           maxLength={PASSWORD_MAX_LENGTH}
                           aria-invalid={Boolean(signupErrors.confirmPassword)}
                           aria-describedby={signupErrors.confirmPassword ? "signup-confirm-password-error" : undefined}
-                          className={`h-12 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                          className={`h-12 w-full rounded-xl border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
                             signupErrors.confirmPassword ? "border-[#FF5C3A]" : "border-gray-200"
                           }`}
                           placeholder="한 번 더 입력"
@@ -769,7 +772,7 @@ export default function Signup() {
                       <button
                         type="button"
                         onClick={handleConfirmPassword}
-                        className="h-12 shrink-0 rounded-lg border border-[#00C9A7] px-4 text-sm font-semibold text-[#007C69] transition-colors hover:bg-[#E8FFF9]"
+                        className="h-12 shrink-0 rounded-xl border border-[#00C9A7] px-4 text-sm font-semibold text-[#007C69] transition-colors hover:bg-[#E8FFF9]"
                       >
                         확인
                       </button>
@@ -821,7 +824,7 @@ export default function Signup() {
                       type="submit"
                       whileHover={{ y: -1 }}
                       whileTap={{ scale: 0.98 }}
-                      className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#00C9A7] font-semibold text-[#0F0F0F] shadow-lg shadow-[#00C9A7]/20 transition-colors hover:bg-[#00A88C]"
+                      className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#00C9A7] font-semibold text-[#0F0F0F] shadow-lg shadow-[#00C9A7]/20 transition-colors hover:bg-[#00A88C]"
                     >
                       회원가입
                       <ArrowRight className="size-5" />
@@ -861,7 +864,7 @@ export default function Signup() {
               <button
                 type="button"
                 onClick={() => startSocialSignup("Google")}
-                className="flex h-12 items-center justify-center gap-3 rounded-lg border border-gray-200 bg-white px-4 transition-colors hover:bg-gray-50"
+                className="flex h-12 items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white px-4 transition-colors hover:bg-gray-50"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -875,7 +878,7 @@ export default function Signup() {
               <button
                 type="button"
                 onClick={() => startSocialSignup("카카오")}
-                className="flex h-12 items-center justify-center gap-3 rounded-lg bg-[#FEE500] px-4 transition-colors hover:bg-[#FDD835]"
+                className="flex h-12 items-center justify-center gap-3 rounded-xl bg-[#FEE500] px-4 transition-colors hover:bg-[#FDD835]"
               >
                 <img src={kakaoTalkLogo} alt="" className="h-6 w-6 rounded-[6px]" />
                 <span className="font-medium text-gray-900">카카오</span>

@@ -267,8 +267,8 @@ export default function Login() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#F7F7F5] text-[#0F0F0F]">
-      <div className="absolute inset-0 opacity-70 [background-image:linear-gradient(90deg,rgba(15,15,15,0.04)_1px,transparent_1px),linear-gradient(rgba(15,15,15,0.04)_1px,transparent_1px)] [background-size:44px_44px]" />
+    <div className="relative min-h-screen overflow-hidden bg-[var(--brand-landing-bg)] text-[#0F0F0F]">
+      <div className="absolute inset-0 opacity-60 [background-image:linear-gradient(90deg,rgba(15,15,15,0.03)_1px,transparent_1px),linear-gradient(rgba(15,15,15,0.03)_1px,transparent_1px)] [background-size:44px_44px]" />
       <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#00C9A7,#FF5C3A,#00C9A7)]" />
 
       {floatingPixels.map((pixel, index) => (
@@ -286,20 +286,23 @@ export default function Login() {
         />
       ))}
 
-      <main className="relative mx-auto grid min-h-screen max-w-[1180px] grid-cols-1 items-center gap-10 px-6 py-10 lg:grid-cols-[1fr_440px]">
+      <main className="relative mx-auto grid min-h-screen max-w-[1400px] grid-cols-1 items-center gap-8 px-4 py-6 sm:px-6 lg:grid-cols-[1.15fr_0.85fr]">
         <section className="hidden lg:block">
-          <Logo className="mb-8" />
+          <Logo className="mb-6" />
 
           <motion.div
             initial={{ opacity: 0, x: -36 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.7, ease: "easeOut" }}
-            className="relative h-[620px] overflow-hidden rounded-lg bg-[#0F0F0F]"
+            className="relative h-[700px] overflow-hidden rounded-[30px] border border-black/10 bg-[#0F0F0F] p-4 shadow-[0_28px_64px_rgba(15,15,15,0.28)]"
           >
+            <div className="absolute left-7 top-7 z-10 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
+              pixel login lobby
+            </div>
             {loginFeedItems.map((item, index) => (
               <motion.div
                 key={item.title}
-                className="absolute inset-0"
+                className="absolute inset-4 overflow-hidden rounded-[24px]"
                 initial={false}
                 animate={{
                   opacity: index === activeArtworkIndex ? 1 : 0,
@@ -314,8 +317,15 @@ export default function Login() {
                 />
               </motion.div>
             ))}
-            <div className="absolute inset-0 bg-[#0F0F0F]/18" />
-            <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 gap-2">
+            <div className="absolute inset-4 rounded-[24px] bg-gradient-to-t from-[#0F0F0F]/85 via-[#0F0F0F]/25 to-transparent" />
+            <div className="absolute bottom-16 left-8 right-8 z-10 text-white">
+              <p className="text-xs uppercase tracking-[0.22em] text-white/70">Creative Network</p>
+              <h2 className="mt-2 text-5xl font-black uppercase leading-[0.9]">Pixel<br />Rise</h2>
+              <p className="mt-3 max-w-[360px] text-sm text-gray-100">
+                저장한 포트폴리오, 메시지, 프로젝트 제안을 한 번에 이어서 확인하세요.
+              </p>
+            </div>
+            <div className="absolute bottom-7 left-1/2 z-10 flex -translate-x-1/2 gap-2">
               {loginFeedItems.map((item, index) => (
                 <button
                   key={item.title}
@@ -323,7 +333,7 @@ export default function Login() {
                   aria-label={`${item.title} 보기`}
                   onClick={() => setActiveArtworkIndex(index)}
                   className={`h-2 rounded-full transition-all ${
-                    index === activeArtworkIndex ? "w-8 bg-[#00C9A7]" : "w-2 bg-white/70"
+                    index === activeArtworkIndex ? "w-8 bg-[#00C9A7]" : "w-2 bg-white/65"
                   }`}
                 />
               ))}
@@ -335,18 +345,18 @@ export default function Login() {
           initial={{ opacity: 0, x: 36 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.7, ease: "easeOut" }}
-          className="w-full max-w-md justify-self-center lg:justify-self-end"
+          className="w-full max-w-lg justify-self-center lg:justify-self-end"
         >
           <Logo className="mb-8 justify-center lg:hidden" />
 
-          <div className="mb-6">
-            <h1 className="mb-2 text-3xl font-bold">다시 만나서 반가워요</h1>
-            <p className="text-gray-600">계정으로 들어가 저장한 작업과 메시지를 확인하세요.</p>
+          <div className="mb-5">
+            <h1 className="mb-2 text-4xl font-black uppercase leading-none">Welcome Back</h1>
+            <p className="text-sm text-gray-600">계정으로 들어가 저장한 작업, 채팅, 프로젝트 상태를 이어서 확인하세요.</p>
           </div>
 
-          <div className="rounded-lg border border-gray-200 bg-white/95 p-8 shadow-2xl backdrop-blur-md">
+          <div className="rounded-[26px] border border-black/10 bg-white/95 p-8 shadow-[0_22px_52px_rgba(15,15,15,0.16)] backdrop-blur-md">
             {loginPromptMessage && (
-              <div className="mb-5 rounded-lg border border-[#A8F0E4] bg-[#F0FDF9] px-4 py-3 text-sm font-medium text-[#007C69]">
+              <div className="mb-5 rounded-xl border border-[#A8F0E4] bg-[#F0FDF9] px-4 py-3 text-sm font-medium text-[#007C69]">
                 {loginPromptMessage}
               </div>
             )}
@@ -364,7 +374,7 @@ export default function Login() {
                     onChange={(e) => handleEmailChange(e.target.value)}
                     aria-invalid={Boolean(loginErrors.email)}
                     aria-describedby={loginErrors.email ? "email-error" : undefined}
-                    className={`h-12 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                    className={`h-12 w-full rounded-xl border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
                       loginErrors.email ? "border-[#FF5C3A]" : "border-gray-200"
                     }`}
                     placeholder="your@email.com"
@@ -395,7 +405,7 @@ export default function Login() {
                     onChange={(e) => handlePasswordChange(e.target.value)}
                     aria-invalid={Boolean(loginErrors.password)}
                     aria-describedby={loginErrors.password ? "password-error" : undefined}
-                    className={`h-12 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
+                    className={`h-12 w-full rounded-xl border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
                       loginErrors.password ? "border-[#FF5C3A]" : "border-gray-200"
                     }`}
                     placeholder="비밀번호를 입력하세요"
@@ -436,7 +446,7 @@ export default function Login() {
                 type="submit"
                 whileHover={{ y: -1 }}
                 whileTap={{ scale: 0.98 }}
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#00C9A7] font-semibold text-[#0F0F0F] shadow-lg shadow-[#00C9A7]/20 transition-colors hover:bg-[#00A88C]"
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#00C9A7] font-semibold text-[#0F0F0F] shadow-lg shadow-[#00C9A7]/20 transition-colors hover:bg-[#00A88C]"
               >
                 로그인
                 <ArrowRight className="size-5" />
@@ -462,7 +472,7 @@ export default function Login() {
               <button
                 type="button"
                 onClick={() => startSocialLogin("Google")}
-                className="flex h-12 w-full items-center justify-center gap-3 rounded-lg border border-gray-200 bg-white px-4 transition-colors hover:bg-gray-50"
+                className="flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white px-4 transition-colors hover:bg-gray-50"
               >
                 <svg className="h-5 w-5" viewBox="0 0 24 24">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -476,7 +486,7 @@ export default function Login() {
               <button
                 type="button"
                 onClick={() => startSocialLogin("카카오")}
-                className="flex h-12 w-full items-center justify-center gap-3 rounded-lg bg-[#FEE500] px-4 transition-colors hover:bg-[#FDD835]"
+                className="flex h-12 w-full items-center justify-center gap-3 rounded-xl bg-[#FEE500] px-4 transition-colors hover:bg-[#FDD835]"
               >
                 <img src={kakaoTalkLogo} alt="" className="h-6 w-6 rounded-[6px]" />
                 <span className="font-medium text-gray-900">카카오로 계속하기</span>

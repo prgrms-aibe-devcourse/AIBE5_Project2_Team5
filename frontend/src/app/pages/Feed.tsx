@@ -1,4 +1,4 @@
-﻿import Navigation from "../components/Navigation";
+import Navigation from "../components/Navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { apiRequest } from "../api/apiClient";
@@ -17,6 +17,7 @@ import {
 import { getCurrentUser } from "../utils/auth";
 import { getUserAvatar } from "../utils/avatar";
 import { normalizeCategoryLabel, normalizePostTypeLabel } from "../utils/matchingCategories";
+import { useNightMode } from "../contexts/NightModeContext";
 import type {
   BaseFeedItem,
   FeedCardItem,
@@ -27,6 +28,7 @@ import type {
 
 export default function Feed() {
   const navigate = useNavigate();
+  const { isNight } = useNightMode();
   const [selectedFeed, setSelectedFeed] = useState<FeedCardItem | null>(null);
   const [apiFeedItems, setApiFeedItems] = useState<BaseFeedItem[]>([]);
   const [isFeedLoading, setIsFeedLoading] = useState(true);
@@ -415,33 +417,55 @@ export default function Feed() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F7F7F5]">
+    <div
+      className={`min-h-screen transition-colors duration-500 ${
+        isNight ? "bg-[#0C1222]" : "bg-[#FBF9F6]"
+      }`}
+    >
       <Navigation />
 
-      <div className="max-w-[1400px] mx-auto px-6 py-8">
+      <div className="mx-auto max-w-[1400px] px-6 py-8">
         <div className="flex gap-8">
           {/* Main Feed */}
           <div className="flex-1">
             {isFeedLoading && (
-              <div className="mb-6 rounded-xl border border-dashed border-[#BDEFD8] bg-white px-6 py-10 text-center text-sm font-medium text-gray-500">
+              <div
+                className={`mb-6 rounded-xl border border-dashed px-6 py-10 text-center text-sm font-medium transition-colors duration-500 ${
+                  isNight
+                    ? "border-white/10 bg-[#1a1f2e] text-white/40"
+                    : "border-[#BDEFD8] bg-white text-gray-500"
+                }`}
+              >
                 피드 목록을 불러오는 중입니다.
               </div>
             )}
 
             {!isFeedLoading && feedError && (
-              <div className="mb-6 rounded-xl border border-[#FFB9AA] bg-[#FFF7F4] px-6 py-10 text-center text-sm font-medium text-[#B13A21]">
+              <div
+                className={`mb-6 rounded-xl border px-6 py-10 text-center text-sm font-medium transition-colors duration-500 ${
+                  isNight
+                    ? "border-[#FF5C3A]/30 bg-[#FF5C3A]/10 text-[#FF8A70]"
+                    : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
+                }`}
+              >
                 {feedError}
               </div>
             )}
 
             {!isFeedLoading && !feedError && visibleFeedItems.length === 0 && (
-              <div className="mb-6 rounded-xl border border-dashed border-[#BDEFD8] bg-white px-6 py-10 text-center text-sm font-medium text-gray-500">
+              <div
+                className={`mb-6 rounded-xl border border-dashed px-6 py-10 text-center text-sm font-medium transition-colors duration-500 ${
+                  isNight
+                    ? "border-white/10 bg-[#1a1f2e] text-white/40"
+                    : "border-[#BDEFD8] bg-white text-gray-500"
+                }`}
+              >
                 아직 표시할 피드가 없습니다.
               </div>
             )}
 
             {/* Feed Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               {visibleFeedItems.map((item) => {
                 const images = getFeedImages(item);
                 const activeImageIndex = carouselIndexes[item.feedKey] ?? 0;
@@ -454,6 +478,7 @@ export default function Feed() {
                     images={images}
                     activeImageIndex={activeImageIndex}
                     isSaved={isSaved}
+                    isNight={isNight}
                     onOpenDetail={openFeedDetail}
                     onMoveCarousel={moveCarousel}
                     onSelectImage={handleSelectCarouselImage}
@@ -472,14 +497,22 @@ export default function Feed() {
             <div ref={sentinelRef} className="h-4" />
 
             {isLoadingMore && (
-              <div className="py-6 text-center text-sm text-gray-500">
+              <div
+                className={`py-6 text-center text-sm transition-colors duration-500 ${
+                  isNight ? "text-white/30" : "text-gray-500"
+                }`}
+              >
                 피드를 더 불러오는 중입니다...
               </div>
             )}
 
             {!isFeedLoading && !hasNext && visibleFeedItems.length > 0 && (
-              <div className="py-6 text-center text-sm text-gray-400">
-                모든 피드를 확인했습니다 ✨
+              <div
+                className={`py-6 text-center text-sm transition-colors duration-500 ${
+                  isNight ? "text-white/20" : "text-gray-400"
+                }`}
+              >
+                모든 피드를 불러왔습니다.
               </div>
             )}
 
@@ -493,6 +526,7 @@ export default function Feed() {
             showAll={showAllFollowing}
             isLoading={isFollowingLoading}
             error={followingError}
+            isNight={isNight}
             onToggleOpen={() => setIsFollowingOpen((prev) => !prev)}
             onShowAllToggle={() => setShowAllFollowing((prev) => !prev)}
           />
@@ -521,6 +555,7 @@ export default function Feed() {
           currentUserAvatar={currentUserAvatar}
           currentUserName={currentUserName}
           commentInputRef={commentInputRef}
+          isNight={isNight}
           formatFeedDateTime={formatFeedDateTime}
           isFeedLiked={isFeedLiked}
           getLikeCount={getLikeCount}
@@ -564,5 +599,3 @@ export default function Feed() {
     </div>
   );
 }
-
-
