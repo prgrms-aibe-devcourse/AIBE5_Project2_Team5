@@ -151,8 +151,8 @@ public class FeedServiceImpl implements FeedService {
             picked = false;
         } else {
             pickCountRepository.save(PickCount.builder()
-                    .user_id(user)
-                    .post_id(post)
+                    .user(user)
+                    .post(post)
                     .build());
             post.setPickCount(currentPickCount + 1);
             picked = true;
