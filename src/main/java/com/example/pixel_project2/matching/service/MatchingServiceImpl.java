@@ -134,7 +134,6 @@ public class MatchingServiceImpl implements MatchingService {
                 .fullDescription(request.fullDescription())
                 .responsibilities(sanitizeStringList(request.responsibilities()))
                 .qualifications(sanitizeStringList(request.qualifications()))
-                .categories(categories)
                 .projectState(parseProjectState(request.state()))
                 .jobState(parseJobState(request.jobState()))
                 .experienceLevel(parseExperienceLevel(request.experienceLevel()))
@@ -219,27 +218,15 @@ public class MatchingServiceImpl implements MatchingService {
     }
 
     private List<String> getProjectCategories(Project project) {
-        List<String> categories = sanitizeStringList(project.getCategories());
         String primaryCategory = project.getPost() != null && project.getPost().getCategory() != null
                 ? project.getPost().getCategory().getLabel()
                 : null;
 
-        if (primaryCategory == null || primaryCategory.isBlank()) {
-            return categories;
-        }
-
-        if (categories.isEmpty()) {
+        if (primaryCategory != null && !primaryCategory.isBlank()) {
             return List.of(primaryCategory);
         }
 
-        if (categories.contains(primaryCategory)) {
-            return categories;
-        }
-
-        java.util.ArrayList<String> normalized = new java.util.ArrayList<>();
-        normalized.add(primaryCategory);
-        normalized.addAll(categories);
-        return normalized;
+        return List.of();
     }
 
     private List<String> normalizeProjectCategories(List<String> categories, String legacyCategory) {
@@ -491,7 +478,6 @@ public class MatchingServiceImpl implements MatchingService {
                 : getProjectCategories(project);
         if (!categories.isEmpty()) {
             post.setCategory(parseCategory(categories.get(0)));
-            project.setCategories(categories);
         }
 
         if (request.jobState() != null && !request.jobState().isBlank()) {

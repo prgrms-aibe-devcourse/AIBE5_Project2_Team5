@@ -70,21 +70,21 @@ class MatchingFlowIntegrationTest {
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.categories.length()").value(2))
+                .andExpect(jsonPath("$.data.categories.length()").value(1))
                 .andReturn();
 
         JsonNode createdProject = readData(createResult);
         long postId = createdProject.path("postId").asLong();
 
         assertThat(createdProject.path("categories").isArray()).isTrue();
-        assertThat(createdProject.path("categories")).hasSize(2);
+        assertThat(createdProject.path("categories")).hasSize(1);
         assertThat(createdProject.path("category").asText()).isEqualTo(createdProject.path("categories").get(0).asText());
 
         MvcResult detailResult = mockMvc.perform(get("/api/projects/{postId}", postId)
                         .header(HttpHeaders.AUTHORIZATION, BEARER + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.categories.length()").value(2))
+                .andExpect(jsonPath("$.data.categories.length()").value(1))
                 .andReturn();
 
         JsonNode detailProject = readData(detailResult);
@@ -100,7 +100,7 @@ class MatchingFlowIntegrationTest {
         JsonNode createdMyPost = findProjectByPostId(myPosts, postId);
 
         assertThat(createdMyPost).isNotNull();
-        assertThat(createdMyPost.path("categories")).hasSize(2);
+        assertThat(createdMyPost.path("categories")).hasSize(1);
         assertThat(createdMyPost.path("category").asText()).isEqualTo(createdMyPost.path("categories").get(0).asText());
 
         MvcResult listResult = mockMvc.perform(get("/api/projects")
@@ -113,7 +113,7 @@ class MatchingFlowIntegrationTest {
         JsonNode createdListedProject = findProjectById(listedProjects, postId);
 
         assertThat(createdListedProject).isNotNull();
-        assertThat(createdListedProject.path("categories")).hasSize(2);
+        assertThat(createdListedProject.path("categories")).hasSize(1);
         assertThat(createdListedProject.path("category").asText()).isEqualTo(createdListedProject.path("categories").get(0).asText());
     }
 
@@ -174,7 +174,7 @@ class MatchingFlowIntegrationTest {
         assertThat(savedApplication).isNotNull();
         assertThat(savedApplication.path("title").asText()).isEqualTo("Application enabled project");
         assertThat(savedApplication.path("overview").asText()).isEqualTo("Need a designer who can start soon");
-        assertThat(savedApplication.path("categories")).hasSize(2);
+        assertThat(savedApplication.path("categories")).hasSize(1);
 
         MvcResult projectApplicationsResult = mockMvc.perform(get("/api/projects/{postId}/applications", postId)
                         .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken))
@@ -302,7 +302,7 @@ class MatchingFlowIntegrationTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.title").value("Updated project"))
                 .andExpect(jsonPath("$.data.budget").value(700))
-                .andExpect(jsonPath("$.data.categories.length()").value(2));
+                .andExpect(jsonPath("$.data.categories.length()").value(1));
 
         mockMvc.perform(get("/api/projects/{postId}", postId)
                         .header(HttpHeaders.AUTHORIZATION, BEARER + clientToken))
