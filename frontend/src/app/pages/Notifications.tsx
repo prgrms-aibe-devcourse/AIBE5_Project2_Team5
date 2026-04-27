@@ -42,6 +42,7 @@ import {
   markNotificationRead,
   subscribeNotificationState,
 } from "../utils/notificationState";
+import { useNightMode } from "../contexts/NightModeContext";
 
 type NotificationTab = "all" | NotificationCategory;
 
@@ -59,52 +60,64 @@ const tabs: Array<{ key: NotificationTab; label: string }> = [
   { key: "system", label: "시스템" },
 ];
 
-// ?뚮┝ ??낅퀎 ?됱긽쨌?꾩씠肄??ㅼ젙 (?쇱씠???뚮쭏 湲곗?)
-const getTypeConfig = (notification: NotificationItem) => {
+/** 알림 유형별 아이콘·배지 스타일 (라이트/다크) */
+const getTypeConfig = (notification: NotificationItem, isNight: boolean) => {
   switch (notification.type) {
     case "like":
       return {
         icon: <Heart className="size-4" />,
-        iconBg: "bg-rose-50 text-rose-500",
+        iconBg: isNight ? "bg-rose-500/15 text-rose-300" : "bg-rose-50 text-rose-500",
         dotColor: "bg-rose-400",
-        badge: "bg-rose-50 text-rose-600 border-rose-200",
+        badge: isNight
+          ? "bg-rose-500/15 text-rose-300 border-rose-500/35"
+          : "bg-rose-50 text-rose-600 border-rose-200",
         btnClass: "bg-rose-500 hover:bg-rose-600 text-white",
         label: "좋아요",
       };
     case "message":
       return {
         icon: <MessageCircle className="size-4" />,
-        iconBg: "bg-blue-50 text-blue-500",
+        iconBg: isNight ? "bg-blue-500/15 text-blue-300" : "bg-blue-50 text-blue-500",
         dotColor: "bg-blue-400",
-        badge: "bg-blue-50 text-blue-600 border-blue-200",
+        badge: isNight
+          ? "bg-blue-500/15 text-blue-300 border-blue-500/35"
+          : "bg-blue-50 text-blue-600 border-blue-200",
         btnClass: "bg-blue-500 hover:bg-blue-600 text-white",
         label: "메시지",
       };
     case "announcement":
       return {
         icon: <Sparkles className="size-4" />,
-        iconBg: "bg-[#EEF9F6] text-[#00A88C]",
+        iconBg: isNight ? "bg-[#00C9A7]/15 text-[#7ee8d3]" : "bg-[#EEF9F6] text-[#00A88C]",
         dotColor: "bg-[#00C9A7]",
-        badge: "bg-[#EEF9F6] text-[#00A88C] border-[#CDEFE6]",
-        btnClass: "bg-[#00C9A7] hover:bg-[#00A88C] text-black",
+        badge: isNight
+          ? "bg-[#00C9A7]/15 text-[#7ee8d3] border-[#00C9A7]/35"
+          : "bg-[#EEF9F6] text-[#00A88C] border-[#CDEFE6]",
+        btnClass: isNight
+          ? "bg-[#00C9A7] hover:bg-[#00A88C] text-[#0f172a]"
+          : "bg-[#00C9A7] hover:bg-[#00A88C] text-black",
         label: "프로젝트",
       };
     case "complete":
       return {
         icon: <CheckCircle className="size-4" />,
-        iconBg: "bg-violet-50 text-violet-500",
+        iconBg: isNight ? "bg-violet-500/15 text-violet-300" : "bg-violet-50 text-violet-500",
         dotColor: "bg-violet-400",
-        badge: "bg-violet-50 text-violet-600 border-violet-200",
+        badge: isNight
+          ? "bg-violet-500/15 text-violet-300 border-violet-500/35"
+          : "bg-violet-50 text-violet-600 border-violet-200",
         btnClass: "bg-violet-500 hover:bg-violet-600 text-white",
         label: "수락",
       };
     default:
       return {
         icon: <Bell className="size-4" />,
-        iconBg: "bg-gray-100 text-gray-500",
+        iconBg: isNight ? "bg-white/10 text-gray-300" : "bg-gray-100 text-gray-500",
         dotColor: "bg-gray-400",
-        badge: "bg-gray-100 text-gray-600 border-gray-200",
-        btnClass: "bg-gray-800 hover:bg-gray-700 text-white",
+        badge: isNight
+          ? "bg-white/10 text-gray-300 border-white/20"
+          : "bg-gray-100 text-gray-600 border-gray-200",
+        btnClass: isNight ? "bg-white/15 hover:bg-white/25 text-white" : "bg-gray-800 hover:bg-gray-700 text-white",
         label: "시스템",
       };
   }
@@ -152,6 +165,7 @@ const buildProposalProjectMeta = (
 
 export default function Notifications() {
   const navigate = useNavigate();
+  const { isNight } = useNightMode();
   const currentUser = getCurrentUser();
   const [activeTab, setActiveTab] = useState<NotificationTab>("all");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -300,6 +314,16 @@ export default function Notifications() {
 
   const unreadCount = visibleNotifications.filter((n) => !n.isRead).length;
 
+  const tabUnreadCounts = useMemo(() => {
+    const unread = notifications.filter((n) => !n.isSnoozed && !n.isRead);
+    return {
+      all: unread.length,
+      project: unread.filter((n) => n.category === "project").length,
+      activity: unread.filter((n) => n.category === "activity").length,
+      system: unread.filter((n) => n.category === "system").length,
+    };
+  }, [notifications]);
+
   const handleMarkAllRead = async () => {
     await markAllNotificationsRead();
     setNotifications((prev) => prev.map((notification) => ({ ...notification, isRead: true })));
@@ -398,36 +422,55 @@ export default function Notifications() {
     });
   };
 
+  const tabFocusRing = isNight
+    ? "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00C9A7]/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0C1222]"
+    : "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00C9A7]/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f6f8fb]";
+
   return (
-    <div className="min-h-screen flex flex-col bg-[#F7F7F5]">
+    <div
+      className={`min-h-screen flex flex-col transition-colors duration-700 ${
+        isNight ? "bg-[#0C1222] text-white" : "bg-[#f6f8fb] text-[#111827]"
+      }`}
+    >
       <Navigation />
 
       <main className="flex-1">
-        <div className="max-w-[860px] mx-auto px-6 py-10">
+        <div className="pickxel-animate-page-in max-w-[860px] mx-auto px-6 py-10">
 
           {/* 헤더 */}
           <motion.div
             initial={{ opacity: 0, y: -12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35 }}
-            className="flex items-start justify-between mb-8"
+            className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-8"
           >
             <div>
-              <div className="flex items-center gap-3 mb-1.5">
-                <h1 className="text-3xl font-bold text-[#0F0F0F]">알림 센터</h1>
+              <div className="flex items-center gap-3 mb-1.5 flex-wrap">
+                <h1 className={`text-3xl font-bold ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>알림 센터</h1>
                 {unreadCount > 0 && (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#EEF9F6] text-[#00A88C] border border-[#CDEFE6]">
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                      isNight
+                        ? "border-[#00C9A7]/35 bg-[#00C9A7]/15 text-[#7ee8d3]"
+                        : "bg-[#EEF9F6] text-[#00A88C] border-[#CDEFE6]"
+                    }`}
+                  >
                     {unreadCount}개 미확인
                   </span>
                 )}
               </div>
-              <p className="text-sm text-[#5F5E5A]">
+              <p className={`text-sm ${isNight ? "text-white/55" : "text-[#5F5E5A]"}`}>
                 프로젝트 제안, 활동 소식, 시스템 알림을 분류해서 확인하세요.
               </p>
             </div>
             <button
+              type="button"
               onClick={handleMarkAllRead}
-              className="flex items-center gap-1.5 text-sm text-[#00A88C] hover:text-[#007E68] transition-colors px-3 py-1.5 rounded-lg hover:bg-[#EEF9F6]"
+              className={`flex shrink-0 items-center gap-1.5 self-start text-sm transition-colors px-3 py-1.5 rounded-lg ${
+                isNight
+                  ? "text-[#7ee8d3] hover:text-[#9af5e0] hover:bg-[#00C9A7]/10"
+                  : "text-[#00A88C] hover:text-[#007E68] hover:bg-[#EEF9F6]"
+              }`}
             >
               <CheckCircle className="size-4" />
               {hasUnread ? "모두 읽음 처리" : "모두 읽음"}
@@ -439,28 +482,54 @@ export default function Notifications() {
             initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: 0.06 }}
-            className="flex gap-1 mb-6 p-1 bg-white rounded-xl border border-[#EAEAE8] shadow-sm"
+            className={`flex gap-1 mb-6 p-1 rounded-xl shadow-sm border ${
+              isNight ? "bg-[#141d30] border-white/10" : "bg-white/90 border-[#E5E7EB]"
+            }`}
           >
-            {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  activeTab === tab.key
-                    ? "bg-black text-white shadow-sm"
-                    : "text-[#5F5E5A] hover:bg-[#F1EFE8] hover:text-[#0F0F0F]"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+            {tabs.map((tab) => {
+              const tabUnread = tabUnreadCounts[tab.key];
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`${tabFocusRing} flex flex-1 items-center justify-center gap-1.5 min-h-[2.5rem] px-2 sm:px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    activeTab === tab.key
+                      ? "bg-gradient-to-r from-[#00C9A7] to-[#00A88C] text-white shadow-sm"
+                      : isNight
+                        ? "text-white/55 hover:bg-white/5 hover:text-white/90"
+                        : "text-gray-600 hover:bg-[#f1f5f4] hover:text-[#0f172a]"
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  {tabUnread > 0 && (
+                    <span
+                      className={`min-w-[1.125rem] rounded-full px-1 text-[10px] font-bold tabular-nums leading-none py-0.5 ${
+                        activeTab === tab.key
+                          ? "bg-white/25 text-white"
+                          : isNight
+                            ? "bg-[#00C9A7]/25 text-[#7ee8d3]"
+                            : "bg-[#EEF9F6] text-[#00A88C]"
+                      }`}
+                    >
+                      {tabUnread > 99 ? "99+" : tabUnread}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </motion.div>
 
           {/* 알림 목록 */}
           {isLoading ? (
             <div className="flex flex-col gap-3">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-24 rounded-2xl bg-white border border-[#EAEAE8] animate-pulse" />
+                <div
+                  key={i}
+                  className={`h-24 rounded-2xl border animate-pulse ${
+                    isNight ? "bg-[#141d30] border-white/10" : "bg-white border-[#EAEAE8]"
+                  }`}
+                />
               ))}
             </div>
           ) : (
@@ -472,15 +541,30 @@ export default function Notifications() {
                   animate={{ opacity: 1 }}
                   className="flex flex-col items-center justify-center py-24 gap-4"
                 >
-                  <div className="w-16 h-16 rounded-2xl bg-white border border-[#EAEAE8] flex items-center justify-center shadow-sm">
-                    <Bell className="size-7 text-gray-300" />
+                  <div
+                    className={`w-16 h-16 rounded-2xl border flex items-center justify-center shadow-sm ${
+                      isNight ? "bg-[#141d30] border-white/10" : "bg-white border-[#EAEAE8]"
+                    }`}
+                  >
+                    <Bell className={`size-7 ${isNight ? "text-white/25" : "text-gray-300"}`} />
                   </div>
-                  <p className="text-[#5F5E5A] text-sm">표시할 알림이 없습니다.</p>
+                  <p className={`text-sm ${isNight ? "text-white/45" : "text-[#5F5E5A]"}`}>표시할 알림이 없습니다.</p>
                 </motion.div>
               ) : (
                 <div className="flex flex-col gap-3">
                   {visibleNotifications.map((notification, index) => {
-                    const config = getTypeConfig(notification);
+                    const config = getTypeConfig(notification, isNight);
+                    const cardBorder = !notification.isRead
+                      ? isNight
+                        ? "border-[#00C9A7]/35"
+                        : "border-[#BDEFD8]"
+                      : isNight
+                        ? "border-white/10"
+                        : "border-[#EAEAE8]";
+                    const cardBg = isNight ? "bg-[#141d30]" : "bg-white";
+                    const avatarRing = isNight ? "ring-white/15" : "ring-gray-200";
+                    const miniIconBorder = isNight ? "border-[#141d30]" : "border-white";
+
                     return (
                       <motion.div
                         key={notification.id}
@@ -488,38 +572,32 @@ export default function Notifications() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, x: -16, transition: { duration: 0.18 } }}
                         transition={{ duration: 0.28, delay: index * 0.04 }}
-                        className={`relative bg-white rounded-2xl border overflow-hidden transition-shadow duration-200 group hover:shadow-md ${
-                          !notification.isRead
-                            ? "border-[#BDEFD8]"
-                            : "border-[#EAEAE8]"
-                        }`}
+                        className={`relative rounded-2xl border overflow-hidden transition-shadow duration-200 group hover:shadow-md ${cardBg} ${cardBorder}`}
                       >
-                        {/* 미읽음 좌측 강조선 */}
                         {!notification.isRead && (
                           <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-[#00C9A7]" />
                         )}
 
                         <div className="flex items-start gap-4 px-6 py-5">
-                          {/* 아바타 */}
                           <div className="flex-shrink-0 relative">
                             {notification.senderProfileImage ? (
                               <img
                                 src={notification.senderProfileImage}
                                 alt=""
-                                className="w-11 h-11 rounded-xl object-cover ring-1 ring-gray-200"
+                                className={`w-11 h-11 rounded-xl object-cover ring-1 ${avatarRing}`}
                               />
                             ) : (
                               <div className={`w-11 h-11 rounded-xl ${config.iconBg} flex items-center justify-center font-bold text-base`}>
                                 {getInitials(notification.subtitle)}
                               </div>
                             )}
-                            {/* 타입 미니 아이콘 */}
-                            <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full ${config.iconBg} border-2 border-white flex items-center justify-center`}>
+                            <div
+                              className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full ${config.iconBg} border-2 ${miniIconBorder} flex items-center justify-center`}
+                            >
                               <span className="[&>svg]:size-2.5">{config.icon}</span>
                             </div>
                           </div>
 
-                          {/* 내용 */}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-3 mb-1">
                               <div className="flex items-center gap-2 flex-wrap">
@@ -531,27 +609,38 @@ export default function Notifications() {
                                 )}
                               </div>
                               <div className="flex items-center gap-2 flex-shrink-0">
-                                <span className="text-xs text-gray-400">{notification.time}</span>
+                                <span className={`text-xs ${isNight ? "text-white/40" : "text-gray-400"}`}>
+                                  {notification.time}
+                                </span>
                                 <button
+                                  type="button"
                                   onClick={() => handleSnooze(notification.id)}
-                                  className="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded-md hover:bg-[#F1EFE8] flex items-center justify-center"
+                                  className={`opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 rounded-md flex items-center justify-center ${
+                                    isNight ? "hover:bg-white/10" : "hover:bg-[#F1EFE8]"
+                                  }`}
                                 >
-                                  <X className="size-3 text-gray-400" />
+                                  <X className={`size-3 ${isNight ? "text-white/45" : "text-gray-400"}`} />
                                 </button>
                               </div>
                             </div>
 
-                            <p className="text-sm text-[#0F0F0F] font-medium leading-snug mb-0.5">
+                            <p
+                              className={`text-sm font-medium leading-snug mb-0.5 ${
+                                isNight ? "text-white/90" : "text-[#0F0F0F]"
+                              }`}
+                            >
                               {notification.title}
                             </p>
                             {notification.subtitle && (
-                              <p className="text-xs text-[#8B8A84]">@{notification.subtitle}</p>
+                              <p className={`text-xs ${isNight ? "text-white/40" : "text-[#8B8A84]"}`}>
+                                @{notification.subtitle}
+                              </p>
                             )}
 
-                            {/* 액션 버튼 */}
                             {notification.action && (
                               <div className="mt-3">
                                 <button
+                                  type="button"
                                   onClick={() => handlePrimaryAction(notification)}
                                   className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all duration-150 ${config.btnClass}`}
                                 >
@@ -589,49 +678,96 @@ export default function Notifications() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.96, y: 12 }}
               transition={{ type: "spring", damping: 22, stiffness: 300 }}
-              className="w-full max-w-3xl rounded-3xl bg-white shadow-2xl overflow-hidden"
+              className={`w-full max-w-3xl rounded-3xl shadow-2xl overflow-hidden ${
+                isNight ? "bg-[#141d30] text-white" : "bg-white"
+              }`}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* 모달 헤더 */}
-              <div className="flex items-start justify-between border-b border-gray-100 px-7 py-5">
+              <div
+                className={`flex items-start justify-between border-b px-7 py-5 ${
+                  isNight ? "border-white/10" : "border-gray-100"
+                }`}
+              >
                 <div>
-                  <p className="text-sm font-semibold text-[#00A88C]">제안 확인하기</p>
-                  <h2 className="mt-1 text-2xl font-bold text-[#0F0F0F]">
+                  <p className={`text-sm font-semibold ${isNight ? "text-[#7ee8d3]" : "text-[#00A88C]"}`}>
+                    제안 확인하기
+                  </p>
+                  <h2 className={`mt-1 text-2xl font-bold ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>
                     {proposalModalData?.projectTitle ?? "프로젝트 제안"}
                   </h2>
-                  <p className="mt-1 text-sm text-gray-500">
+                  <p className={`mt-1 text-sm ${isNight ? "text-white/50" : "text-gray-500"}`}>
                     {proposalModalData?.projectMeta ?? "지원한 디자이너 제안을 확인하세요."}
                   </p>
                 </div>
                 <button
+                  type="button"
                   onClick={closeProposalModal}
-                  className="rounded-full border border-gray-200 p-2 text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-700"
+                  className={`rounded-full border p-2 transition-colors ${
+                    isNight
+                      ? "border-white/15 text-white/50 hover:bg-white/10 hover:text-white"
+                      : "border-gray-200 text-gray-400 hover:bg-gray-50 hover:text-gray-700"
+                  }`}
                 >
                   <X className="size-5" />
                 </button>
               </div>
 
               <div className="max-h-[65vh] overflow-y-auto px-7 py-5">
-                <div className="mb-5 rounded-xl bg-[#F7F9FB] border border-gray-100 px-4 py-3 text-sm text-[#5F5E5A]">
+                <div
+                  className={`mb-5 rounded-xl border px-4 py-3 text-sm ${
+                    isNight
+                      ? "border-white/10 bg-[#00C9A7]/10 text-white/70"
+                      : "bg-[#F7F9FB] border-gray-100 text-[#5F5E5A]"
+                  }`}
+                >
                   내가 작성한 프로젝트 공고에 지원한 디자이너 목록입니다. 제안 내용을 검토하고 메시지로 바로 이어갈 수 있어요.
                 </div>
 
                 {isProposalLoading ? (
                   <div className="flex flex-col gap-4">
                     {[1, 2].map((item) => (
-                      <div key={item} className="rounded-2xl border border-gray-200 p-5">
-                        <div className="h-5 w-40 rounded bg-gray-100 animate-pulse" />
-                        <div className="mt-4 h-16 rounded bg-gray-100 animate-pulse" />
-                        <div className="mt-4 h-12 rounded bg-gray-100 animate-pulse" />
+                      <div
+                        key={item}
+                        className={`rounded-2xl border p-5 ${
+                          isNight ? "border-white/10" : "border-gray-200"
+                        }`}
+                      >
+                        <div
+                          className={`h-5 w-40 rounded animate-pulse ${
+                            isNight ? "bg-white/10" : "bg-gray-100"
+                          }`}
+                        />
+                        <div
+                          className={`mt-4 h-16 rounded animate-pulse ${
+                            isNight ? "bg-white/10" : "bg-gray-100"
+                          }`}
+                        />
+                        <div
+                          className={`mt-4 h-12 rounded animate-pulse ${
+                            isNight ? "bg-white/10" : "bg-gray-100"
+                          }`}
+                        />
                       </div>
                     ))}
                   </div>
                 ) : proposalLoadError ? (
-                  <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-4 text-sm text-red-600">
+                  <div
+                    className={`rounded-2xl border px-4 py-4 text-sm ${
+                      isNight
+                        ? "border-red-500/30 bg-red-500/10 text-red-300"
+                        : "border-red-100 bg-red-50 text-red-600"
+                    }`}
+                  >
                     {proposalLoadError}
                   </div>
                 ) : !proposalModalData || proposalModalData.applications.length === 0 ? (
-                  <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
+                  <div
+                    className={`rounded-2xl border px-4 py-8 text-center text-sm ${
+                      isNight
+                        ? "border-white/10 bg-white/5 text-white/50"
+                        : "border-gray-200 bg-gray-50 text-gray-500"
+                    }`}
+                  >
                     아직 확인할 지원 제안이 없어요.
                   </div>
                 ) : (
@@ -639,9 +775,11 @@ export default function Notifications() {
                     {proposalModalData.applications.map((proposal) => (
                       <div
                         key={proposal.applicationId}
-                        className="rounded-2xl border border-gray-200 p-5 hover:shadow-md transition-shadow"
+                        className={`rounded-2xl border p-5 transition-shadow hover:shadow-md ${
+                          isNight ? "border-white/10 bg-white/[0.03]" : "border-gray-200 bg-white"
+                        }`}
                       >
-                        <div className="flex items-start justify-between gap-4">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                           <div className="flex items-center gap-4">
                             <ImageWithFallback
                               src={getUserAvatar(
@@ -653,20 +791,33 @@ export default function Notifications() {
                               className="w-12 h-12 rounded-xl object-cover"
                             />
                             <div>
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-bold text-[#0F0F0F]">{proposal.designerName}</h3>
-                                <span className="rounded-full bg-[#EEF9F6] border border-[#CDEFE6] px-2 py-0.5 text-xs font-semibold text-[#00A88C]">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h3 className={`font-bold ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>
+                                  {proposal.designerName}
+                                </h3>
+                                <span
+                                  className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${
+                                    isNight
+                                      ? "border-[#00C9A7]/35 bg-[#00C9A7]/15 text-[#7ee8d3]"
+                                      : "bg-[#EEF9F6] border-[#CDEFE6] text-[#00A88C]"
+                                  }`}
+                                >
                                   디자이너
                                 </span>
                               </div>
-                              <p className="mt-0.5 text-xs text-gray-500">
+                              <p className={`mt-0.5 text-xs ${isNight ? "text-white/45" : "text-gray-500"}`}>
                                 @{proposal.designerNickname ?? proposal.designerName}
                               </p>
                             </div>
                           </div>
                           <button
+                            type="button"
                             onClick={() => handleProposalMessage(proposal.designerId)}
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-[#00C9A7] px-4 py-2 text-sm font-semibold text-black hover:bg-[#00A88C] transition-colors"
+                            className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
+                              isNight
+                                ? "bg-[#00C9A7] text-[#0f172a] hover:bg-[#00A88C]"
+                                : "bg-[#00C9A7] text-black hover:bg-[#00A88C]"
+                            }`}
                           >
                             <MessageCircle className="size-3.5" />
                             메시지 보내기
@@ -674,26 +825,54 @@ export default function Notifications() {
                         </div>
 
                         {proposal.summary && (
-                          <p className="mt-4 text-sm leading-relaxed text-[#5F5E5A]">{proposal.summary}</p>
+                          <p
+                            className={`mt-4 text-sm leading-relaxed ${
+                              isNight ? "text-white/65" : "text-[#5F5E5A]"
+                            }`}
+                          >
+                            {proposal.summary}
+                          </p>
                         )}
 
                         {proposal.coverLetter && (
-                          <div className="mt-3 rounded-xl bg-[#FAFBFC] border border-gray-100 px-4 py-3 text-sm text-gray-600">
+                          <div
+                            className={`mt-3 rounded-xl border px-4 py-3 text-sm ${
+                              isNight
+                                ? "border-white/10 bg-white/5 text-white/75"
+                                : "bg-[#FAFBFC] border-gray-100 text-gray-600"
+                            }`}
+                          >
                             {proposal.coverLetter}
                           </div>
                         )}
 
-                        <div className="mt-4 grid grid-cols-1 gap-3 rounded-xl bg-[#FAFBFC] border border-gray-100 p-3 md:grid-cols-3">
-                          <div className="flex items-center gap-2 text-xs text-gray-600">
-                            <Briefcase className="size-3.5 text-[#00A88C]" />
+                        <div
+                          className={`mt-4 grid grid-cols-1 gap-3 rounded-xl border p-3 md:grid-cols-3 ${
+                            isNight ? "border-white/10 bg-white/5" : "bg-[#FAFBFC] border-gray-100"
+                          }`}
+                        >
+                          <div
+                            className={`flex items-center gap-2 text-xs ${
+                              isNight ? "text-white/60" : "text-gray-600"
+                            }`}
+                          >
+                            <Briefcase className={`size-3.5 ${isNight ? "text-[#7ee8d3]" : "text-[#00A88C]"}`} />
                             희망 예산 {formatProposalBudget(proposal.expectedBudget)}
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-gray-600">
-                            <Calendar className="size-3.5 text-[#00A88C]" />
+                          <div
+                            className={`flex items-center gap-2 text-xs ${
+                              isNight ? "text-white/60" : "text-gray-600"
+                            }`}
+                          >
+                            <Calendar className={`size-3.5 ${isNight ? "text-[#7ee8d3]" : "text-[#00A88C]"}`} />
                             시작 가능일 {formatProposalStartDate(proposal.startDate)}
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-gray-600">
-                            <UserRound className="size-3.5 text-[#00A88C]" />
+                          <div
+                            className={`flex items-center gap-2 text-xs ${
+                              isNight ? "text-white/60" : "text-gray-600"
+                            }`}
+                          >
+                            <UserRound className={`size-3.5 ${isNight ? "text-[#7ee8d3]" : "text-[#00A88C]"}`} />
                             {getPortfolioLabel(proposal.portfolioUrl)}
                           </div>
                         </div>
@@ -704,7 +883,11 @@ export default function Notifications() {
                               href={proposal.portfolioUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#00A88C] hover:text-[#007E68]"
+                              className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
+                                isNight
+                                  ? "text-[#7ee8d3] hover:text-[#9af5e0]"
+                                  : "text-[#00A88C] hover:text-[#007E68]"
+                              }`}
                             >
                               포트폴리오 보기
                               <ArrowRight className="size-3" />
@@ -745,6 +928,7 @@ export default function Notifications() {
             currentUserAvatar={currentUserAvatar}
             currentUserName={currentUserName}
             commentInputRef={commentInputRef}
+            isNight={isNight}
             formatFeedDateTime={(val) => val ? new Date(val).toLocaleDateString() : null}
             isFeedLiked={(item) => likedItems.has(item.id)}
             getLikeCount={(item) => item.likes + (likedItems.has(item.id) ? 1 : 0)}

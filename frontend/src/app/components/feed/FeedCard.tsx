@@ -10,12 +10,15 @@ import {
   ExternalLink,
   ArrowUpRight,
 } from "lucide-react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import type { BaseFeedItem, FeedCardItem } from "../../types/feed";
 
 type FeedCardProps = {
   item: FeedCardItem;
+  /** 리스트에서의 순서(0부터). 겹침 없이 짧은 간격으로 등장 딜레이에만 사용. */
+  revealIndex?: number;
   images: string[];
   activeImageIndex: number;
   isSaved: boolean;
@@ -33,6 +36,7 @@ type FeedCardProps = {
 
 export function FeedCard({
   item,
+  revealIndex = 0,
   images,
   activeImageIndex,
   isSaved,
@@ -49,23 +53,41 @@ export function FeedCard({
 }: FeedCardProps) {
   const n = isNight;
   const liked = isFeedLiked(item);
+  /** 카드 등장 스태그 (최대 ~500ms) */
+  const revealDelayMs = Math.min(revealIndex, 10) * 50;
+
+  const [imageShown, setImageShown] = useState(false);
+  const coverSrc = images[activeImageIndex];
+
+  useEffect(() => {
+    setImageShown(false);
+  }, [coverSrc]);
 
   return (
     <div
       onClick={() => onOpenDetail(item)}
-      className={`animate-in slide-in-from-bottom-4 fade-in group/card cursor-pointer overflow-hidden rounded-3xl transition-all duration-500 hover:-translate-y-1.5 ${
+      className={`feed-anim-card group/card cursor-pointer overflow-hidden rounded-3xl transition-[transform,box-shadow] duration-500 ease-out will-change-transform hover:-translate-y-0.5 ${
         n
-          ? "bg-[#141925] shadow-[0_2px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_24px_64px_rgba(0,201,167,0.08)]"
-          : "bg-white shadow-[0_2px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_24px_64px_rgba(0,0,0,0.1)]"
+          ? "bg-[#141925] shadow-[0_2px_12px_rgba(0,0,0,0.3)] hover:shadow-[0_20px_50px_rgba(0,201,167,0.1)]"
+          : "bg-white shadow-[0_2px_12px_rgba(0,0,0,0.04)] hover:shadow-[0_20px_50px_rgba(0,0,0,0.09)]"
       }`}
-      style={{ animationDelay: `${(item.id % 3) * 45}ms` }}
+      style={{ animationDelay: `${revealDelayMs}ms` }}
     >
-      {/* ── Image ── */}
-      <div className="relative aspect-[4/3] overflow-hidden">
+      {/* ── Image (로드 시 한 번에 튀는 느낌 방지) ── */}
+      <div
+        className={`relative aspect-[4/3] overflow-hidden ${
+          n ? "bg-[#1a1f2e]" : "bg-[#ECE8E2]"
+        }`}
+      >
         <ImageWithFallback
-          src={images[activeImageIndex]}
+          key={coverSrc}
+          src={coverSrc}
           alt={item.title}
-          className="h-full w-full object-cover transition-transform duration-700 group-hover/card:scale-[1.04]"
+          onLoad={() => setImageShown(true)}
+          onError={() => setImageShown(true)}
+          className={`h-full w-full object-cover transition-[opacity,transform] duration-500 ease-out group-hover/card:scale-[1.02] ${
+            imageShown ? "opacity-100" : "opacity-0"
+          }`}
         />
 
         {/* Top gradient for readability */}
@@ -76,7 +98,7 @@ export function FeedCard({
         {/* Author overlay (on image) */}
         <Link
           to={`/profile/${encodeURIComponent(item.author.profileKey ?? item.author.name)}`}
-          className="absolute bottom-3 left-3.5 z-10 flex items-center gap-2.5 transition-opacity hover:opacity-90"
+          className="absolute bottom-3 left-3.5 z-10 flex items-center gap-2.5 transition-opacity duration-300 ease-out hover:opacity-90"
           onClick={(e) => e.stopPropagation()}
         >
           <ImageWithFallback
@@ -95,11 +117,11 @@ export function FeedCard({
         </Link>
 
         {/* Quick actions overlay (top-right) */}
-        <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5 opacity-0 transition-opacity duration-300 group-hover/card:opacity-100">
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-1.5 opacity-0 transition-opacity duration-300 ease-out group-hover/card:opacity-100">
           <button
             type="button"
             onClick={(e) => onOpenCollectionModal(item, e)}
-            className={`flex size-8 items-center justify-center rounded-full border backdrop-blur-md transition-all ${
+            className={`flex size-8 items-center justify-center rounded-full border backdrop-blur-md transition-all duration-300 ease-out hover:scale-105 ${
               isSaved
                 ? "border-[#00C9A7]/50 bg-[#00C9A7]/80 text-white"
                 : "border-white/20 bg-black/40 text-white hover:bg-black/60"
@@ -111,7 +133,7 @@ export function FeedCard({
           </button>
           <button
             onClick={(e) => onShare(item, e)}
-            className="flex size-8 items-center justify-center rounded-full border border-white/20 bg-black/40 text-white backdrop-blur-md transition-all hover:bg-black/60"
+            className="flex size-8 items-center justify-center rounded-full border border-white/20 bg-black/40 text-white backdrop-blur-md transition-all duration-300 ease-out hover:scale-105 hover:bg-black/60"
             aria-label="공유"
           >
             <Share2 className="size-3.5" />
@@ -124,7 +146,7 @@ export function FeedCard({
             <button
               type="button"
               onClick={(e) => onMoveCarousel(item, -1, e)}
-              className="absolute left-3 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/30 text-white backdrop-blur-sm transition-all hover:bg-black/50"
+              className="absolute left-3 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/30 text-white backdrop-blur-sm transition-all duration-300 ease-out hover:scale-105 hover:bg-black/50"
               aria-label="이전 이미지"
             >
               <ChevronLeft className="size-4" />
@@ -132,7 +154,7 @@ export function FeedCard({
             <button
               type="button"
               onClick={(e) => onMoveCarousel(item, 1, e)}
-              className="absolute right-3 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/30 text-white backdrop-blur-sm transition-all hover:bg-black/50"
+              className="absolute right-3 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-black/30 text-white backdrop-blur-sm transition-all duration-300 ease-out hover:scale-105 hover:bg-black/50"
               aria-label="다음 이미지"
             >
               <ChevronRight className="size-4" />
@@ -143,7 +165,7 @@ export function FeedCard({
                   key={`${item.feedKey}-${image}`}
                   type="button"
                   onClick={(e) => onSelectImage(item.feedKey, index, e)}
-                  className={`rounded-full transition-all ${
+                  className={`rounded-full transition-all duration-300 ease-out ${
                     activeImageIndex === index
                       ? "h-1.5 w-5 bg-white"
                       : "h-1.5 w-1.5 bg-white/40 hover:bg-white/70"
@@ -160,7 +182,7 @@ export function FeedCard({
       <div className="px-5 pb-5 pt-4">
         {/* Title */}
         <h3
-          className={`mb-1.5 line-clamp-1 text-[15px] font-bold leading-snug tracking-tight transition-colors duration-500 ${
+          className={`mb-1.5 line-clamp-1 text-[15px] font-bold leading-snug tracking-tight ${
             n ? "text-white" : "text-[#1a1a1a]"
           }`}
         >
@@ -169,7 +191,7 @@ export function FeedCard({
 
         {/* Description */}
         <p
-          className={`mb-3.5 line-clamp-2 text-[13px] leading-relaxed transition-colors duration-500 ${
+          className={`mb-3.5 line-clamp-2 text-[13px] leading-relaxed ${
             n ? "text-white/40" : "text-[#8a8a8a]"
           }`}
         >
@@ -180,7 +202,7 @@ export function FeedCard({
         <div className="mb-4 flex flex-wrap items-center gap-1.5">
           {item.category && (
             <span
-              className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider transition-colors duration-500 ${
+              className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                 n
                   ? "bg-[#FF5C3A]/10 text-[#FF8A70]"
                   : "bg-[#FF5C3A]/8 text-[#D4402A]"
@@ -192,7 +214,7 @@ export function FeedCard({
           {item.tags.slice(0, 3).map((tag, index) => (
             <span
               key={index}
-              className={`cursor-pointer rounded-md px-2 py-0.5 text-[10px] font-medium transition-all ${
+              className={`cursor-pointer rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors duration-200 ease-out ${
                 n
                   ? "bg-white/5 text-white/35 hover:bg-[#00C9A7]/15 hover:text-[#00C9A7]"
                   : "bg-[#f0f0ee] text-[#777] hover:bg-[#00C9A7]/10 hover:text-[#00A88C]"
@@ -222,7 +244,7 @@ export function FeedCard({
                 target="_blank"
                 rel="noreferrer"
                 onClick={(event) => event.stopPropagation()}
-                className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors ${
+                className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold transition-colors duration-200 ease-out ${
                   integration.provider === "figma"
                     ? n
                       ? "border-[#00C9A7]/15 text-[#00C9A7]/70 hover:bg-[#00C9A7]/10"
@@ -250,11 +272,11 @@ export function FeedCard({
             <button
               type="button"
               onClick={(e) => onToggleLike(item, e)}
-              className="group/like flex items-center gap-1.5 transition-colors"
+              className="group/like flex items-center gap-1.5"
               aria-pressed={liked}
             >
               <span
-                className={`flex size-8 items-center justify-center rounded-full transition-all ${
+                className={`flex size-8 items-center justify-center rounded-full transition-colors duration-200 ${
                   liked
                     ? "bg-[#FF5C3A]/10 text-[#FF5C3A]"
                     : n
@@ -279,10 +301,10 @@ export function FeedCard({
                 e.stopPropagation();
                 onOpenDetail(item, true);
               }}
-              className="group/cmt flex items-center gap-1.5 transition-colors"
+              className="group/cmt flex items-center gap-1.5"
             >
               <span
-                className={`flex size-8 items-center justify-center rounded-full transition-all ${
+                className={`flex size-8 items-center justify-center rounded-full transition-colors duration-200 ${
                   n
                     ? "text-white/30 hover:bg-white/5 hover:text-[#00C9A7] group-hover/cmt:text-[#00C9A7]"
                     : "text-[#bbb] hover:bg-[#00C9A7]/5 hover:text-[#00C9A7] group-hover/cmt:text-[#00C9A7]"
@@ -302,7 +324,7 @@ export function FeedCard({
 
           {/* View detail arrow */}
           <span
-            className={`flex size-8 items-center justify-center rounded-full transition-all ${
+            className={`flex size-8 items-center justify-center rounded-full transition-all duration-300 ease-out ${
               n
                 ? "text-white/15 group-hover/card:bg-[#00C9A7]/10 group-hover/card:text-[#00C9A7]"
                 : "text-[#ccc] group-hover/card:bg-[#00C9A7]/8 group-hover/card:text-[#00A88C]"

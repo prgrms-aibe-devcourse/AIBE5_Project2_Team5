@@ -61,7 +61,7 @@ export default function ProjectDetail() {
     <div className="min-h-screen bg-gray-50">
       <Navigation />
 
-      <div className="max-w-[1400px] mx-auto px-6 py-8">
+      <div className="pickxel-animate-page-in max-w-[1400px] mx-auto px-6 py-8">
         <div className="flex gap-8">
           {/* Left Sidebar */}
           <aside className="w-64 flex-shrink-0">

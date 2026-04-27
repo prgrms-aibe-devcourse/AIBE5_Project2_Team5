@@ -7,7 +7,6 @@ import {
   useTransform,
 } from "motion/react";
 import { gsap } from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
 import {
   ChevronDown,
@@ -23,9 +22,9 @@ import {
 import { isAuthenticated } from "../utils/auth";
 import Footer from "../components/Footer";
 import { DayNightSwitch } from "../components/DayNightSwitch";
+import { useNightMode } from "../contexts/NightModeContext";
 import Lenis from "lenis";
 
-gsap.registerPlugin(ScrollTrigger);
 
 const features = [
   {
@@ -265,7 +264,7 @@ function HeroSection({ isNight }: { isNight: boolean }) {
 
   return (
     <section
-      className={`relative flex min-h-screen items-center justify-center overflow-hidden pt-20 transition-colors duration-700 ${
+      className={`relative flex h-full min-h-0 items-center justify-center overflow-hidden pt-20 transition-colors duration-700 ${
         isNight ? "bg-[#0C1222]" : "bg-[var(--brand-landing-bg)]"
       }`}
     >
@@ -376,7 +375,7 @@ function HeroSection({ isNight }: { isNight: boolean }) {
           initial={{ opacity: 0, y: 50 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.9, delay: 0.4 }}
-          className={`text-4xl font-black leading-[1.15] tracking-tight transition-colors duration-700 sm:text-5xl md:text-6xl lg:text-7xl ${
+          className={`font-display text-4xl font-black leading-[1.15] tracking-tight transition-colors duration-700 sm:text-5xl md:text-6xl lg:text-7xl ${
             isNight ? "text-white" : "text-[#2D2A26]"
           }`}
         >
@@ -428,6 +427,7 @@ function HeroSection({ isNight }: { isNight: boolean }) {
         >
           <Link
             to="/login"
+            state={{ redirectTo: "/explore" }}
             className="group relative inline-flex items-center gap-2 overflow-hidden rounded-full bg-gradient-to-r from-[#FF5C3A] to-[#e84d2d] px-8 py-3.5 text-sm font-bold text-white shadow-[0_4px_24px_rgba(255,92,58,0.3)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_8px_32px_rgba(255,92,58,0.4)]"
           >
             <span className="relative z-10 flex items-center gap-2">
@@ -437,6 +437,7 @@ function HeroSection({ isNight }: { isNight: boolean }) {
           </Link>
           <Link
             to="/login"
+            state={{ redirectTo: "/projects" }}
             className={`rounded-full px-6 py-3.5 text-sm font-semibold transition-all duration-500 ${
               isNight
                 ? "border border-white/20 text-white/70 backdrop-blur-sm hover:bg-white/10"
@@ -499,38 +500,70 @@ function FeaturesSection({ isNight }: { isNight: boolean }) {
 
   useGSAP(
     () => {
-      gsap.fromTo(
-        ".feature-title",
-        { y: 60, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.8,
-          ease: "power3.out",
-          scrollTrigger: {
-            trigger: ".feature-title",
-            start: "top 85%",
-          },
-        }
+      const section = sectionRef.current;
+      if (!section) return;
+
+      const title = section.querySelector(".feature-title");
+      const cards = gsap.utils.toArray<HTMLElement>(
+        section.querySelectorAll(".feature-card")
       );
+
+      const tl = gsap.timeline({
+        scrollTrigger: {
+          trigger: section,
+          start: "top top",
+          end: "+=2800",
+          pin: true,
+          scrub: 0.65,
+          anticipatePin: 1,
+          invalidateOnRefresh: true,
+        },
+      });
+
+      if (title) {
+        tl.fromTo(
+          title,
+          { y: 40, opacity: 0 },
+          { y: 0, opacity: 1, duration: 1, ease: "power2.out" },
+          0
+        );
+      }
+
+      cards.forEach((card, index) => {
+        const fromLeft = index % 2 === 0;
+        tl.fromTo(
+          card,
+          {
+            opacity: 0,
+            x: fromLeft ? "-14vw" : "14vw",
+          },
+          {
+            opacity: 1,
+            x: 0,
+            duration: 0.95,
+            ease: "power2.out",
+          },
+          0.35 + index * 0.18
+        );
+      });
     },
-    { scope: sectionRef }
+    { scope: sectionRef, dependencies: [] }
   );
 
   return (
     <section
       ref={sectionRef}
-      className={`relative py-28 transition-colors duration-700 sm:py-36 ${
+      className={`relative overflow-x-hidden pt-16 pb-24 transition-colors duration-700 sm:pt-20 sm:pb-32 md:pt-24 md:pb-40 ${
         isNight ? "bg-[#111827]" : "bg-[var(--brand-landing-soft)]"
       }`}
     >
       <div className="mx-auto max-w-[1200px] px-6 sm:px-10">
-        <div className="feature-title mb-16 text-center">
+        <div className="feature-title mb-8 text-center sm:mb-10 md:mb-12">
           <p className="mb-4 text-xs font-semibold uppercase tracking-[0.3em] text-[#00C9A7]">
             Core Features
           </p>
           <h2
-            className={`text-3xl font-black leading-tight transition-colors duration-700 sm:text-5xl ${
+            className={`font-display text-3xl font-black leading-tight transition-colors duration-700 sm:text-5xl ${
               isNight ? "text-white" : "text-[var(--brand-landing-text)]"
             }`}
           >
@@ -540,25 +573,16 @@ function FeaturesSection({ isNight }: { isNight: boolean }) {
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          {features.map((feature, index) => (
-            <motion.div
-              key={feature.title}
-              initial={{ opacity: 0, y: 50 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-80px" }}
-              transition={{
-                duration: 0.6,
-                delay: index * 0.15,
-                ease: "easeOut",
-              }}
-              whileHover={{ y: -8, transition: { duration: 0.3 } }}
-              className={`group relative overflow-hidden rounded-3xl border p-8 transition-all duration-700 ${
-                isNight
-                  ? "border-white/10 bg-[#1a2035] shadow-[0_2px_20px_rgba(0,0,0,0.2)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.4)]"
-                  : "border-[var(--brand-landing-border)] bg-white shadow-[0_2px_20px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.1)]"
-              }`}
-            >
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
+          {features.map((feature) => (
+            <div key={feature.title} className="feature-card will-change-transform">
+              <div
+                className={`group relative overflow-hidden rounded-3xl border p-6 transition-all duration-300 hover:-translate-y-2 md:p-7 lg:p-8 ${
+                  isNight
+                    ? "border-white/10 bg-[#1a2035] shadow-[0_2px_20px_rgba(0,0,0,0.2)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.4)]"
+                    : "border-[var(--brand-landing-border)] bg-white shadow-[0_2px_20px_rgba(0,0,0,0.04)] hover:shadow-[0_12px_40px_rgba(0,0,0,0.1)]"
+                }`}
+              >
               <div
                 className={`absolute -right-12 -top-12 h-32 w-32 rounded-full blur-3xl transition-opacity duration-500 group-hover:opacity-100 ${
                   feature.accent === "mint"
@@ -614,7 +638,8 @@ function FeaturesSection({ isNight }: { isNight: boolean }) {
                 자세히 보기
                 <ArrowRight className="size-3.5 transition-transform duration-300 group-hover:translate-x-1" />
               </div>
-            </motion.div>
+              </div>
+            </div>
           ))}
         </div>
       </div>
@@ -683,7 +708,7 @@ function HowItWorksSection({ isNight }: { isNight: boolean }) {
             How It Works
           </p>
           <h2
-            className={`text-3xl font-black leading-tight transition-colors duration-700 sm:text-5xl ${
+            className={`font-display text-3xl font-black leading-tight transition-colors duration-700 sm:text-5xl ${
               isNight ? "text-white" : "text-[var(--brand-landing-text)]"
             }`}
           >
@@ -765,6 +790,8 @@ function CTASection({ isNight }: { isNight: boolean }) {
   const mouseY = useMotionValue(0);
   const smoothX = useSpring(mouseX, { stiffness: 50, damping: 20 });
   const smoothY = useSpring(mouseY, { stiffness: 50, damping: 20 });
+  const blobNegX = useTransform(smoothX, (v) => -v);
+  const blobNegY = useTransform(smoothY, (v) => -v);
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLElement>) => {
@@ -781,7 +808,7 @@ function CTASection({ isNight }: { isNight: boolean }) {
     <section
       onMouseMove={handleMouseMove}
       className={`relative overflow-hidden py-28 transition-colors duration-700 sm:py-36 ${
-        isNight ? "bg-[#0f1729]" : ""
+        isNight ? "bg-[#0f1729]" : "bg-[var(--brand-landing-bg)]"
       }`}
     >
       <div
@@ -802,10 +829,7 @@ function CTASection({ isNight }: { isNight: boolean }) {
         className={`absolute -bottom-20 -right-20 h-72 w-72 rounded-full blur-3xl transition-colors duration-700 ${
           isNight ? "bg-[#FF5C3A]/8" : "bg-[#FF5C3A]/12"
         }`}
-        style={{
-          x: useTransform(smoothX, (v) => -v),
-          y: useTransform(smoothY, (v) => -v),
-        }}
+        style={{ x: blobNegX, y: blobNegY }}
       />
 
       <div className="relative z-10 mx-auto max-w-[800px] px-6 text-center sm:px-10">
@@ -814,7 +838,7 @@ function CTASection({ isNight }: { isNight: boolean }) {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.7 }}
-          className={`text-3xl font-black leading-tight transition-colors duration-700 sm:text-5xl ${
+          className={`font-display text-3xl font-black leading-tight transition-colors duration-700 sm:text-5xl ${
             isNight ? "text-white" : "text-[var(--brand-landing-text)]"
           }`}
         >
@@ -897,39 +921,24 @@ export default function Home() {
     return <Navigate to="/feed" replace />;
   }
 
-  const [isNight, setIsNight] = useState(false);
-
-  const handleToggle = useCallback(() => {
-    setIsNight((prev) => !prev);
-  }, []);
-
-  useEffect(() => {
-    const lenis = new Lenis({
-      duration: 1.2,
-      easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-    });
-
-    function raf(time: number) {
-      lenis.raf(time);
-      requestAnimationFrame(raf);
-    }
-    requestAnimationFrame(raf);
-
-    return () => lenis.destroy();
-  }, []);
+  const { isNight, toggle: handleToggle } = useNightMode();
 
   return (
     <div
-      className={`min-h-screen transition-colors duration-700 ${
+      className={`min-h-screen overflow-x-hidden transition-colors duration-700 ${
         isNight ? "bg-[#0C1222]" : "bg-[var(--brand-landing-bg)]"
       }`}
     >
       <StickyNav isNight={isNight} onToggle={handleToggle} />
-      <HeroSection isNight={isNight} />
-      <FeaturesSection isNight={isNight} />
-      <HowItWorksSection isNight={isNight} />
-      <CTASection isNight={isNight} />
-      <Footer />
+      <div className="fixed inset-0 z-0 h-[100dvh] overflow-x-hidden overflow-y-hidden">
+        <HeroSection isNight={isNight} />
+      </div>
+      <main className="relative z-10 mt-[100dvh] overflow-x-hidden shadow-[0_-8px_30px_rgba(0,0,0,0.06)]">
+        <FeaturesSection isNight={isNight} />
+        <HowItWorksSection isNight={isNight} />
+        <CTASection isNight={isNight} />
+        <Footer />
+      </main>
     </div>
   );
 }

@@ -1,4 +1,1 @@
-* {
-    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont,
-    'Segoe UI', sans-serif;
-}
+/* 기본 스택은 theme.css body + --font-family-sans 사용 */

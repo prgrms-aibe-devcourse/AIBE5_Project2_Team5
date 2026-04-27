@@ -15,7 +15,7 @@ public interface MessageProcessRepository extends JpaRepository<MessageProcess, 
             "order by p.sortOrder asc, t.sortOrder asc")
     List<MessageProcess> findAllByConversationId(@Param("conversationId") Long conversationId);
 
-    @Modifying
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("delete from MessageProcess p where p.conversation.id = :conversationId")
     void deleteAllByConversationId(@Param("conversationId") Long conversationId);
 }

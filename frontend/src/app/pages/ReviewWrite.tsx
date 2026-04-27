@@ -3,6 +3,7 @@ import { CheckCircle, Star, Send, ThumbsUp, MessageSquare, Sparkles } from "luci
 import { useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { createProfileReviewApi } from "../api/profileApi";
+import { useNightMode } from "../contexts/NightModeContext";
 import { matchingCategories } from "../utils/matchingCategories";
 
 const LEFT_CONVERSATIONS_STORAGE_KEY = "pickxel:left-message-conversations";
@@ -24,6 +25,7 @@ const rememberHiddenConversation = (conversationId: number) => {
 };
 
 export default function ReviewWrite() {
+  const { isNight } = useNightMode();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -58,39 +60,6 @@ export default function ReviewWrite() {
   const [isThankYouOpen, setIsThankYouOpen] = useState(false);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState("");
-
-  const ratingOptions = [
-    {
-      value: 1,
-      label: "조금 아쉬웠어요",
-      description: "다음엔 더 맞춰봐요",
-      selectedClassName: "border-[#FF9A84] bg-[#FFF1ED] text-[#B13A21]",
-    },
-    {
-      value: 2,
-      label: "무난했어요",
-      description: "큰 문제는 없었어요",
-      selectedClassName: "border-[#FFD36B] bg-[#FFF8E5] text-[#8A5A00]",
-    },
-    {
-      value: 3,
-      label: "괜찮았어요",
-      description: "기본은 탄탄했어요",
-      selectedClassName: "border-[#A8F0E4] bg-[#EFFFFC] text-[#007E68]",
-    },
-    {
-      value: 4,
-      label: "만족했어요",
-      description: "다시 맡겨도 좋아요",
-      selectedClassName: "border-[#00C9A7] bg-[#DDF8EC] text-[#007E68]",
-    },
-    {
-      value: 5,
-      label: "완전 추천해요",
-      description: "협업 감각이 좋았어요",
-      selectedClassName: "border-[#0F0F0F] bg-[#0F0F0F] text-white",
-    },
-  ];
 
   const complimentOptions = [
     { label: "답장이 빨라요", description: "기다리는 시간이 짧았어요" },
@@ -229,12 +198,14 @@ export default function ReviewWrite() {
     value,
     onChange,
     hovered,
-    onHover
+    onHover,
+    isNight: night,
   }: {
     value: number;
     onChange: (v: number) => void;
     hovered?: number;
     onHover?: (v: number) => void;
+    isNight?: boolean;
   }) => (
     <div className="flex gap-1">
       {[1, 2, 3, 4, 5].map((star) => (
@@ -250,7 +221,9 @@ export default function ReviewWrite() {
             className={`size-8 ${
               star <= (hovered || value)
                 ? "fill-[#FF5C3A] text-[#FF5C3A]"
-                : "text-gray-300"
+                : night
+                  ? "text-white/20"
+                  : "text-gray-300"
             }`}
           />
         </button>
@@ -259,40 +232,72 @@ export default function ReviewWrite() {
   );
 
   return (
-    <div className="min-h-screen bg-[#F7F7F5]">
+    <div
+      className={`min-h-screen transition-colors duration-500 ${
+        isNight ? "bg-[#0C1222]" : "bg-[#F7F7F5]"
+      }`}
+    >
       <Navigation />
 
-      <div className="max-w-[900px] mx-auto px-6 py-12">
+      <div className="pickxel-animate-page-in mx-auto max-w-[900px] px-6 py-12">
         {/* Header */}
-        <div className="text-center mb-12">
-          <div className="inline-flex items-center justify-center size-20 bg-gradient-to-br from-[#00C9A7] to-[#00A88C] rounded-full mb-4 shadow-lg">
+        <div className="mb-12 text-center">
+          <div className="mb-4 inline-flex size-20 items-center justify-center rounded-full bg-gradient-to-br from-[#00C9A7] to-[#00A88C] shadow-lg">
             <ThumbsUp className="size-10 text-white" />
           </div>
-          <h1 className="text-4xl font-bold mb-3">작업 어땠나요?</h1>
-          <p className="text-gray-600">
+          <h1
+            className={`mb-3 text-4xl font-bold ${
+              isNight ? "text-white" : "text-[#0F0F0F]"
+            }`}
+          >
+            작업 어땠나요?
+          </h1>
+          <p className={isNight ? "text-white/60" : "text-gray-600"}>
             몇 번만 눌러서 협업 느낌을 남겨주세요. 자세한 말은 마지막에 한 줄이면 충분해요.
           </p>
         </div>
 
         {/* Main Form */}
-        <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-200">
+        <div
+          className={`rounded-2xl border p-8 shadow-sm transition-colors ${
+            isNight
+              ? "border-white/10 bg-[#141d30] text-white"
+              : "border-gray-200 bg-white"
+          }`}
+        >
           {/* Project Info */}
-          <div className="bg-gradient-to-br from-[#A8F0E4]/20 to-white border border-[#00C9A7]/30 rounded-xl p-6 mb-8">
+          <div
+            className={`mb-8 rounded-xl border p-6 ${
+              isNight
+                ? "border-[#00C9A7]/25 bg-gradient-to-br from-[#00C9A7]/10 to-[#0e1524]"
+                : "border-[#00C9A7]/30 bg-gradient-to-br from-[#A8F0E4]/20 to-white"
+            }`}
+          >
             <div className="flex items-center gap-4">
-              <div className="size-16 rounded-full bg-gradient-to-br from-[#00C9A7] to-[#00A88C] shadow-lg"></div>
+              <div className="size-16 rounded-full bg-gradient-to-br from-[#00C9A7] to-[#00A88C] shadow-lg" />
               <div>
-                <h3 className="font-bold text-lg mb-1">{clientName}</h3>
-                <p className="text-sm text-gray-600">{projectName}</p>
+                <h3 className={`mb-1 text-lg font-bold ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>
+                  {clientName}
+                </h3>
+                <p className={`text-sm ${isNight ? "text-white/55" : "text-gray-600"}`}>
+                  {projectName}
+                </p>
               </div>
             </div>
           </div>
 
           {/* Work Category */}
-          <div className="mb-8 pb-8 border-b border-gray-200">
-            <label className="block font-bold text-lg mb-2">
+          <div
+            className={`mb-8 border-b pb-8 ${isNight ? "border-white/10" : "border-gray-200"}`}
+          >
+            <label
+              className={`mb-2 block text-lg font-bold ${
+                isNight ? "text-white" : "text-[#0F0F0F]"
+              }`}
+            >
               어떤 작업이었나요? <span className="text-[#FF5C3A]">*</span>
             </label>
-            <p className="text-sm text-gray-600 mb-5">
+            <p className={`mb-5 text-sm ${isNight ? "text-white/50" : "text-gray-600"}`}>
               매칭에서 쓰는 분야를 그대로 골라주세요. 여러 분야가 섞였으면 복수 선택도 좋아요.
             </p>
             <div className="flex flex-wrap gap-2">
@@ -306,13 +311,21 @@ export default function ReviewWrite() {
                     onClick={() => toggleWorkCategory(category)}
                     className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-all ${
                       isSelected
-                        ? "border-[#00C9A7] bg-[#EFFFFC] text-[#007E68] shadow-sm"
-                        : "border-gray-200 bg-[#F7F7F5] text-gray-700 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
+                        ? isNight
+                          ? "border-[#00C9A7] bg-[#00C9A7]/15 text-[#7EE8D4] shadow-sm"
+                          : "border-[#00C9A7] bg-[#EFFFFC] text-[#007E68] shadow-sm"
+                        : isNight
+                          ? "border-white/10 bg-white/5 text-white/80 hover:-translate-y-0.5 hover:border-[#00C9A7]/50 hover:bg-white/10"
+                          : "border-gray-200 bg-[#F7F7F5] text-gray-700 hover:-translate-y-0.5 hover:border-[#00C9A7] hover:bg-white"
                     }`}
                     aria-pressed={isSelected}
                   >
                     <span className="inline-flex items-center gap-1.5">
-                      {isSelected && <CheckCircle className="size-4 text-[#00C9A7]" />}
+                      {isSelected && (
+                        <CheckCircle
+                          className={`size-4 ${isNight ? "text-[#7EE8D4]" : "text-[#00C9A7]"}`}
+                        />
+                      )}
                       {category}
                     </span>
                   </button>
@@ -320,16 +333,30 @@ export default function ReviewWrite() {
               })}
             </div>
             {hasSelectedWorkCategory && (
-              <div className="mt-4 rounded-lg border border-[#00C9A7]/30 bg-[#F2FFFC] p-3 text-sm font-semibold text-[#007E68]">
-                <Sparkles className="mr-2 inline size-4 text-[#00C9A7]" />
+              <div
+                className={`mt-4 rounded-lg border p-3 text-sm font-semibold ${
+                  isNight
+                    ? "border-[#00C9A7]/30 bg-[#00C9A7]/10 text-[#7EE8D4]"
+                    : "border-[#00C9A7]/30 bg-[#F2FFFC] text-[#007E68]"
+                }`}
+              >
+                <Sparkles
+                  className={`mr-2 inline size-4 ${isNight ? "text-[#7EE8D4]" : "text-[#00C9A7]"}`}
+                />
                 {selectedWorkCategories.join(", ")} 작업으로 후기에 남길게요.
               </div>
             )}
           </div>
 
           {/* Overall Rating */}
-          <div className="mb-8 pb-8 border-b border-gray-200">
-            <label className="block font-bold text-lg mb-4">
+          <div
+            className={`mb-8 border-b pb-8 ${isNight ? "border-white/10" : "border-gray-200"}`}
+          >
+            <label
+              className={`mb-4 block text-lg font-bold ${
+                isNight ? "text-white" : "text-[#0F0F0F]"
+              }`}
+            >
               전체 만족도 <span className="text-[#FF5C3A]">*</span>
             </label>
             <div className="flex items-center gap-4">
@@ -338,25 +365,42 @@ export default function ReviewWrite() {
                 onChange={handleRatingChange}
                 hovered={hoveredRating}
                 onHover={setHoveredRating}
+                isNight={isNight}
               />
-              <span className="text-2xl font-bold text-[#00A88C]">
+              <span
+                className={`text-2xl font-bold ${
+                  isNight ? "text-[#7EE8D4]" : "text-[#00A88C]"
+                }`}
+              >
                 {rating > 0 ? `${rating}.0` : "-"}
               </span>
             </div>
           </div>
 
           {/* Compliment Tags */}
-          <div className="mb-8 pb-8 border-b border-gray-200">
-            <h3 className="font-bold text-lg mb-2">
+          <div
+            className={`mb-8 border-b pb-8 ${isNight ? "border-white/10" : "border-gray-200"}`}
+          >
+            <h3
+              className={`mb-2 text-lg font-bold ${
+                isNight ? "text-white" : "text-[#0F0F0F]"
+              }`}
+            >
               {shouldShowImprovements ? "괜찮았던 포인트" : "좋았던 포인트"}
             </h3>
-            <p className="text-sm text-gray-600 mb-6">
+            <p className={`mb-6 text-sm ${isNight ? "text-white/50" : "text-gray-600"}`}>
               {shouldShowImprovements
                 ? "그래도 괜찮았던 부분이 있다면 골라주세요. 선택하지 않아도 괜찮아요."
                 : "딱 맞는 항목을 여러 개 골라주세요. 선택한 포인트가 프로필 후기에도 그대로 남아요."}
             </p>
             {rating === 0 ? (
-              <div className="rounded-lg border border-dashed border-gray-300 bg-[#F7F7F5] p-5 text-sm font-medium text-gray-500">
+              <div
+                className={`rounded-lg border border-dashed p-5 text-sm font-medium ${
+                  isNight
+                    ? "border-white/20 bg-white/5 text-white/40"
+                    : "border-gray-300 bg-[#F7F7F5] text-gray-500"
+                }`}
+              >
                 먼저 전체 만족도를 눌러주세요. 그 다음에 선택 항목이 열립니다.
               </div>
             ) : (
@@ -372,16 +416,30 @@ export default function ReviewWrite() {
                         onClick={() => toggleCompliment(option.label)}
                         className={`min-h-[74px] rounded-lg border px-4 py-3 text-left transition-all ${
                           isSelected
-                            ? "border-[#FFB6A6] bg-[#FFF3EF] text-[#D84325] shadow-sm"
-                            : "border-gray-200 bg-[#F7F7F5] text-gray-700 hover:-translate-y-0.5 hover:border-[#FFB6A6] hover:bg-white hover:shadow-sm"
+                            ? isNight
+                              ? "border-[#FF8A70] bg-[#3d2520]/90 text-[#FFB9AA] shadow-sm"
+                              : "border-[#FFB6A6] bg-[#FFF3EF] text-[#D84325] shadow-sm"
+                            : isNight
+                              ? "border-white/10 bg-[#0e1524] text-white/85 hover:-translate-y-0.5 hover:border-white/20 hover:shadow-sm"
+                              : "border-gray-200 bg-[#F7F7F5] text-gray-700 hover:-translate-y-0.5 hover:border-[#FFB6A6] hover:bg-white hover:shadow-sm"
                         }`}
                         aria-pressed={isSelected}
                       >
                         <span className="mb-1 flex items-center gap-2 text-sm font-bold">
-                          {isSelected && <CheckCircle className="size-4 shrink-0 text-[#FF5C3A]" />}
+                          {isSelected && (
+                            <CheckCircle
+                              className={`size-4 shrink-0 ${
+                                isNight ? "text-[#FF8A70]" : "text-[#FF5C3A]"
+                              }`}
+                            />
+                          )}
                           {option.label}
                         </span>
-                        <span className="block text-xs font-medium text-gray-500">
+                        <span
+                          className={`block text-xs font-medium ${
+                            isNight ? "text-white/45" : "text-gray-500"
+                          }`}
+                        >
                           {option.description}
                         </span>
                       </button>
@@ -389,10 +447,26 @@ export default function ReviewWrite() {
                   })}
                 </div>
                 {shouldShowImprovements && (
-                  <div className="animate-in fade-in slide-in-from-bottom-2 rounded-xl border border-[#FFB9AA]/70 bg-[#FFF7F4] p-4 duration-300">
+                  <div
+                    className={`animate-in fade-in slide-in-from-bottom-2 rounded-xl border p-4 duration-300 ${
+                      isNight
+                        ? "border-[#FF8A70]/30 bg-[#2a1814]/80"
+                        : "border-[#FFB9AA]/70 bg-[#FFF7F4]"
+                    }`}
+                  >
                     <div className="mb-3">
-                      <h4 className="font-bold text-[#B13A21]">아쉬운 점도 알려주세요</h4>
-                      <p className="text-sm text-gray-600">
+                      <h4
+                        className={`font-bold ${
+                          isNight ? "text-[#FFB9AA]" : "text-[#B13A21]"
+                        }`}
+                      >
+                        아쉬운 점도 알려주세요
+                      </h4>
+                      <p
+                        className={`text-sm ${
+                          isNight ? "text-white/50" : "text-gray-600"
+                        }`}
+                      >
                         평균 이하 만족도에서는 개선 포인트를 하나 이상 골라주세요.
                       </p>
                     </div>
@@ -407,16 +481,30 @@ export default function ReviewWrite() {
                             onClick={() => toggleImprovement(option.label)}
                             className={`min-h-[74px] rounded-lg border px-4 py-3 text-left transition-all ${
                               isSelected
-                                ? "border-[#FF5C3A] bg-[#FFF1ED] text-[#B13A21] shadow-sm"
-                                : "border-[#FFD6CC] bg-white text-gray-700 hover:-translate-y-0.5 hover:border-[#FF5C3A] hover:bg-[#FFF9F7] hover:shadow-sm"
+                                ? isNight
+                                  ? "border-[#FF5C3A] bg-[#3d2520] text-[#FFB9AA] shadow-sm"
+                                  : "border-[#FF5C3A] bg-[#FFF1ED] text-[#B13A21] shadow-sm"
+                                : isNight
+                                  ? "border-[#FF5C3A]/25 bg-[#141d30] text-white/80 hover:-translate-y-0.5 hover:border-[#FF5C3A]/50 hover:bg-[#2a1814] hover:shadow-sm"
+                                  : "border-[#FFD6CC] bg-white text-gray-700 hover:-translate-y-0.5 hover:border-[#FF5C3A] hover:bg-[#FFF9F7] hover:shadow-sm"
                             }`}
                             aria-pressed={isSelected}
                           >
                             <span className="mb-1 flex items-center gap-2 text-sm font-bold">
-                              {isSelected && <CheckCircle className="size-4 shrink-0 text-[#FF5C3A]" />}
+                              {isSelected && (
+                                <CheckCircle
+                                  className={`size-4 shrink-0 ${
+                                    isNight ? "text-[#FF8A70]" : "text-[#FF5C3A]"
+                                  }`}
+                                />
+                              )}
                               {option.label}
                             </span>
-                            <span className="block text-xs font-medium text-gray-500">
+                            <span
+                              className={`block text-xs font-medium ${
+                                isNight ? "text-white/45" : "text-gray-500"
+                              }`}
+                            >
                               {option.description}
                             </span>
                           </button>
@@ -426,13 +514,25 @@ export default function ReviewWrite() {
                   </div>
                 )}
                 {hasSelectedCompliments && (
-                  <div className="animate-in fade-in slide-in-from-bottom-2 rounded-lg border border-[#00C9A7]/30 bg-[#EFFFFC] p-4 text-sm font-semibold text-[#007E68] duration-300">
+                  <div
+                    className={`animate-in fade-in slide-in-from-bottom-2 rounded-lg border p-4 text-sm font-semibold duration-300 ${
+                      isNight
+                        ? "border-[#00C9A7]/30 bg-[#00C9A7]/10 text-[#7EE8D4]"
+                        : "border-[#00C9A7]/30 bg-[#EFFFFC] text-[#007E68]"
+                    }`}
+                  >
                     <Sparkles className="mr-2 inline size-4" />
                     {selectedCompliments.length}개 골랐어요. 이제 마지막으로 짧은 한마디만 남기면 끝이에요.
                   </div>
                 )}
                 {shouldShowImprovements && hasSelectedImprovements && (
-                  <div className="animate-in fade-in slide-in-from-bottom-2 rounded-lg border border-[#FFB9AA] bg-[#FFF1ED] p-4 text-sm font-semibold text-[#B13A21] duration-300">
+                  <div
+                    className={`animate-in fade-in slide-in-from-bottom-2 rounded-lg border p-4 text-sm font-semibold duration-300 ${
+                      isNight
+                        ? "border-[#FF8A70]/30 bg-[#3d2520]/80 text-[#FFB9AA]"
+                        : "border-[#FFB9AA] bg-[#FFF1ED] text-[#B13A21]"
+                    }`}
+                  >
                     <Sparkles className="mr-2 inline size-4" />
                     아쉬운 점 {selectedImprovements.length}개를 기록했어요. 마지막으로 한마디만 남기면 끝이에요.
                   </div>
@@ -443,30 +543,62 @@ export default function ReviewWrite() {
 
           {/* Written Review */}
           {hasRequiredTagSelection && (
-          <div className="mb-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <label className="block font-bold text-lg mb-4">
-              한마디 후기 <span className="text-[#FF5C3A]">*</span>
-            </label>
-            <textarea
-              value={review}
-              onChange={(e) => setReview(e.target.value)}
-              placeholder="예: 피드백을 빠르게 반영해줘서 편했고, 결과물 톤도 처음 방향과 잘 맞았어요. 다음에도 같이 작업하고 싶습니다."
-              className="w-full h-48 px-4 py-3 bg-[#F7F7F5] border-2 border-gray-200 rounded-xl focus:outline-none focus:border-[#00C9A7] resize-none text-sm leading-relaxed"
-            />
-            <div className="flex items-center justify-between mt-2">
-              <p className="text-sm text-gray-500">최소 50자 이상 작성해주세요</p>
-              <p className="text-sm text-gray-500">{review.length}자</p>
+            <div className="mb-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <label
+                className={`mb-4 block text-lg font-bold ${
+                  isNight ? "text-white" : "text-[#0F0F0F]"
+                }`}
+              >
+                한마디 후기 <span className="text-[#FF5C3A]">*</span>
+              </label>
+              <textarea
+                value={review}
+                onChange={(e) => setReview(e.target.value)}
+                placeholder="예: 피드백을 빠르게 반영해줘서 편했고, 결과물 톤도 처음 방향과 잘 맞았어요. 다음에도 같이 작업하고 싶습니다."
+                className={`h-48 w-full resize-none rounded-xl border-2 px-4 py-3 text-sm leading-relaxed focus:outline-none ${
+                  isNight
+                    ? "border-white/10 bg-[#0e1524] text-white placeholder:text-white/35 focus:border-[#00C9A7]"
+                    : "border-gray-200 bg-[#F7F7F5] focus:border-[#00C9A7]"
+                }`}
+              />
+              <div className="mt-2 flex items-center justify-between">
+                <p className={`text-sm ${isNight ? "text-white/40" : "text-gray-500"}`}>
+                  최소 50자 이상 작성해주세요
+                </p>
+                <p className={`text-sm ${isNight ? "text-white/40" : "text-gray-500"}`}>
+                  {review.length}자
+                </p>
+              </div>
             </div>
-          </div>
           )}
 
           {/* Tips */}
-          <div className="bg-gradient-to-br from-[#A8F0E4]/10 to-white border border-[#00C9A7]/20 rounded-xl p-6 mb-8">
+          <div
+            className={`mb-8 rounded-xl border p-6 ${
+              isNight
+                ? "border-[#00C9A7]/20 bg-gradient-to-br from-[#00C9A7]/5 to-[#0e1524]"
+                : "border-[#00C9A7]/20 bg-gradient-to-br from-[#A8F0E4]/10 to-white"
+            }`}
+          >
             <div className="flex items-start gap-3">
-              <MessageSquare className="size-5 text-[#00A88C] flex-shrink-0 mt-1" />
+              <MessageSquare
+                className={`mt-1 size-5 shrink-0 ${
+                  isNight ? "text-[#7EE8D4]" : "text-[#00A88C]"
+                }`}
+              />
               <div>
-                <h4 className="font-semibold text-sm mb-2">이렇게 쓰면 좋아요</h4>
-                <ul className="text-sm text-gray-600 space-y-1">
+                <h4
+                  className={`mb-2 text-sm font-semibold ${
+                    isNight ? "text-white" : "text-[#0F0F0F]"
+                  }`}
+                >
+                  이렇게 쓰면 좋아요
+                </h4>
+                <ul
+                  className={`space-y-1 text-sm ${
+                    isNight ? "text-white/50" : "text-gray-600"
+                  }`}
+                >
                   <li>• 좋았던 순간 하나만 떠올려도 충분해요</li>
                   <li>• 답장, 수정, 결과물 중 기억나는 부분을 적어주세요</li>
                   <li>• 다음에 또 같이 하고 싶은 이유가 있으면 더 좋아요</li>
@@ -478,18 +610,26 @@ export default function ReviewWrite() {
           {/* Action Buttons */}
           <div className="flex gap-3">
             <button
+              type="button"
               onClick={() => navigate("/messages")}
-              className="flex-1 border-2 border-gray-300 py-3 rounded-xl text-sm font-semibold hover:bg-gray-50 hover:border-[#A8F0E4] transition-all"
+              className={`flex-1 rounded-xl border-2 py-3 text-sm font-semibold transition-all ${
+                isNight
+                  ? "border-white/15 text-white/80 hover:border-white/25 hover:bg-white/5"
+                  : "border-gray-300 hover:border-[#A8F0E4] hover:bg-gray-50"
+              }`}
             >
               취소
             </button>
             <button
+              type="button"
               onClick={() => void handleSubmit()}
               disabled={!isReviewReady || hasSubmitted}
-              className={`flex-1 py-3 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
+              className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition-all ${
                 !isReviewReady || hasSubmitted
-                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  : "bg-gradient-to-r from-[#00C9A7] to-[#00A88C] text-[#0F0F0F] hover:shadow-lg hover:scale-105 border border-white/30"
+                  ? isNight
+                    ? "cursor-not-allowed bg-white/10 text-white/35"
+                    : "cursor-not-allowed bg-gray-300 text-gray-500"
+                  : "border border-white/30 bg-gradient-to-r from-[#00C9A7] to-[#00A88C] text-[#0F0F0F] hover:scale-105 hover:shadow-lg"
               }`}
             >
               <Send className="size-4" />
@@ -497,29 +637,58 @@ export default function ReviewWrite() {
             </button>
           </div>
           {submitError && (
-            <p className="mt-3 text-sm font-medium text-[#D64928]">{submitError}</p>
+            <p
+              className={`mt-3 text-sm font-medium ${
+                isNight ? "text-[#FFB9AA]" : "text-[#D64928]"
+              }`}
+            >
+              {submitError}
+            </p>
           )}
         </div>
       </div>
 
       {isThankYouOpen && (
         <div
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/35 px-5 backdrop-blur-sm animate-in fade-in duration-150"
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/45 px-5 backdrop-blur-sm animate-in fade-in duration-150"
           role="dialog"
           aria-modal="true"
           aria-labelledby="review-thanks-title"
         >
-          <div className="w-full max-w-[420px] rounded-2xl border border-[#BDEFD8] bg-white p-7 text-center shadow-2xl animate-in zoom-in-95 fade-in duration-200">
-            <div className="mx-auto mb-5 flex size-16 items-center justify-center rounded-full bg-[#DDF8EC] text-[#00A88C] shadow-[0_12px_30px_rgba(0,201,167,0.18)]">
+          <div
+            className={`w-full max-w-[420px] rounded-2xl border p-7 text-center shadow-2xl animate-in zoom-in-95 fade-in duration-200 ${
+              isNight
+                ? "border-[#00C9A7]/25 bg-[#141d30]"
+                : "border-[#BDEFD8] bg-white"
+            }`}
+          >
+            <div
+              className={`mx-auto mb-5 flex size-16 items-center justify-center rounded-full text-[#00A88C] shadow-[0_12px_30px_rgba(0,201,167,0.18)] ${
+                isNight ? "bg-[#00C9A7]/15" : "bg-[#DDF8EC]"
+              }`}
+            >
               <CheckCircle className="size-9" />
             </div>
-            <p className="mb-2 text-xs font-bold text-[#00A88C]">
+            <p
+              className={`mb-2 text-xs font-bold ${
+                isNight ? "text-[#7EE8D4]" : "text-[#00A88C]"
+              }`}
+            >
               후기 등록 완료
             </p>
-            <h2 id="review-thanks-title" className="mb-3 text-2xl font-black text-[#12382D]">
+            <h2
+              id="review-thanks-title"
+              className={`mb-3 text-2xl font-black ${
+                isNight ? "text-white" : "text-[#12382D]"
+              }`}
+            >
               소중한 후기 감사합니다!
             </h2>
-            <p className="mx-auto mb-6 max-w-[300px] text-sm leading-relaxed text-gray-600">
+            <p
+              className={`mx-auto mb-6 max-w-[300px] text-sm leading-relaxed ${
+                isNight ? "text-white/55" : "text-gray-600"
+              }`}
+            >
               선택한 작업 분야와 좋았던 포인트가 프로필 후기에도 바로 반영돼요.
             </p>
             <button

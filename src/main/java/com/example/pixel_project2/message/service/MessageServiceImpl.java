@@ -373,7 +373,7 @@ public class MessageServiceImpl implements MessageService {
         MessageConversation conversation = findConversationForUser(conversationId, currentUser.id());
         List<MessageProcessRequest> processRequests = request.processes() == null ? List.of() : request.processes();
 
-        messageProcessRepository.deleteAllByConversationId(conversationId);
+        deleteMessageProcessesByConversationId(conversationId);
 
         List<MessageProcess> nextProcesses = new ArrayList<>();
         for (int processIndex = 0; processIndex < processRequests.size(); processIndex++) {
@@ -1914,6 +1914,22 @@ public class MessageServiceImpl implements MessageService {
         } catch (DataAccessException ignored) {
             // Some environments do not have the optional message process/review tables yet.
         }
+    }
+
+    /**
+     * 세부 작업(FK) 먼저 제거한 뒤 프로세스 행을 삽니다.
+     * Oracle·Hibernate에서 JPQL {@code delete from MessageProcess} 직후 insert 시
+     * 영속성/락 이슈로 500이 나는 사례를 피합니다.
+     */
+    private void deleteMessageProcessesByConversationId(long conversationId) {
+        jdbcTemplate.update(
+                "delete from message_process_tasks where process_id in (select process_id from message_processes where conversation_id = ?)",
+                conversationId
+        );
+        jdbcTemplate.update(
+                "delete from message_processes where conversation_id = ?",
+                conversationId
+        );
     }
 
     private String calculateProcessStatus(

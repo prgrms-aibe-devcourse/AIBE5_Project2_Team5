@@ -4,4 +4,79 @@
 
 html {
   overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
+/* 페이지 진입·페이드 (prefers-reduced-motion 존중) */
+@media (prefers-reduced-motion: no-preference) {
+  .pickxel-animate-page-in {
+    animation: pickxel-page-in 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .pickxel-animate-fade-in {
+    animation: pickxel-fade-in 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /*
+   * 피드 전용: 루트에 data-pickxel-feed 가 있을 때만 적용.
+   * 전역 클래스와 겹치지 않도록 별도 키프레임·클래스명 사용.
+   */
+  [data-pickxel-feed] .feed-anim-main {
+    animation: pickxel-feed-main-in 0.9s cubic-bezier(0.22, 1, 0.4, 1) both;
+  }
+
+  [data-pickxel-feed] .feed-anim-card {
+    animation: pickxel-feed-card-in 0.8s cubic-bezier(0.22, 1, 0.4, 1) both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pickxel-animate-page-in,
+  .pickxel-animate-fade-in,
+  [data-pickxel-feed] .feed-anim-main,
+  [data-pickxel-feed] .feed-anim-card {
+    animation: none !important;
+  }
+}
+
+@keyframes pickxel-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pickxel-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pickxel-feed-main-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes pickxel-feed-card-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
 }

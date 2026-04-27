@@ -1,39 +1,18 @@
-import { ArrowRight, Building2, CheckCircle, Lock, Mail, Palette, User, X } from "lucide-react";
+import { ArrowRight, Building2, CheckCircle, Eye, EyeOff, Lock, Mail, Palette, User, X } from "lucide-react";
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from "react-router";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { ImageWithFallback } from "../components/figma/ImageWithFallback";
+import { PickxelLogo } from "../components/PickxelLogo";
+import { DayNightSwitch } from "../components/DayNightSwitch";
+import { AuthPageShell } from "../components/auth/AuthPageShell";
+import { getAuthSplitFormPanelClass } from "../components/auth/authSplitLayout";
+import { AnimatedCharactersLoginHero } from "../components/ui/animated-characters-login-page";
+import { Button } from "../components/ui/button";
+import { cn } from "../../lib/utils";
+import { useAuthSurface } from "../components/auth/useAuthSurface";
 import kakaoTalkLogo from "../assets/kakao-talk-logo.png";
 import { checkNicknameAvailabilityApi, getGoogleOAuthUrl, getKakaoOAuthUrl, signupApi } from "../api/authApi";
 import { clearAuthenticated, isAuthenticated, type UserRole } from "../utils/auth";
-
-const showcaseItems = [
-  {
-    image: "https://images.unsplash.com/photo-1623932078839-44eb01fbee63?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjcmVhdGl2ZSUyMGRlc2lnbiUyMHdvcmt8ZW58MXx8fHwxNzc1NjAzODU5fDA&ixlib=rb-4.1.0&q=80&w=1080",
-    label: "브랜드 아이덴티티",
-  },
-  {
-    image: "https://images.unsplash.com/photo-1770581939371-326fc1537f10?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx0eXBvZ3JhcGh5JTIwcG9zdGVyJTIwZGVzaWdufGVufDF8fHx8MTc3NTU5Nzc3Mnww&ixlib=rb-4.1.0&q=80&w=1080",
-    label: "타이포그래피",
-  },
-  {
-    image: "https://images.unsplash.com/photo-1748765968965-7e18d4f7192b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwYWNrYWdpbmclMjBkZXNpZ24lMjBjcmVhdGl2ZXxlbnwxfHx8fDE3NzU2MDE3MTV8MA&ixlib=rb-4.1.0&q=80&w=1080",
-    label: "패키지 디자인",
-  },
-];
-
-const floatingPixels = [
-  { className: "left-[6%] top-[14%] h-16 w-16 bg-[#00C9A7]/20", delay: 0 },
-  { className: "left-[18%] bottom-[12%] h-10 w-10 bg-[#FF5C3A]/20", delay: 0.6 },
-  { className: "right-[8%] top-[18%] h-12 w-12 bg-white/70", delay: 1.1 },
-  { className: "right-[18%] bottom-[20%] h-20 w-20 bg-[#00C9A7]/15", delay: 1.5 },
-];
-
-const stepVariants = {
-  hidden: { opacity: 0, y: 18, height: 0 },
-  visible: { opacity: 1, y: 0, height: "auto" },
-  exit: { opacity: 0, y: -10, height: 0 },
-};
 
 const NAME_MIN_LENGTH = 2;
 const NAME_MAX_LENGTH = 30;
@@ -64,30 +43,28 @@ const isNameInRange = (name: string) => {
 };
 const isEmailValid = (email: string) => /^\S+@\S+$/.test(email.trim());
 
-function Logo({ className = "" }: { className?: string }) {
-  return (
-    <Link to="/" className={`flex items-center gap-2 ${className}`}>
-      <div className="grid h-8 w-8 grid-cols-2 gap-[3px]">
-        <div className="rounded-[2px] bg-[#00C9A7]"></div>
-        <div className="rounded-[2px] bg-[#00C9A7] opacity-50"></div>
-        <div className="rounded-[2px] bg-[#FF5C3A] opacity-60"></div>
-        <div className="rounded-[2px] bg-[#FF5C3A]"></div>
-      </div>
-      <span className="text-3xl font-bold tracking-tight">
-        <span className="text-[#FF5C3A]">p</span>ick<span className="text-[#00C9A7]">x</span>el<span className="text-[#FF5C3A] text-[32px]">.</span>
-      </span>
-    </Link>
-  );
+const SIGNUP_STEP_COUNT = 7;
+
+function getSignupStepForErrors(errors: SignupErrors): number | null {
+  if (errors.name) return 0;
+  if (errors.nickname) return 1;
+  if (errors.email) return 2;
+  if (errors.role) return 3;
+  if (errors.password) return 4;
+  if (errors.confirmPassword) return 5;
+  if (errors.terms) return 6;
+  return null;
 }
 
 export default function Signup() {
+  const s = useAuthSurface();
+  const reduce = useReducedMotion();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const openedSocialSignupRef = useRef(false);
   const locationState = location.state as SignupLocationState | null;
   const socialSignupPrompt = typeof locationState?.message === "string" ? locationState.message : "";
-  const [activeShowcaseIndex, setActiveShowcaseIndex] = useState(0);
   const [pendingSocialProvider, setPendingSocialProvider] = useState<"Google" | "카카오" | null>(null);
   const [socialName, setSocialName] = useState("");
   const [socialNickname, setSocialNickname] = useState("");
@@ -109,14 +86,24 @@ export default function Signup() {
     confirmPassword: "",
     role: "",
   });
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [heroTextFieldFocused, setHeroTextFieldFocused] = useState(false);
+  const heroFocusBlurRef = useRef(0);
+  const [signupStep, setSignupStep] = useState(0);
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setActiveShowcaseIndex((current) => (current + 1) % showcaseItems.length);
-    }, 3400);
+  const handleHeroTextFocus = () => {
+    window.clearTimeout(heroFocusBlurRef.current);
+    setHeroTextFieldFocused(true);
+  };
 
-    return () => window.clearInterval(timer);
-  }, []);
+  const handleHeroTextBlur = () => {
+    heroFocusBlurRef.current = window.setTimeout(() => setHeroTextFieldFocused(false), 120);
+  };
+
+  const handleHeroPasswordFocus = () => {
+    window.clearTimeout(heroFocusBlurRef.current);
+    setHeroTextFieldFocused(false);
+  };
 
   useEffect(() => {
     if (openedSocialSignupRef.current) {
@@ -140,6 +127,86 @@ export default function Signup() {
   if (isAuthenticated()) {
     return <Navigate to="/feed" replace />;
   }
+
+  const validateSignupStep = (step: number): SignupErrors => {
+    const next: SignupErrors = {};
+    switch (step) {
+      case 0:
+        if (!formData.name.trim()) {
+          next.name = "이름을 입력해주세요.";
+        } else if (!isNameInRange(formData.name)) {
+          next.name = "이름은 2자 이상 30자 이하로 입력해주세요.";
+        }
+        break;
+      case 1:
+        if (!formData.nickname.trim()) {
+          next.nickname = "닉네임을 입력해주세요.";
+        }
+        break;
+      case 2:
+        if (!formData.email.trim()) {
+          next.email = "이메일을 입력해주세요.";
+        } else if (!isEmailValid(formData.email)) {
+          next.email = "이메일에는 @를 포함해서 입력해주세요.";
+        }
+        break;
+      case 3:
+        if (!formData.role) {
+          next.role = "역할을 선택해주세요.";
+        }
+        break;
+      case 4:
+        if (!formData.password) {
+          next.password = "비밀번호를 입력해주세요.";
+        } else if (!isPasswordInRange(formData.password)) {
+          next.password = "비밀번호는 8자 이상 20자 이하로 입력해주세요.";
+        }
+        break;
+      case 5:
+        if (!formData.confirmPassword) {
+          next.confirmPassword = "비밀번호를 한 번 더 입력해주세요.";
+        } else if (!isPasswordInRange(formData.password)) {
+          next.password = "비밀번호는 8자 이상 20자 이하로 입력해주세요.";
+        } else if (formData.password !== formData.confirmPassword) {
+          next.confirmPassword = "비밀번호가 일치하지 않습니다.";
+        } else if (!isPasswordConfirmed) {
+          next.confirmPassword = "비밀번호 확인 버튼을 눌러주세요.";
+        }
+        break;
+      case 6:
+        if (!agreedTerms) {
+          next.terms = "이용약관과 개인정보처리방침에 동의해주세요.";
+        }
+        break;
+      default:
+        break;
+    }
+    return next;
+  };
+
+  const goToNextSignupStep = () => {
+    const next = validateSignupStep(signupStep);
+    if (Object.keys(next).length > 0) {
+      setSignupErrors(next);
+      return;
+    }
+    setSignupErrors({});
+    setSignupStep((prev) => Math.min(SIGNUP_STEP_COUNT - 1, prev + 1));
+  };
+
+  const goToPrevSignupStep = () => {
+    setSignupErrors({});
+    setSignupStep((prev) => Math.max(0, prev - 1));
+  };
+
+  const onSignupFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (signupStep < SIGNUP_STEP_COUNT - 1) {
+      goToNextSignupStep();
+      return;
+    }
+    void handleSignup(e);
+  };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,6 +246,10 @@ export default function Signup() {
 
     if (Object.keys(nextErrors).length > 0) {
       setSignupErrors(nextErrors);
+      const jump = getSignupStepForErrors(nextErrors);
+      if (jump !== null) {
+        setSignupStep(jump);
+      }
       return;
     }
 
@@ -208,6 +279,10 @@ export default function Signup() {
         apiErrors.form = message;
       }
       setSignupErrors(apiErrors);
+      const jump = getSignupStepForErrors(apiErrors);
+      if (jump !== null) {
+        setSignupStep(jump);
+      }
     }
   };
 
@@ -377,274 +452,190 @@ export default function Signup() {
     });
   };
 
-  const hasName = formData.name.trim().length > 0;
-  const hasNickname = formData.nickname.trim().length > 0;
-  const hasEmail = formData.email.trim().length > 0;
-  const hasRole = formData.role !== "";
-  const hasPassword = formData.password.length > 0;
-  const hasConfirmPassword = formData.confirmPassword.length > 0;
   const isNameLengthValid = isNameInRange(formData.name);
   const isPasswordLengthValid = isPasswordInRange(formData.password);
-  const activeStep =
-    1 +
-    Number(hasName) +
-    Number(hasNickname) +
-    Number(hasEmail) +
-    Number(hasRole) +
-    Number(hasPassword);
+  const hasPassword = formData.password.length > 0;
+  const progressPct = Math.min(100, Math.round(((signupStep + 1) / SIGNUP_STEP_COUNT) * 100));
+
+  const modalBackdrop = {
+    initial: { opacity: 0 },
+    animate: { opacity: 1 },
+    exit: { opacity: 0 },
+    transition: { duration: reduce ? 0.15 : 0.22 },
+  };
+
+  const modalPanel = {
+    initial: { opacity: 0, scale: reduce ? 1 : 0.96, y: reduce ? 0 : 16 },
+    animate: { opacity: 1, scale: 1, y: 0 },
+    exit: { opacity: 0, scale: reduce ? 1 : 0.96, y: reduce ? 0 : 12 },
+    transition: reduce ? { duration: 0.15 } : { type: "spring" as const, stiffness: 420, damping: 32 },
+  };
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[var(--brand-landing-bg)] text-[#0F0F0F]">
-      <div className="absolute inset-0 opacity-60 [background-image:linear-gradient(90deg,rgba(15,15,15,0.03)_1px,transparent_1px),linear-gradient(rgba(15,15,15,0.03)_1px,transparent_1px)] [background-size:44px_44px]" />
-      <div className="absolute inset-x-0 top-0 h-1 bg-[linear-gradient(90deg,#FF5C3A,#00C9A7,#FF5C3A)]" />
-
-      {floatingPixels.map((pixel, index) => (
-        <motion.div
-          key={index}
-          aria-hidden="true"
-          className={`pointer-events-none absolute hidden rounded-lg border border-white/80 shadow-lg backdrop-blur-sm lg:block ${pixel.className}`}
-          animate={{ y: [0, -14, 0], rotate: [0, -4, 0] }}
-          transition={{
-            duration: 5.2,
-            repeat: Infinity,
-            ease: "easeInOut",
-            delay: pixel.delay,
-          }}
-        />
-      ))}
-
-      <main className="relative mx-auto grid min-h-screen max-w-[1420px] grid-cols-1 items-center gap-8 px-4 py-6 sm:px-6 lg:grid-cols-[1.02fr_0.98fr]">
-        <section className="hidden lg:block">
-          <Logo className="mb-6" />
-
-          <motion.div
-            initial={{ opacity: 0, x: -36 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.7, ease: "easeOut" }}
-            className="relative h-[700px] overflow-hidden rounded-[30px] border border-black/10 bg-[#0F0F0F] p-4 shadow-[0_28px_64px_rgba(15,15,15,0.28)]"
-          >
-            {showcaseItems.map((item, index) => (
-              <motion.div
-                key={item.label}
-                className="absolute inset-4 overflow-hidden rounded-[24px]"
-                initial={false}
-                animate={{
-                  opacity: index === activeShowcaseIndex ? 1 : 0,
-                  scale: index === activeShowcaseIndex ? 1.05 : 1,
-                }}
-                transition={{ opacity: { duration: 0.9 }, scale: { duration: 3.4 } }}
-              >
-                <ImageWithFallback
-                  src={item.image}
-                  alt={item.label}
-                  className="h-full w-full object-cover"
-                />
-              </motion.div>
-            ))}
-            <div className="absolute left-7 top-7 z-10 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
-              onboarding studio
-            </div>
-            <div className="absolute inset-4 rounded-[24px] bg-gradient-to-t from-[#0F0F0F]/80 via-[#0F0F0F]/18 to-transparent" />
-            <div className="absolute bottom-10 left-9 right-9 z-10 text-white">
-              <motion.div
-                key={showcaseItems[activeShowcaseIndex].label}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.45 }}
-                className="mb-6"
-              >
-                <h2 className="text-5xl font-black uppercase leading-[0.9]">Build Your<br />Creative Profile</h2>
-                <p className="mt-4 max-w-[440px] text-sm leading-relaxed text-gray-200">
-                  포트폴리오를 발견하고, 프로젝트를 제안하고, 좋은 협업을 시작하세요.
-                </p>
-              </motion.div>
-
-              <div className="flex gap-2">
-                {showcaseItems.map((item, index) => (
-                  <button
-                    key={item.label}
-                    type="button"
-                    aria-label={`${item.label} 보기`}
-                    onClick={() => setActiveShowcaseIndex(index)}
-                    className={`h-2 rounded-full transition-all ${
-                      index === activeShowcaseIndex ? "w-8 bg-[#00C9A7]" : "w-2 bg-white/70"
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        </section>
+    <AuthPageShell variant="split">
+      <main className="grid min-h-svh w-full grid-cols-1 lg:grid-cols-2">
+        <div className="relative hidden min-h-0 lg:block">
+          <AnimatedCharactersLoginHero
+            isNight={s.isNight}
+            emailFieldFocused={heroTextFieldFocused}
+            password={formData.password}
+            showPassword={showSignupPassword}
+            reduceMotion={Boolean(reduce)}
+          />
+        </div>
 
         <motion.section
-          initial={{ opacity: 0, x: 36 }}
+          initial={reduce ? false : { opacity: 0, x: 28 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.7, ease: "easeOut" }}
-          className="w-full max-w-2xl justify-self-center lg:justify-self-end"
+          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1], delay: 0.05 }}
+          className={cn(
+            "flex min-h-svh flex-col items-center justify-center px-4 py-8 transition-colors duration-500 sm:p-8",
+            s.isNight ? "bg-[#0C1222] text-[var(--brand-landing-night-text)]" : "bg-[#FBF9F6] text-[var(--brand-landing-text)]",
+          )}
         >
-          <Logo className="mb-8 justify-center lg:hidden" />
+          <div className={cn("w-full max-w-[420px]", s.isNight && "dark")}>
+            <div className="mb-6 flex w-full justify-end">
+              <DayNightSwitch isNight={s.isNight} onToggle={s.toggle} />
+            </div>
+            <motion.div
+              className="mb-10 flex justify-center lg:hidden"
+              initial={reduce ? false : { opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+            >
+              <PickxelLogo dark={s.isNight} className="min-w-0" />
+            </motion.div>
 
-          <div className="mb-6">
-            <motion.p
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45, delay: 0.1 }}
-              className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-[#00A88C]"
-            >
-              Join Pickxel
-            </motion.p>
-            <motion.h1
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.18 }}
-              className="mb-2 text-4xl font-black uppercase leading-[0.95]"
-            >
-              Start Your Design Journey
-            </motion.h1>
-            <motion.p
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.26 }}
-              className="text-gray-600"
-            >
-              디자이너와 의뢰인이 서로의 감각을 찾는 곳입니다.
-            </motion.p>
-          </div>
+            <div className="mb-10 text-center">
+              <h1 className={`font-display text-3xl font-black tracking-tight sm:text-4xl ${s.heading}`}>
+                pickxel에 오신 걸 환영해요
+              </h1>
+              <p className={`mt-2 text-sm sm:text-base ${s.subheading}`}>단계에 맞춰 정보를 입력해주세요.</p>
+            </div>
 
-          <motion.div
-            initial={{ opacity: 0, y: 26 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.32 }}
-            className="rounded-[26px] border border-black/10 bg-white/95 p-8 shadow-[0_22px_52px_rgba(15,15,15,0.16)] backdrop-blur-md"
-          >
-            <form onSubmit={handleSignup} noValidate className="space-y-5">
-              <div>
-                <label htmlFor="name" className="mb-2 block text-sm font-medium text-gray-700">
-                  먼저 이름을 알려주세요
-                </label>
-                <div className="relative">
-                  <User className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    id="name"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleChange}
-                    maxLength={NAME_MAX_LENGTH}
-                    aria-invalid={Boolean(signupErrors.name)}
-                    aria-describedby={signupErrors.name ? "signup-name-error" : undefined}
-                    className={`h-12 w-full rounded-xl border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
-                      signupErrors.name ? "border-[#FF5C3A]" : "border-gray-200"
-                    }`}
-                    placeholder="홍길동"
-                  />
-                </div>
-                <div className="mt-2 rounded-lg bg-[#F7F7F5] px-3 py-2 text-xs text-gray-600">
-                  <p className={hasName && isNameLengthValid ? "font-medium text-[#00A88C]" : ""}>
-                    이름은 2자 이상 30자 이하로 입력해주세요.
-                  </p>
-                </div>
-                {signupErrors.name && (
-                  <p id="signup-name-error" className="mt-2 text-xs font-medium text-[#FF5C3A]">
-                    {signupErrors.name}
-                  </p>
-                )}
+            <div className={getAuthSplitFormPanelClass(s.isNight)}>
+              <div className="mb-4 h-1.5 overflow-hidden rounded-full bg-muted">
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-primary to-[#FF5C3A]/90"
+                  initial={false}
+                  animate={{ width: `${progressPct}%` }}
+                  transition={{ type: "spring", stiffness: 200, damping: 26 }}
+                />
               </div>
+              <p className="mb-6 text-center text-xs font-medium text-muted-foreground">
+                진행 {signupStep + 1} / {SIGNUP_STEP_COUNT}
+              </p>
 
-              <AnimatePresence initial={false}>
-                {hasName && (
-                  <motion.div
-                    key="nickname-step"
-                    variants={stepVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit="exit"
-                    transition={{ duration: 0.35, ease: "easeOut" }}
-                    className="overflow-hidden"
-                  >
-                    <label htmlFor="nickname" className="mb-2 block text-sm font-medium text-gray-700">
+            <form onSubmit={onSignupFormSubmit} noValidate className="space-y-5">
+              <motion.div
+                key={signupStep}
+                initial={reduce ? false : { opacity: 0, x: 14 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+                className="space-y-5"
+              >
+                {signupStep === 0 && (
+                  <div>
+                    <label htmlFor="name" className={s.label}>
+                      먼저 이름을 알려주세요
+                    </label>
+                    <div className="relative">
+                      <User className={`pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 ${s.iconInput}`} />
+                      <input
+                        type="text"
+                        id="name"
+                        name="name"
+                        value={formData.name}
+                        onChange={handleChange}
+                        onFocus={handleHeroTextFocus}
+                        onBlur={handleHeroTextBlur}
+                        maxLength={NAME_MAX_LENGTH}
+                        aria-invalid={Boolean(signupErrors.name)}
+                        aria-describedby={signupErrors.name ? "signup-name-error" : undefined}
+                        className={s.input(Boolean(signupErrors.name))}
+                        placeholder="홍길동"
+                      />
+                    </div>
+                    <div className={`mt-2 ${s.hintBox}`}>
+                      <p className={formData.name.trim() && isNameLengthValid ? `font-medium ${s.link}` : ""}>
+                        이름은 2자 이상 30자 이하로 입력해주세요.
+                      </p>
+                    </div>
+                    {signupErrors.name && (
+                      <p id="signup-name-error" className={`mt-2 ${s.errorText}`}>
+                        {signupErrors.name}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {signupStep === 1 && (
+                  <div>
+                    <label htmlFor="nickname" className={s.label}>
                       프로필에 보일 닉네임을 정해주세요
                     </label>
                     <div className="relative">
-                      <User className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                      <User className={`pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 ${s.iconInput}`} />
                       <input
                         type="text"
                         id="nickname"
                         name="nickname"
                         value={formData.nickname}
                         onChange={handleChange}
+                        onFocus={handleHeroTextFocus}
+                        onBlur={handleHeroTextBlur}
                         maxLength={10}
                         aria-invalid={Boolean(signupErrors.nickname)}
                         aria-describedby={signupErrors.nickname ? "signup-nickname-error" : undefined}
-                        className={`h-12 w-full rounded-xl border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
-                          signupErrors.nickname ? "border-[#FF5C3A]" : "border-gray-200"
-                        }`}
+                        className={s.input(Boolean(signupErrors.nickname))}
                         placeholder="닉네임"
                       />
                     </div>
                     {signupErrors.nickname && (
-                      <p id="signup-nickname-error" className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                      <p id="signup-nickname-error" className={`mt-2 ${s.errorText}`}>
                         {signupErrors.nickname}
                       </p>
                     )}
-                  </motion.div>
+                  </div>
                 )}
 
-                {hasName && hasNickname && (
-                  <motion.div
-                    key="email-step"
-                    variants={stepVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit="exit"
-                    transition={{ duration: 0.35, ease: "easeOut" }}
-                    className="overflow-hidden"
-                  >
-                    <label htmlFor="email" className="mb-2 block text-sm font-medium text-gray-700">
+                {signupStep === 2 && (
+                  <div>
+                    <label htmlFor="email" className={s.label}>
                       어디로 소식을 받을까요?
                     </label>
                     <div className="relative">
-                      <Mail className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                      <Mail className={`pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 ${s.iconInput}`} />
                       <input
                         type="email"
                         id="email"
                         name="email"
                         value={formData.email}
                         onChange={handleChange}
+                        onFocus={handleHeroTextFocus}
+                        onBlur={handleHeroTextBlur}
                         maxLength={EMAIL_MAX_LENGTH}
                         aria-invalid={Boolean(signupErrors.email)}
                         aria-describedby={signupErrors.email ? "signup-email-error" : undefined}
-                        className={`h-12 w-full rounded-xl border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
-                          signupErrors.email ? "border-[#FF5C3A]" : "border-gray-200"
-                        }`}
+                        className={s.input(Boolean(signupErrors.email))}
                         placeholder="your@email.com"
                       />
                     </div>
                     {signupErrors.email && (
-                      <p id="signup-email-error" className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                      <p id="signup-email-error" className={`mt-2 ${s.errorText}`}>
                         {signupErrors.email}
                       </p>
                     )}
                     {!signupErrors.email && (
-                      <p className="mt-2 text-xs text-gray-500">
-                        이메일에는 @를 포함해서 입력해주세요.
-                      </p>
+                      <p className={`mt-2 text-sm ${s.muted}`}>이메일에는 @를 포함해서 입력해주세요.</p>
                     )}
-                  </motion.div>
+                  </div>
                 )}
 
-                {hasName && hasNickname && hasEmail && (
-                  <motion.div
-                    key="role-step"
-                    variants={stepVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit="exit"
-                    transition={{ duration: 0.35, ease: "easeOut" }}
-                    className="overflow-hidden"
-                  >
-                    <label className="mb-2 block text-sm font-medium text-gray-700">어떤 역할로 시작할까요?</label>
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {signupStep === 3 && (
+                  <div>
+                    <label className={s.label}>어떤 역할로 시작할까요?</label>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       {[
                         {
                           id: "designer",
@@ -666,274 +657,284 @@ export default function Signup() {
                           <motion.button
                             key={role.id}
                             type="button"
-                            whileHover={{ y: -2 }}
-                            whileTap={{ scale: 0.98 }}
+                            whileHover={reduce ? undefined : { y: -2 }}
+                            whileTap={reduce ? undefined : { scale: 0.98 }}
                             onClick={() => handleRoleChange(role.id)}
                             className={`rounded-xl border p-4 text-left transition-all ${
-                              isSelected
-                                ? "border-[#00C9A7] bg-[#A8F0E4]/20 shadow-lg shadow-[#00C9A7]/10"
-                                : "border-gray-200 bg-white hover:border-[#00C9A7]/50"
+                              isSelected ? s.roleCardSelected : s.roleCardIdle
                             }`}
                           >
                             <div className="mb-3 flex items-center justify-between">
-                              <div className={`rounded-lg p-2 ${isSelected ? "bg-[#00C9A7] text-[#0F0F0F]" : "bg-gray-100 text-gray-600"}`}>
+                              <div className={`rounded-lg p-2 ${s.roleIconWrap(isSelected)}`}>
                                 <Icon className="size-5" />
                               </div>
-                              {isSelected && <CheckCircle className="size-5 text-[#00A88C]" />}
+                              {isSelected && <CheckCircle className={`size-5 ${s.link}`} />}
                             </div>
-                            <div className="font-semibold">{role.label}</div>
-                            <p className="mt-1 text-xs leading-relaxed text-gray-500">{role.desc}</p>
+                            <div className={`font-semibold ${s.heading}`}>{role.label}</div>
+                            <p className={`mt-1 text-xs leading-relaxed ${s.muted}`}>{role.desc}</p>
                           </motion.button>
                         );
                       })}
                     </div>
-                    {signupErrors.role && (
-                      <p className="mt-2 text-xs font-medium text-[#FF5C3A]">
-                        {signupErrors.role}
-                      </p>
-                    )}
-                  </motion.div>
+                    {signupErrors.role && <p className={`mt-2 ${s.errorText}`}>{signupErrors.role}</p>}
+                  </div>
                 )}
 
-                {hasName && hasNickname && hasEmail && hasRole && (
-                  <motion.div
-                    key="password-step"
-                    variants={stepVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit="exit"
-                    transition={{ duration: 0.35, ease: "easeOut" }}
-                    className="overflow-hidden"
-                  >
-                    <label htmlFor="password" className="mb-2 block text-sm font-medium text-gray-700">
+                {signupStep === 4 && (
+                  <div>
+                    <label htmlFor="password" className={s.label}>
                       비밀번호를 만들어주세요
                     </label>
                     <div className="relative">
-                      <Lock className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                      <Lock className={`pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 ${s.iconInput}`} />
                       <input
-                        type="password"
+                        type={showSignupPassword ? "text" : "password"}
                         id="password"
                         name="password"
                         value={formData.password}
                         onChange={handleChange}
+                        onFocus={handleHeroPasswordFocus}
                         maxLength={PASSWORD_MAX_LENGTH}
                         aria-invalid={Boolean(signupErrors.password)}
                         aria-describedby="signup-password-rule signup-password-error"
-                        className={`h-12 w-full rounded-xl border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
-                          signupErrors.password ? "border-[#FF5C3A]" : "border-gray-200"
-                        }`}
+                        className={s.input(Boolean(signupErrors.password))}
                         placeholder="비밀번호"
+                        autoComplete="new-password"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowSignupPassword((v) => !v)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                        aria-label={showSignupPassword ? "비밀번호 숨기기" : "비밀번호 표시"}
+                      >
+                        {showSignupPassword ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
+                      </button>
                     </div>
-                    <div id="signup-password-rule" className="mt-2 rounded-lg bg-[#F7F7F5] px-3 py-2 text-xs text-gray-600">
-                      <p className={hasPassword && isPasswordLengthValid ? "font-medium text-[#00A88C]" : ""}>
+                    <div id="signup-password-rule" className={`mt-2 ${s.hintBox}`}>
+                      <p className={hasPassword && isPasswordLengthValid ? `font-medium ${s.link}` : ""}>
                         비밀번호는 8자 이상 20자 이하로 입력해주세요.
                       </p>
                     </div>
                     {signupErrors.password && (
-                      <p id="signup-password-error" className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                      <p id="signup-password-error" className={`mt-2 ${s.errorText}`}>
                         {signupErrors.password}
                       </p>
                     )}
-                  </motion.div>
+                  </div>
                 )}
 
-                {hasName && hasNickname && hasEmail && hasRole && hasPassword && (
-                  <motion.div
-                    key="confirm-password-step"
-                    variants={stepVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit="exit"
-                    transition={{ duration: 0.35, ease: "easeOut" }}
-                    className="overflow-hidden"
-                  >
-                    <label htmlFor="confirmPassword" className="mb-2 block text-sm font-medium text-gray-700">
+                {signupStep === 5 && (
+                  <div>
+                    <label htmlFor="confirmPassword" className={s.label}>
                       한 번 더 확인할게요
                     </label>
                     <div className="flex gap-2">
                       <div className="relative flex-1">
-                        <Lock className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                        <Lock className={`pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 ${s.iconInput}`} />
                         <input
-                          type="password"
+                          type={showSignupPassword ? "text" : "password"}
                           id="confirmPassword"
                           name="confirmPassword"
                           value={formData.confirmPassword}
                           onChange={handleChange}
+                          onFocus={handleHeroPasswordFocus}
                           maxLength={PASSWORD_MAX_LENGTH}
                           aria-invalid={Boolean(signupErrors.confirmPassword)}
                           aria-describedby={signupErrors.confirmPassword ? "signup-confirm-password-error" : undefined}
-                          className={`h-12 w-full rounded-xl border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
-                            signupErrors.confirmPassword ? "border-[#FF5C3A]" : "border-gray-200"
-                          }`}
+                          className={s.input(Boolean(signupErrors.confirmPassword))}
                           placeholder="한 번 더 입력"
+                          autoComplete="new-password"
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowSignupPassword((v) => !v)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                          aria-label={showSignupPassword ? "비밀번호 숨기기" : "비밀번호 표시"}
+                        >
+                          {showSignupPassword ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
+                        </button>
                       </div>
                       <button
                         type="button"
                         onClick={handleConfirmPassword}
-                        className="h-12 shrink-0 rounded-xl border border-[#00C9A7] px-4 text-sm font-semibold text-[#007C69] transition-colors hover:bg-[#E8FFF9]"
+                        className={`h-12 shrink-0 rounded-xl border border-primary px-4 text-sm font-semibold transition-colors hover:bg-primary/10`}
                       >
                         확인
                       </button>
                     </div>
                     {signupErrors.confirmPassword && (
-                      <p id="signup-confirm-password-error" className="mt-2 text-xs font-medium text-[#FF5C3A]">
+                      <p id="signup-confirm-password-error" className={`mt-2 ${s.errorText}`}>
                         {signupErrors.confirmPassword}
                       </p>
                     )}
                     {isPasswordConfirmed && !signupErrors.confirmPassword && (
-                      <p className="mt-2 text-xs font-medium text-[#00A88C]">
-                        비밀번호가 일치합니다.
-                      </p>
+                      <p className={`mt-2 text-sm font-medium ${s.link}`}>비밀번호가 일치합니다.</p>
                     )}
-                  </motion.div>
+                  </div>
                 )}
 
-                {hasName && hasNickname && hasEmail && hasRole && hasPassword && hasConfirmPassword && (
-                  <motion.div
-                    key="submit-step"
-                    variants={stepVariants}
-                    initial="hidden"
-                    animate="visible"
-                    exit="exit"
-                    transition={{ duration: 0.35, ease: "easeOut" }}
-                    className="space-y-5 overflow-hidden"
-                  >
+                {signupStep === 6 && (
+                  <div className="space-y-5">
                     <div>
-                    <label className="flex items-start gap-2">
-                      <input
-                        type="checkbox"
-                        checked={agreedTerms}
-                        onChange={(event) => handleTermsChange(event.target.checked)}
-                        className="mt-1 h-4 w-4 rounded border-gray-300 text-[#00C9A7] focus:ring-[#00C9A7]"
-                      />
-                      <span className="text-sm text-gray-600">
-                        <a href="#" className="text-[#00A88C] hover:underline">이용약관</a> 및{" "}
-                        <a href="#" className="text-[#00A88C] hover:underline">개인정보처리방침</a>에 동의합니다.
-                      </span>
-                    </label>
-                    {signupErrors.terms && (
-                      <p className="mt-2 text-xs font-medium text-[#FF5C3A]">
-                        {signupErrors.terms}
-                      </p>
-                    )}
+                      <label className="flex items-start gap-2">
+                        <input
+                          type="checkbox"
+                          checked={agreedTerms}
+                          onChange={(event) => handleTermsChange(event.target.checked)}
+                          className="mt-1 h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                        />
+                        <span className={`text-sm ${s.subheading}`}>
+                          <span className={`font-semibold ${s.link}`} title="페이지 준비 중입니다">
+                            이용약관
+                          </span>{" "}
+                          및{" "}
+                          <span className={`font-semibold ${s.link}`} title="페이지 준비 중입니다">
+                            개인정보처리방침
+                          </span>
+                          에 동의합니다.
+                        </span>
+                      </label>
+                      {signupErrors.terms && <p className={`mt-2 ${s.errorText}`}>{signupErrors.terms}</p>}
                     </div>
-
-                    <motion.button
-                      type="submit"
-                      whileHover={{ y: -1 }}
-                      whileTap={{ scale: 0.98 }}
-                      className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#00C9A7] font-semibold text-[#0F0F0F] shadow-lg shadow-[#00C9A7]/20 transition-colors hover:bg-[#00A88C]"
-                    >
-                      회원가입
-                      <ArrowRight className="size-5" />
-                    </motion.button>
-                    {signupErrors.form && (
-                      <p className="text-xs font-medium text-[#FF5C3A]">
-                        {signupErrors.form}
-                      </p>
-                    )}
-                  </motion.div>
+                    {signupErrors.form && <p className={s.errorText}>{signupErrors.form}</p>}
+                  </div>
                 )}
-              </AnimatePresence>
+              </motion.div>
 
-              {!hasConfirmPassword && (
-                <div className="rounded-lg bg-[#F7F7F5] px-4 py-3 text-sm text-gray-500">
-                  입력을 마치면 다음 단계가 자동으로 열립니다.
-                </div>
-              )}
+              <div className="flex flex-wrap gap-3 pt-2">
+                {signupStep > 0 && (
+                  <Button type="button" variant="outline" className="h-12 min-h-[3rem] min-w-[5.5rem]" onClick={goToPrevSignupStep}>
+                    이전
+                  </Button>
+                )}
+                {signupStep < 6 ? (
+                  <Button type="button" className="h-12 min-h-[3rem] flex-1 text-base font-semibold" onClick={goToNextSignupStep}>
+                    다음
+                  </Button>
+                ) : (
+                  <motion.button
+                    type="submit"
+                    whileHover={reduce ? undefined : { y: -1 }}
+                    whileTap={reduce ? undefined : { scale: 0.98 }}
+                    className={`flex h-12 min-h-[3rem] flex-1 items-center justify-center gap-2 ${s.primaryButton}`}
+                  >
+                    회원가입
+                    <ArrowRight className="size-5" />
+                  </motion.button>
+                )}
+              </div>
             </form>
 
-            <div className="mt-6 text-center">
-              <p className="text-sm text-gray-600">
+            <div className="mt-7 text-center">
+              <p className={`text-base ${s.subheading}`}>
                 이미 계정이 있으신가요?{" "}
-                <Link to="/login" className="font-semibold text-[#00A88C] transition-colors hover:text-[#007C69]">
+                <Link to="/login" className={`font-semibold ${s.link}`}>
                   로그인
                 </Link>
               </p>
             </div>
 
-            <div className="my-6 flex items-center gap-4">
-              <div className="h-px flex-1 bg-gray-200"></div>
-              <span className="text-sm text-gray-500">또는</span>
-              <div className="h-px flex-1 bg-gray-200"></div>
+            <div className="my-7 flex items-center gap-4">
+              <div className={`h-px flex-1 ${s.divider}`} />
+              <span className={`text-xs font-semibold uppercase tracking-widest ${s.muted}`}>또는</span>
+              <div className={`h-px flex-1 ${s.divider}`} />
             </div>
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => startSocialSignup("Google")}
-                className="flex h-12 items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white px-4 transition-colors hover:bg-gray-50"
-              >
-                <svg className="h-5 w-5" viewBox="0 0 24 24">
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                </svg>
-                <span className="font-medium text-gray-700">Google</span>
-              </button>
+            <div className="space-y-3">
+              <motion.div whileHover={reduce ? undefined : { y: -2 }} whileTap={reduce ? undefined : { scale: 0.99 }}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  className="h-12 min-h-[3rem] w-full gap-2 text-base"
+                  onClick={() => startSocialSignup("Google")}
+                >
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      fill="#4285F4"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                    />
+                  </svg>
+                  Google로 계속하기
+                </Button>
+              </motion.div>
 
-              <button
+              <motion.button
                 type="button"
                 onClick={() => startSocialSignup("카카오")}
-                className="flex h-12 items-center justify-center gap-3 rounded-xl bg-[#FEE500] px-4 transition-colors hover:bg-[#FDD835]"
+                whileHover={reduce ? undefined : { y: -2 }}
+                whileTap={reduce ? undefined : { scale: 0.99 }}
+                className="flex h-12 min-h-[3rem] w-full items-center justify-center gap-3 rounded-2xl bg-[#FEE500] px-4 text-base font-semibold text-[#2D2A26] shadow-[0_10px_28px_rgba(0,0,0,0.12)] transition-colors hover:bg-[#FDD835]"
               >
                 <img src={kakaoTalkLogo} alt="" className="h-6 w-6 rounded-[6px]" />
-                <span className="font-medium text-gray-900">카카오</span>
-              </button>
+                카카오로 계속하기
+              </motion.button>
             </div>
-          </motion.div>
+            </div>
+          </div>
         </motion.section>
       </main>
-      {isSignupCompleteOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <motion.div
-            initial={{ opacity: 0, y: 18, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-            className="w-full max-w-md rounded-lg bg-white p-7 text-center shadow-2xl"
-          >
-            <div className="mx-auto mb-5 grid size-14 place-items-center rounded-full bg-[#A8F0E4]/35 text-[#00A88C]">
+      <AnimatePresence>
+        {isSignupCompleteOpen && (
+          <motion.div key="signup-done" className={`${s.modalOverlay} z-[60]`} {...modalBackdrop}>
+            <motion.div className={`${s.modalCard} text-center`} {...modalPanel}>
+            <div
+              className={`mx-auto mb-5 grid size-14 place-items-center rounded-full ${
+                s.isNight ? "bg-[#00C9A7]/20 text-[#7EE8D0]" : "bg-[#A8F0E4]/35 text-[#00A88C]"
+              }`}
+            >
               <CheckCircle className="size-8" />
             </div>
-            <p className="text-sm font-bold text-[#00A88C]">회원가입 완료</p>
-            <h2 className="mt-2 text-2xl font-bold text-[#0F0F0F]">
+            <p className={`text-sm font-bold ${s.link}`}>회원가입 완료</p>
+            <h2 className={`font-display mt-2 text-2xl font-bold ${s.modalTitle}`}>
               회원가입이 완료되었습니다
             </h2>
-            <p className="mt-3 text-sm leading-relaxed text-gray-600">
+            <p className={`mt-3 text-sm leading-relaxed ${s.modalBody}`}>
               {completedSignupEmail ? `${completedSignupEmail} 계정으로 가입됐어요. ` : ""}
               로그인 페이지에서 다시 로그인해주세요.
             </p>
             <button
               type="button"
               onClick={goToLoginAfterSignup}
-              className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[#00C9A7] font-bold text-[#0F0F0F] shadow-lg shadow-[#00C9A7]/20 transition-colors hover:bg-[#00A88C]"
+              className={`mt-6 flex h-12 min-h-[3rem] w-full items-center justify-center gap-2 font-bold ${s.primaryButton}`}
             >
               로그인하기
               <ArrowRight className="size-5" />
             </button>
+            </motion.div>
           </motion.div>
-        </div>
-      )}
-      {pendingSocialProvider && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-2xl">
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {pendingSocialProvider && (
+        <motion.div key="social-signup" className={s.modalOverlay} {...modalBackdrop}>
+          <motion.div className={s.modalCard} {...modalPanel}>
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <p className="mb-1 flex items-center gap-2 text-sm font-semibold text-[#00A88C]">
+                <p className={`mb-1 flex items-center gap-2 text-base font-semibold ${s.link}`}>
                   {pendingSocialProvider === "카카오" && (
                     <img src={kakaoTalkLogo} alt="" className="h-5 w-5 rounded-[5px]" />
                   )}
                   {pendingSocialProvider} 회원가입
                 </p>
-                <h2 className="text-2xl font-bold">이름과 역할을 선택해주세요</h2>
-                <p className="mt-2 text-sm text-gray-600">
+                <h2 className={`font-display text-2xl font-bold ${s.modalTitle}`}>이름과 역할을 선택해주세요</h2>
+                <p className={`mt-2 text-sm ${s.modalBody}`}>
                   최초 소셜 가입 시 입력한 이름과 선택한 역할이 저장됩니다.
                 </p>
                 {socialSignupPrompt && (
-                  <p className="mt-3 rounded-lg bg-[#FFF7F4] px-3 py-2 text-sm font-medium text-[#C2412D]">
+                  <p className={`mt-3 rounded-xl px-3 py-2 text-sm font-medium ${s.errorBanner}`}>
                     {socialSignupPrompt}
                   </p>
                 )}
@@ -941,7 +942,7 @@ export default function Signup() {
               <button
                 type="button"
                 onClick={() => setPendingSocialProvider(null)}
-                className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
+                className={s.closeButton}
                 aria-label="역할 선택 닫기"
               >
                 <X className="size-5" />
@@ -949,11 +950,11 @@ export default function Signup() {
             </div>
 
             <div className="mb-5">
-              <label htmlFor="social-name" className="mb-2 block text-sm font-medium text-gray-700">
+              <label htmlFor="social-name" className={s.label}>
                 이름
               </label>
               <div className="relative">
-                <User className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                <User className={`pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 ${s.iconInput}`} />
                 <input
                   id="social-name"
                   type="text"
@@ -963,20 +964,18 @@ export default function Signup() {
                     setSocialName(event.target.value);
                     setSocialSignupError("");
                   }}
-                  className={`h-11 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
-                    socialSignupError ? "border-[#FF5C3A]" : "border-gray-200"
-                  }`}
+                  className={s.input(Boolean(socialSignupError))}
                   placeholder="2자 이상 30자 이하"
                 />
               </div>
-              <p className="mb-4 mt-2 text-xs text-gray-500">프로필에 표시할 실제 이름을 입력해주세요.</p>
+              <p className={`mb-4 mt-2 text-xs ${s.muted}`}>프로필에 표시할 실제 이름을 입력해주세요.</p>
 
-              <label htmlFor="social-nickname" className="mb-2 block text-sm font-medium text-gray-700">
+              <label htmlFor="social-nickname" className={s.label}>
                 닉네임
               </label>
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <User className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                  <User className={`pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 ${s.iconInput}`} />
                   <input
                     id="social-nickname"
                     type="text"
@@ -988,9 +987,7 @@ export default function Signup() {
                       setSocialNicknameCheckMessage("");
                       setCheckedSocialNickname("");
                     }}
-                    className={`h-11 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
-                      socialSignupError ? "border-[#FF5C3A]" : "border-gray-200"
-                    }`}
+                    className={s.input(Boolean(socialSignupError))}
                     placeholder="10자 이하"
                   />
                 </div>
@@ -998,26 +995,30 @@ export default function Signup() {
                   type="button"
                   onClick={handleCheckSocialNickname}
                   disabled={isCheckingSocialNickname}
-                  className="h-11 shrink-0 rounded-lg border border-[#00C9A7] px-4 text-sm font-semibold text-[#007C69] transition-colors hover:bg-[#E8FFF9] disabled:cursor-not-allowed disabled:opacity-60"
+                  className={`h-12 shrink-0 rounded-xl border border-[#00C9A7] px-4 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    s.isNight
+                      ? "bg-[#00C9A7]/15 text-[#7EE8D0] hover:bg-[#00C9A7]/25"
+                      : "text-[#007C69] hover:bg-[#E8FFF9]"
+                  }`}
                 >
                   {isCheckingSocialNickname ? "확인 중" : "중복 확인"}
                 </button>
               </div>
-              <p className="mt-2 text-xs text-gray-500">
+              <p className={`mt-2 text-xs ${s.muted}`}>
                 {pendingSocialProvider === "카카오"
                   ? "이메일은 pickxel 계정용으로 직접 입력합니다."
                   : "이메일은 Google 계정 정보로 가져옵니다."}
               </p>
               {socialNicknameCheckMessage && !socialSignupError && (
-                <p className="mt-2 text-xs font-medium text-[#00A88C]">{socialNicknameCheckMessage}</p>
+                <p className={`mt-2 text-sm font-medium ${s.link}`}>{socialNicknameCheckMessage}</p>
               )}
               {pendingSocialProvider === "카카오" && (
                 <div className="mt-4">
-                  <label htmlFor="social-email" className="mb-2 block text-sm font-medium text-gray-700">
+                  <label htmlFor="social-email" className={s.label}>
                     이메일
                   </label>
                   <div className="relative">
-                    <Mail className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                    <Mail className={`pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 ${s.iconInput}`} />
                     <input
                       id="social-email"
                       type="email"
@@ -1027,51 +1028,62 @@ export default function Signup() {
                         setSocialEmail(event.target.value);
                         setSocialSignupError("");
                       }}
-                      className={`h-11 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
-                        socialSignupError ? "border-[#FF5C3A]" : "border-gray-200"
-                      }`}
+                      className={s.input(Boolean(socialSignupError))}
                       placeholder="your@email.com"
                     />
                   </div>
-                  <p className="mt-2 text-xs text-gray-500">이메일에 @를 포함해서 입력해주세요.</p>
+                  <p className={`mt-2 text-xs ${s.muted}`}>이메일에 @를 포함해서 입력해주세요.</p>
                 </div>
               )}
               {socialSignupError && (
-                <p className="mt-2 text-xs font-medium text-[#FF5C3A]">{socialSignupError}</p>
+                <p className={`mt-2 ${s.errorText}`}>{socialSignupError}</p>
               )}
             </div>
 
             <div className="grid gap-3">
-              <button
+              <motion.button
                 type="button"
                 onClick={() => completeSocialSignup("designer")}
-                className="rounded-lg border border-[#BDEFD8] bg-[#F5FFFB] p-4 text-left transition-all hover:border-[#00C9A7] hover:shadow-md"
+                whileHover={reduce ? undefined : { y: -2 }}
+                whileTap={reduce ? undefined : { scale: 0.99 }}
+                className={
+                  s.isNight
+                    ? "rounded-2xl border border-[#BDEFD8]/30 bg-[#00C9A7]/8 p-4 text-left transition-all hover:border-[#00C9A7]/50 hover:shadow-md"
+                    : "rounded-2xl border border-[#BDEFD8] bg-[#F5FFFB] p-4 text-left transition-all hover:border-[#00C9A7] hover:shadow-md"
+                }
               >
-                <div className="mb-3 inline-flex rounded-lg bg-[#00C9A7] p-2 text-[#0F0F0F]">
+                <div className="mb-3 inline-flex rounded-xl bg-[#00C9A7] p-2 text-[#0F0F0F]">
                   <Palette className="size-5" />
                 </div>
-                <div className="font-semibold">디자이너</div>
-                <p className="mt-1 text-sm text-gray-600">
+                <div className={`font-semibold ${s.modalTitle}`}>디자이너</div>
+                <p className={`mt-1 text-sm ${s.modalBody}`}>
                   작업물을 공유하고 프로젝트를 만납니다.
                 </p>
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 type="button"
                 onClick={() => completeSocialSignup("client")}
-                className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] p-4 text-left transition-all hover:border-[#FF5C3A] hover:shadow-md"
+                whileHover={reduce ? undefined : { y: -2 }}
+                whileTap={reduce ? undefined : { scale: 0.99 }}
+                className={
+                  s.isNight
+                    ? "rounded-2xl border border-[#FF5C3A]/25 bg-[#FF5C3A]/8 p-4 text-left transition-all hover:border-[#FF5C3A]/45 hover:shadow-md"
+                    : "rounded-2xl border border-[#FFB9AA] bg-[#FFF7F4] p-4 text-left transition-all hover:border-[#FF5C3A] hover:shadow-md"
+                }
               >
-                <div className="mb-3 inline-flex rounded-lg bg-[#FF5C3A] p-2 text-white">
+                <div className="mb-3 inline-flex rounded-xl bg-[#FF5C3A] p-2 text-white">
                   <Building2 className="size-5" />
                 </div>
-                <div className="font-semibold">클라이언트</div>
-                <p className="mt-1 text-sm text-gray-600">
+                <div className={`font-semibold ${s.modalTitle}`}>클라이언트</div>
+                <p className={`mt-1 text-sm ${s.modalBody}`}>
                   감각에 맞는 디자이너를 찾고 의뢰합니다.
                 </p>
-              </button>
+              </motion.button>
             </div>
-          </div>
-        </div>
-      )}
-    </div>
+          </motion.div>
+        </motion.div>
+        )}
+      </AnimatePresence>
+    </AuthPageShell>
   );
 }

@@ -420,6 +420,7 @@ export default function Feed() {
 
   return (
     <div
+      data-pickxel-feed
       className={`min-h-screen transition-colors duration-500 ${
         isNight ? "bg-[#0C1222]" : "bg-[#FBF9F6]"
       }`}
@@ -429,7 +430,7 @@ export default function Feed() {
       <div className="mx-auto max-w-[1400px] px-6 py-8">
         <div className="flex gap-8">
           {/* Main Feed */}
-          <div className="flex-1">
+          <div className="feed-anim-main flex-1">
             {isFeedLoading && (
               <div
                 className={`mb-6 rounded-xl border border-dashed px-6 py-10 text-center text-sm font-medium transition-colors duration-500 ${
@@ -467,8 +468,8 @@ export default function Feed() {
             )}
 
             {/* Feed Grid */}
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              {visibleFeedItems.map((item) => {
+            <div className="grid grid-cols-1 gap-7 md:grid-cols-2 md:gap-8">
+              {visibleFeedItems.map((item, index) => {
                 const images = getFeedImages(item);
                 const activeImageIndex = carouselIndexes[item.feedKey] ?? 0;
                 const isSaved = savedItemIds.has(item.id);
@@ -477,6 +478,7 @@ export default function Feed() {
                   <FeedCard
                     key={item.feedKey}
                     item={item}
+                    revealIndex={index}
                     images={images}
                     activeImageIndex={activeImageIndex}
                     isSaved={isSaved}

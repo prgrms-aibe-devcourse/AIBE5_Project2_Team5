@@ -2,6 +2,9 @@ import { ArrowLeft, Lock } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import { confirmPasswordResetApi } from "../api/authApi";
+import { PickxelLogo } from "../components/PickxelLogo";
+import { AuthPageShell } from "../components/auth/AuthPageShell";
+import { useAuthSurface } from "../components/auth/useAuthSurface";
 
 type PasswordResetErrors = {
   newPassword?: string;
@@ -12,6 +15,7 @@ type PasswordResetErrors = {
 const isPasswordLengthValid = (password: string) => password.length >= 8 && password.length <= 20;
 
 export default function PasswordReset() {
+  const s = useAuthSurface();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") ?? "";
@@ -59,35 +63,39 @@ export default function PasswordReset() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F8FA] px-4 py-10">
-      <main className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-md flex-col justify-center">
+    <AuthPageShell>
+      <main className="relative mx-auto flex min-h-[calc(100vh-5rem)] max-w-md flex-col justify-center px-4 pb-16 pt-4 sm:px-6">
+        <div className="mb-8 flex items-center justify-between gap-4">
+          <PickxelLogo dark={s.isNight} />
+        </div>
+
         <Link
           to="/login"
-          className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-gray-600 transition-colors hover:text-[#00A88C]"
+          className={`mb-6 inline-flex items-center gap-2 text-base font-semibold transition-colors ${
+            s.isNight ? "text-white/55 hover:text-[#7EE8D0]" : "text-[#525252] hover:text-[#007C69]"
+          }`}
         >
           <ArrowLeft className="size-4" />
           로그인으로 돌아가기
         </Link>
 
-        <section className="rounded-lg bg-white p-6 shadow-sm">
+        <section className={`p-6 sm:p-8 ${s.card}`}>
           <div className="mb-6">
-            <p className="mb-1 text-sm font-semibold text-[#00A88C]">비밀번호 재설정</p>
-            <h1 className="text-2xl font-bold text-gray-950">새 비밀번호를 입력해주세요</h1>
-            <p className="mt-2 text-sm text-gray-600">비밀번호는 8자 이상 20자 이하로 설정해주세요.</p>
+            <p className={`mb-1 text-base font-semibold ${s.link}`}>비밀번호 재설정</p>
+            <h1 className={`font-display text-2xl font-bold ${s.heading}`}>새 비밀번호를 입력해주세요</h1>
+            <p className={`mt-2 text-sm ${s.subheading}`}>비밀번호는 8자 이상 20자 이하로 설정해주세요.</p>
           </div>
 
           {!token ? (
-            <div className="rounded-lg bg-[#FFF7F4] px-4 py-3 text-sm font-medium text-[#FF5C3A]">
-              재설정 링크가 올바르지 않습니다. 다시 요청해주세요.
-            </div>
+            <div className={s.errorBanner}>재설정 링크가 올바르지 않습니다. 다시 요청해주세요.</div>
           ) : (
             <form onSubmit={handleSubmit} noValidate className="space-y-4">
               <div>
-                <label htmlFor="new-password" className="mb-2 block text-sm font-medium text-gray-700">
+                <label htmlFor="new-password" className={s.label}>
                   새 비밀번호
                 </label>
                 <div className="relative">
-                  <Lock className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                  <Lock className={`pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 ${s.iconInput}`} />
                   <input
                     id="new-password"
                     type="password"
@@ -96,23 +104,19 @@ export default function PasswordReset() {
                       setNewPassword(e.target.value);
                       setErrors((current) => ({ ...current, newPassword: undefined, form: undefined }));
                     }}
-                    className={`h-11 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
-                      errors.newPassword ? "border-[#FF5C3A]" : "border-gray-200"
-                    }`}
+                    className={s.input(Boolean(errors.newPassword))}
                     placeholder="8자 이상 20자 이하"
                   />
                 </div>
-                {errors.newPassword && (
-                  <p className="mt-2 text-xs font-medium text-[#FF5C3A]">{errors.newPassword}</p>
-                )}
+                {errors.newPassword && <p className={`mt-2 ${s.errorText}`}>{errors.newPassword}</p>}
               </div>
 
               <div>
-                <label htmlFor="confirm-password" className="mb-2 block text-sm font-medium text-gray-700">
+                <label htmlFor="confirm-password" className={s.label}>
                   새 비밀번호 확인
                 </label>
                 <div className="relative">
-                  <Lock className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                  <Lock className={`pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 ${s.iconInput}`} />
                   <input
                     id="confirm-password"
                     type="password"
@@ -121,34 +125,22 @@ export default function PasswordReset() {
                       setConfirmPassword(e.target.value);
                       setErrors((current) => ({ ...current, confirmPassword: undefined, form: undefined }));
                     }}
-                    className={`h-11 w-full rounded-lg border bg-white px-12 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-4 focus:ring-[#00C9A7]/10 ${
-                      errors.confirmPassword ? "border-[#FF5C3A]" : "border-gray-200"
-                    }`}
+                    className={s.input(Boolean(errors.confirmPassword))}
                     placeholder="새 비밀번호를 한 번 더 입력"
                   />
                 </div>
-                {errors.confirmPassword && (
-                  <p className="mt-2 text-xs font-medium text-[#FF5C3A]">{errors.confirmPassword}</p>
-                )}
+                {errors.confirmPassword && <p className={`mt-2 ${s.errorText}`}>{errors.confirmPassword}</p>}
               </div>
 
-              {errors.form && (
-                <p className="rounded-lg bg-[#FFF7F4] px-4 py-3 text-sm font-medium text-[#FF5C3A]">
-                  {errors.form}
-                </p>
-              )}
+              {errors.form && <p className={s.errorBanner}>{errors.form}</p>}
 
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="h-11 w-full rounded-lg bg-[#00C9A7] text-sm font-semibold text-[#0F0F0F] transition-colors hover:bg-[#00A88C] disabled:cursor-not-allowed disabled:opacity-60"
-              >
+              <button type="submit" disabled={isSubmitting} className={`w-full ${s.primaryButton}`}>
                 {isSubmitting ? "변경 중..." : "비밀번호 변경"}
               </button>
             </form>
           )}
         </section>
       </main>
-    </div>
+    </AuthPageShell>
   );
 }

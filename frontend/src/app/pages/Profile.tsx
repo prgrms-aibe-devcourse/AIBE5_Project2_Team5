@@ -1,10 +1,11 @@
 import Navigation from "../components/Navigation";
 import Footer from "../components/Footer";
 import { toast } from "sonner";
-import { Heart, MessageCircle, Bookmark, Calendar, MapPin, Star, ImagePlus, Upload, X, Figma, Sparkles, ExternalLink, CheckCircle, Pencil, Trash2, FolderPlus, FolderOpen, AlertTriangle } from "lucide-react";
+import { Heart, MessageCircle, Bookmark, Calendar, MapPin, Star, ImagePlus, Upload, X, Figma, Sparkles, ExternalLink, CheckCircle, Pencil, Trash2, FolderOpen, AlertTriangle, Grid3X3, ChevronRight } from "lucide-react";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
-import { useParams, useNavigate, useSearchParams } from "react-router";
-import { useState, useEffect, useRef, type ChangeEvent, type KeyboardEvent } from "react";
+import { useParams, useNavigate, useSearchParams, Link } from "react-router";
+import { motion, AnimatePresence } from "motion/react";
+import { useState, useEffect, useLayoutEffect, useRef, type ChangeEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { getCurrentUser, getCurrentUserRole, setCurrentUser } from "../utils/auth";
 import { getUserAvatar } from "../utils/avatar";
 import { designerJobOptions, matchingCategories, normalizeDesignerJobLabel } from "../utils/matchingCategories";
@@ -22,28 +23,31 @@ import {
   type ProfileResponse,
   type ProfileReviewResponse,
 } from "../api/profileApi";
-import { createFeedApi, deleteFeedApi, updateFeedApi } from "../api/feedApi";
+import { createFeedApi, deleteFeedApi, toggleFeedPickApi, updateFeedApi } from "../api/feedApi";
 import { replaceFeedImagesApi, uploadFeedImagesApi, uploadProfileImageApi } from "../api/uploadApi";
 import { followUserApi, unfollowUserApi } from "../api/followApi";
 import {
-  createCollectionFolderApi,
-  deleteCollectionFolderApi,
   getCollectionFolderApi,
   getMyCollectionsApi,
   getProfileCollectionsApi,
-  removeFeedFromCollectionApi,
-  renameCollectionFolderApi,
-  saveFeedToCollectionApi,
   type CollectionFolderDetailResponse,
   type CollectionFolderResponse,
 } from "../api/collectionApi";
-import { createMessageConversationApi } from "../api/messageApi";
+import { createMessageConversationApi, sendConversationMessageApi } from "../api/messageApi";
 import {
   getFeedIntegrationLabel,
   parseFeedIntegrations,
   serializeFeedIntegrations,
   type FeedIntegration,
 } from "../utils/feedIntegrations";
+import { AnimatedFolder, getFolderGradientByFolderId, type Project } from "../components/ui/3d-folder";
+import { FeedDetailModal } from "../components/feed/FeedDetailModal";
+import { CollectionSaveModal } from "../components/feed/CollectionSaveModal";
+import { useFeedComments } from "../hooks/useFeedComments";
+import { useFeedCollections } from "../hooks/useFeedCollections";
+import { useFeedDetail } from "../hooks/useFeedDetail";
+import { useNightMode } from "../contexts/NightModeContext";
+import type { BaseFeedItem, FeedCardItem } from "../types/feed";
 
 type FeedProjectAuthor = {
   name: string;
@@ -93,6 +97,27 @@ const getProfileLookupKey = (username: string) => {
   }
   return normalizedUsername;
 };
+
+const getRelativeCollectionLabel = (updatedAt: string | null) => {
+  if (!updatedAt) return "날짜 없음";
+  const diff = Date.now() - new Date(updatedAt).getTime();
+  const hours = Math.floor(diff / (1000 * 60 * 60));
+  const days = Math.floor(hours / 24);
+  if (hours < 1) return "방금 업데이트";
+  if (hours < 24) return `${hours}시간 전 업데이트`;
+  if (days < 7) return `${days}일 전 업데이트`;
+  return "1주 이상 전 업데이트";
+};
+
+function collectionToFolderProjects(folder: CollectionFolderResponse): Project[] {
+  return folder.previewImageUrls
+    .filter((url) => url?.trim())
+    .map((url, i) => ({
+      id: `${folder.folderId}-p${i}`,
+      image: url,
+      title: `${folder.folderName} ${i + 1}`,
+    }));
+}
 
 const isSameProfileKey = (value: string | number | undefined | null, profileKey: string) => {
   if (value === undefined || value === null) {
@@ -168,6 +193,56 @@ const mapProfileFeedToProject = (
   createdAt: feed.createdAt ?? undefined,
   persisted: true,
 });
+
+const toProfileFeedCommentRole = (role: string) => {
+  if (role === "CLIENT") return "프로젝트 클라이언트";
+  if (role === "DESIGNER") return "디자이너";
+  return role;
+};
+
+const mapFeedProjectToFeedCardItem = (
+  project: FeedProject,
+  profile: ProfileResponse,
+  lookupKey: string,
+): FeedCardItem => {
+  const images =
+    project.images && project.images.length > 0
+      ? project.images
+      : project.imageUrl
+        ? [project.imageUrl]
+        : [];
+  const image = images[0] ?? "";
+  const profileKey =
+    lookupKey === "me"
+      ? String(profile.userId)
+      : profile.loginId || profile.nickname || String(profile.userId);
+
+  return {
+    id: project.id,
+    feedKey: project.id,
+    author: {
+      userId: profile.userId,
+      name: profile.nickname,
+      role: normalizeDesignerJobLabel(profile.job) || profile.role,
+      avatar: getUserAvatar(profile.profileImage, profile.userId, profile.nickname),
+      profileKey,
+    },
+    title: project.title,
+    description: project.description,
+    image,
+    images: images.length > 0 ? images : undefined,
+    likes: project.likes,
+    comments: project.comments,
+    tags: project.tags?.length ? project.tags : project.category ? [project.category] : [],
+    category: project.category,
+    integrations: project.integrations,
+    createdAt: project.createdAt,
+    userId: profile.userId,
+    likedByMe: false,
+    isMine: profile.owner,
+    isApiFeed: true,
+  };
+};
 
 const profileData = {
   name: "이지은 (Ji-eun Lee)",
@@ -301,10 +376,6 @@ export default function Profile() {
   const [selectedCollection, setSelectedCollection] = useState<CollectionFolderDetailResponse | null>(null);
   const [isCollectionsLoading, setIsCollectionsLoading] = useState(false);
   const [collectionError, setCollectionError] = useState("");
-  const [newCollectionName, setNewCollectionName] = useState("");
-  const [editingCollectionId, setEditingCollectionId] = useState<number | null>(null);
-  const [editingCollectionName, setEditingCollectionName] = useState("");
-  const [savingProjectIdToCollection, setSavingProjectIdToCollection] = useState<number | null>(null);
   const [uploadedProjects, setUploadedProjects] = useState<FeedProject[]>([]);
   const [isWorkComposerOpen, setIsWorkComposerOpen] = useState(false);
   const [isFeedSuccessOpen, setIsFeedSuccessOpen] = useState(false);
@@ -336,11 +407,68 @@ export default function Profile() {
   const [feedEditError, setFeedEditError] = useState("");
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<FeedProject | null>(null);
-  const [isCollectionDeleteModalOpen, setIsCollectionDeleteModalOpen] = useState(false);
-  const [collectionToDeleteId, setCollectionToDeleteId] = useState<number | null>(null);
   const profileImageInputRef = useRef<HTMLInputElement>(null);
   const workImageInputRef = useRef<HTMLInputElement>(null);
   const editFeedImageInputRef = useRef<HTMLInputElement>(null);
+  const { isNight } = useNightMode();
+  const profileFeedCommentInputRef = useRef<HTMLInputElement>(null);
+  const [selectedProfileFeed, setSelectedProfileFeed] = useState<FeedCardItem | null>(null);
+  const [profileFeedCardItems, setProfileFeedCardItems] = useState<FeedCardItem[]>([]);
+  const [profileFeedModalImageIndex, setProfileFeedModalImageIndex] = useState(0);
+
+  const {
+    collections,
+    collectionPostIdsByFolder,
+    collectionModalFeed,
+    newCollectionName,
+    collectionSavedNotice,
+    isCollectionSaving,
+    savedItemIds: savedProfileFeedIds,
+    setNewCollectionName,
+    openCollectionModal,
+    closeCollectionModal,
+    saveToCollection,
+    createCollectionAndSave,
+  } = useFeedCollections<FeedCardItem>();
+
+  const {
+    commentText,
+    setCommentText: setProfileFeedCommentText,
+    commentSubmitError,
+    isSubmittingComment,
+    isCommentsLoading,
+    commentLoadError,
+    editingCommentId,
+    editingCommentText,
+    setEditingCommentText,
+    isUpdatingComment,
+    isDeletingCommentId,
+    selectedFeedComments,
+    handleSubmitComment,
+    handleCommentKeyDown,
+    startEditingComment,
+    cancelEditingComment,
+    handleUpdateComment,
+    handleDeleteComment,
+  } = useFeedComments<FeedCardItem, FeedCardItem>({
+    selectedFeed: selectedProfileFeed,
+    currentUser,
+    currentUserId: currentUser?.userId ?? null,
+    apiFeedItems: profileFeedCardItems,
+    setApiFeedItems: setProfileFeedCardItems,
+    setSelectedFeed: setSelectedProfileFeed,
+    toFeedCommentRole: toProfileFeedCommentRole,
+  });
+
+  const {
+    isLoading: isProfileFeedDetailLoading,
+    error: profileFeedDetailError,
+  } = useFeedDetail<FeedCardItem, FeedCardItem>({
+    selectedFeed: selectedProfileFeed,
+    setApiFeedItems: setProfileFeedCardItems,
+    setSelectedFeed: setSelectedProfileFeed,
+  });
+
   const fallbackProfile =
     currentUserRole === "client"
       ? {
@@ -379,10 +507,15 @@ export default function Profile() {
     ? `pickxel:profile-onboarding-dismissed:${apiProfile.userId}`
     : "";
   const profileRoleLabel = isClientProfile ? "클라이언트" : "디자이너";
-  const profileRoleBadgeClass = isClientProfile
-    ? "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
-    : "border-[#BDEFD8] bg-[#DDF8EC] text-[#007E68]";
-  const canEditProfile = Boolean(apiProfile?.owner || isOwnProfileLookup);
+  const profileRoleBadgeClass = isNight
+    ? isClientProfile
+      ? "border-[#FF8A70]/40 bg-[#3d2520]/90 text-[#FFB9AA]"
+      : "border-[#00C9A7]/30 bg-[#00C9A7]/12 text-[#7EE8D4]"
+    : isClientProfile
+      ? "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
+      : "border-[#BDEFD8] bg-[#DDF8EC] text-[#007E68]";
+  /** 서버의 owner 플래그만 신뢰 (타인 프로필에서 편집·업로드 CTA 노출 방지) */
+  const canEditProfile = apiProfile?.owner === true;
   const canQuickEditWorkStatus = canEditProfile && apiProfile?.role === "DESIGNER";
   const profileWorkStatus = apiProfile?.workStatus ?? "";
   const showWorkStatusIndicator = apiProfile?.role === "DESIGNER" && Boolean(profileWorkStatus);
@@ -403,7 +536,6 @@ export default function Profile() {
     { label: "Adobe", url: apiProfile?.adobeUrl, icon: ExternalLink },
   ].filter((link): link is { label: string; url: string; icon: typeof Figma } => Boolean(link.url));
   const canCreateFeed = canEditProfile && apiProfile?.role === "DESIGNER";
-  const isCollectionUiReady = true;
   const profileFeedAuthorKey = apiProfile
     ? [
         apiProfile.userId,
@@ -543,6 +675,16 @@ export default function Profile() {
       ignore = true;
     };
   }, [apiProfile?.userId, isOwnProfileLookup, profileFeedAuthorKey, profileLookupKey]);
+
+  useLayoutEffect(() => {
+    if (!apiProfile || !hasLoadedProfileFeeds) {
+      setProfileFeedCardItems([]);
+      return;
+    }
+    setProfileFeedCardItems(
+      apiFeedProjects.map((project) => mapFeedProjectToFeedCardItem(project, apiProfile, profileLookupKey)),
+    );
+  }, [apiFeedProjects, apiProfile, profileLookupKey, hasLoadedProfileFeeds]);
 
   useEffect(() => {
     if (!apiProfile || activeTab !== "collection") return;
@@ -840,27 +982,6 @@ export default function Profile() {
     }
   };
 
-  const refreshCollections = async () => {
-    if (!apiProfile) return;
-    const folders =
-      isOwnProfileLookup ? await getMyCollectionsApi() : await getProfileCollectionsApi(profileLookupKey);
-    setCollectionFolders(folders);
-  };
-
-  const handleCreateCollection = async () => {
-    const folderName = newCollectionName.trim();
-    if (!folderName) return;
-
-    try {
-      const folder = await createCollectionFolderApi(folderName);
-      setCollectionFolders((current) => [folder, ...current]);
-      setNewCollectionName("");
-      setCollectionError("");
-    } catch (error) {
-      setCollectionError(error instanceof Error ? error.message : "컬렉션을 만들지 못했습니다.");
-    }
-  };
-
   const handleOpenCollection = async (folderId: number) => {
     setCollectionError("");
     try {
@@ -871,73 +992,11 @@ export default function Profile() {
     }
   };
 
-  const handleRenameCollection = async (folderId: number) => {
-    const folderName = editingCollectionName.trim();
-    if (!folderName) return;
-
-    try {
-      const folder = await renameCollectionFolderApi(folderId, folderName);
-      setCollectionFolders((current) =>
-        current.map((item) => (item.folderId === folderId ? folder : item))
-      );
-      setSelectedCollection((current) =>
-        current && current.folderId === folderId
-          ? { ...current, folderName: folder.folderName }
-          : current
-      );
-      setEditingCollectionId(null);
-      setEditingCollectionName("");
-      setCollectionError("");
-    } catch (error) {
-      setCollectionError(error instanceof Error ? error.message : "컬렉션 이름을 바꾸지 못했습니다.");
+  useEffect(() => {
+    if (activeTab !== "collection") {
+      setSelectedCollection(null);
     }
-  };
-
-  const handleDeleteCollection = (folderId: number) => {
-    setCollectionToDeleteId(folderId);
-    setIsCollectionDeleteModalOpen(true);
-  };
-
-  const confirmDeleteCollection = async () => {
-    if (!collectionToDeleteId) return;
-    try {
-      await deleteCollectionFolderApi(collectionToDeleteId);
-      setCollectionFolders((current) => current.filter((item) => item.folderId !== collectionToDeleteId));
-      setSelectedCollection((current) => (current?.folderId === collectionToDeleteId ? null : current));
-      setCollectionError("");
-    } catch (error) {
-      setCollectionError(error instanceof Error ? error.message : "컬렉션을 삭제하지 못했습니다.");
-    } finally {
-      setIsCollectionDeleteModalOpen(false);
-      setCollectionToDeleteId(null);
-    }
-  };
-
-  const handleSaveProjectToCollection = async (project: FeedProject, folderId: number) => {
-    setSavingProjectIdToCollection(project.id);
-    setCollectionError("");
-
-    try {
-      const detail = await saveFeedToCollectionApi(folderId, project.id);
-      await refreshCollections();
-      setSelectedCollection((current) => (current?.folderId === folderId ? detail : current));
-    } catch (error) {
-      setCollectionError(error instanceof Error ? error.message : "피드를 컬렉션에 저장하지 못했습니다.");
-    } finally {
-      setSavingProjectIdToCollection(null);
-    }
-  };
-
-  const handleRemoveProjectFromCollection = async (folderId: number, postId: number) => {
-    try {
-      const detail = await removeFeedFromCollectionApi(folderId, postId);
-      await refreshCollections();
-      setSelectedCollection(detail);
-      setCollectionError("");
-    } catch (error) {
-      setCollectionError(error instanceof Error ? error.message : "컬렉션에서 피드를 제거하지 못했습니다.");
-    }
-  };
+  }, [activeTab]);
 
   useEffect(() => {
     // localStorage에서 새로운 후기 가져오기
@@ -1514,676 +1573,813 @@ export default function Profile() {
   ];
   const canAddWorkImages = workImages.length < MAX_FEED_IMAGES;
   const canAddEditFeedImages = editFeedPreviewImages.length < MAX_FEED_IMAGES;
+  const tabSpring = { type: "spring" as const, stiffness: 400, damping: 36 };
+  const modalSpring = { type: "spring" as const, stiffness: 420, damping: 34 };
+
+  const profileFeedUserAvatar = getUserAvatar(
+    currentUser?.profileImage,
+    currentUser?.userId,
+    currentUser?.nickname,
+  );
+  const profileFeedUserName = currentUser?.nickname || currentUser?.name || "내 프로필";
+
+  const openProfileFeedDetail = (item: FeedCardItem) => {
+    setSelectedProfileFeed(item);
+    setProfileFeedModalImageIndex(0);
+  };
+
+  const toggleProfileFeedLike = async (item: BaseFeedItem, e?: MouseEvent) => {
+    e?.stopPropagation();
+    try {
+      const response = await toggleFeedPickApi(item.id);
+      setProfileFeedCardItems((prev) =>
+        prev.map((feed) =>
+          feed.id === item.id ? { ...feed, likes: response.pickCount, likedByMe: response.picked } : feed,
+        ),
+      );
+      setSelectedProfileFeed((prev) =>
+        prev && prev.id === item.id
+          ? { ...prev, likes: response.pickCount, likedByMe: response.picked }
+          : prev,
+      );
+    } catch {
+      toast.error("좋아요 처리에 실패했습니다. 다시 시도해주세요.");
+    }
+  };
+
+  const moveProfileFeedModalCarousel = (dir: -1 | 1, e?: MouseEvent) => {
+    e?.stopPropagation();
+    if (!selectedProfileFeed) return;
+    const images = selectedProfileFeed.images ?? [selectedProfileFeed.image];
+    if (images.length <= 1) return;
+    setProfileFeedModalImageIndex((prev) => (prev + dir + images.length) % images.length);
+  };
+
+  const handleProfileFeedShare = (item: FeedCardItem, e?: MouseEvent) => {
+    e?.stopPropagation();
+    const url = window.location.href;
+    const copyToClipboard = () => {
+      navigator.clipboard
+        .writeText(url)
+        .then(() => toast.success("공유 링크가 클립보드에 복사되었습니다."))
+        .catch(() => toast.error("링크 복사에 실패했습니다."));
+    };
+    if (navigator.share) {
+      navigator
+        .share({ title: item.title, text: item.description || "", url })
+        .catch(() => copyToClipboard());
+    } else {
+      copyToClipboard();
+    }
+  };
+
+  const handleProfileFeedProposal = async (item: FeedCardItem, e?: MouseEvent) => {
+    e?.stopPropagation();
+    if (!item.author?.userId) {
+      toast.error("상대방 정보를 찾을 수 없습니다.");
+      return;
+    }
+    if (currentUser?.userId === item.author.userId) {
+      toast.error("내 피드에는 제안을 보낼 수 없습니다.");
+      return;
+    }
+    const now = Date.now();
+    const proposalMessage = `안녕하세요. "${item.title}" 작업을 보고 프로젝트 제안을 드리고 싶어 연락드립니다. 작업 가능 여부와 일정, 견적 등을 이야기해보고 싶습니다.`;
+    try {
+      const conversation = await createMessageConversationApi(item.author.userId);
+      await sendConversationMessageApi(conversation.id, {
+        clientId: `profile-proposal-${item.id}-${now}`,
+        message: proposalMessage,
+        attachments: item.image
+          ? [
+              {
+                id: `profile-feed-${item.id}`,
+                type: "image",
+                src: item.image,
+                name: item.title,
+                uploadStatus: "ready",
+              },
+            ]
+          : [],
+      });
+      navigate(`/messages?conversationId=${conversation.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "대화를 시작하지 못했습니다.");
+    }
+  };
+
+  const formatProfileFeedDateTime = (value?: string) => {
+    if (!value) return null;
+    const parsedDate = new Date(value);
+    if (Number.isNaN(parsedDate.getTime())) return null;
+    return parsedDate.toLocaleString("ko-KR", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
   return (
-    <div className="flex min-h-screen flex-col bg-white">
+    <div
+      className={`flex min-h-screen flex-col transition-colors duration-300 ${
+        isNight ? "bg-[#0a0f18]" : "bg-[#F4F3EF]"
+      }`}
+    >
       <Navigation />
 
-      <main className="mx-auto w-full max-w-[1200px] flex-1 px-6 py-12">
+      <main className="pickxel-animate-page-in relative z-10 mx-auto w-full max-w-[1200px] flex-1 px-4 pb-16 pt-6 sm:px-6 sm:pt-8">
         {isProfileLoading && (
-          <div className="mb-6 rounded-lg border border-[#BDEFD8] bg-[#F5FFFB] px-4 py-3 text-sm font-semibold text-[#007E68]">
+          <div
+            className={`mb-4 rounded-2xl border px-4 py-3 text-sm font-semibold shadow-sm ${
+              isNight
+                ? "border-[#00C9A7]/25 bg-[#00C9A7]/10 text-[#7EE8D4]"
+                : "border-[#BDEFD8]/80 bg-[#F5FFFB] text-[#007E68]"
+            }`}
+          >
             Loading profile...
           </div>
         )}
 
         {profileError && (
-          <div className="mb-6 rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-4 py-3 text-sm font-semibold text-[#B13A21]">
+          <div
+            className={`mb-4 rounded-2xl border px-4 py-3 text-sm font-semibold shadow-sm ${
+              isNight
+                ? "border-[#FF8A70]/35 bg-[#3d2520]/90 text-[#FFB9AA]"
+                : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
+            }`}
+          >
             {profileError}
           </div>
         )}
 
-        {/* Profile Header */}
-        <div className="flex gap-8 mb-12">
-          <div className="flex flex-shrink-0 flex-col items-center gap-3">
-            <div className="size-32 overflow-hidden rounded-full bg-gray-100 shadow-sm">
-              <ImageWithFallback
-                src={displayProfile.avatar}
-                alt={displayProfile.name}
-                className="h-full w-full rounded-full object-cover"
-              />
-            </div>
-            {false && canQuickEditWorkStatus && (
-              <div className="flex items-center justify-center gap-2" aria-label="작업 상태 변경">
-                {quickWorkStatusOptions.map((option) => {
-                  const active = apiProfile?.workStatus === option.value;
-                  const unavailable = option.value === "UNAVAILABLE";
-
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      aria-pressed={active}
-                      aria-label={unavailable ? "작업 불가로 변경" : "작업 가능으로 변경"}
-                      title={unavailable ? "작업 불가" : "작업 가능"}
-                      disabled={isSavingWorkStatus}
-                      onClick={() => handleQuickWorkStatusChange(option.value)}
-                      className={`size-7 rounded-full border-2 border-white shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-[#BDEFD8] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
-                        unavailable ? "bg-[#FF5C3A]" : "bg-[#00C9A7]"
-                      } ${active ? "scale-110 ring-2 ring-[#0F0F0F]/15" : "opacity-45 hover:scale-105 hover:opacity-100"}`}
-                    />
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="flex-1">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <div className="mb-1 flex flex-wrap items-center gap-3">
-                  <h1 className="text-3xl font-bold">{displayProfile.name}</h1>
-                  <span
-                    className={`rounded-lg border px-3 py-1 text-xs font-semibold ${profileRoleBadgeClass}`}
-                  >
-                    {profileRoleLabel}
-                  </span>
-                  {canQuickEditWorkStatus ? (
-                    <div className="inline-flex items-center gap-2">
-                      <button
-                        type="button"
-                        disabled={isSavingWorkStatus}
-                        onClick={() => handleQuickWorkStatusChange(nextQuickWorkStatus)}
-                        className="inline-flex h-8 items-center rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-700 transition-colors hover:border-[#00C9A7] hover:text-[#007E68] disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {isSavingWorkStatus
-                          ? "저장 중..."
-                          : profileWorkStatus
-                            ? workStatusIndicatorLabel
-                            : "작업 가능 설정"}
-                      </button>
-                      <span
-                        aria-label={workStatusIndicatorLabel}
-                        title={workStatusIndicatorLabel}
-                        className={`size-3.5 rounded-full shadow-sm ring-2 ring-white ${workStatusIndicatorClass}`}
-                      />
-                    </div>
-                  ) : (
-                    showWorkStatusIndicator && (
-                      <div className="inline-flex items-center gap-2 rounded-lg bg-white px-2 py-1 text-xs font-bold text-gray-600 ring-1 ring-gray-100">
-                        <span className={`size-3 rounded-full ${workStatusIndicatorClass}`} />
-                        <span>{workStatusIndicatorLabel}</span>
-                      </div>
-                    )
-                  )}
-                </div>
-                {(displayProfile as any).realName &&
-                  (displayProfile as any).realName !== displayProfile.name && (
-                    <p className="mb-2 text-sm font-medium text-gray-500">{(displayProfile as any).realName}</p>
-                  )}
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-yellow-500">★ {displayProfile.rating}</span>
-                </div>
-                <p className="text-gray-700 mb-4 font-semibold">{displayProfile.title}</p>
-              </div>
-              <div className="flex gap-2">
-                {canEditProfile && (
-                  <button
-                    type="button"
-                    onClick={handleOpenProfileEditor}
-                    className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-bold text-gray-700 transition-all hover:-translate-y-0.5 hover:border-[#00C9A7] hover:text-[#007E68] focus:outline-none focus:ring-2 focus:ring-[#BDEFD8] focus:ring-offset-2"
-                  >
-                    프로필 수정
-                  </button>
-                )}
-                {apiProfile && !apiProfile.owner && (
-                  <button
-                    type="button"
-                    onClick={handleToggleFollow}
-                    disabled={isFollowSaving}
-                    className={`inline-flex items-center gap-2 rounded-lg border px-5 py-2.5 text-sm font-bold transition-all focus:outline-none focus:ring-2 focus:ring-[#BDEFD8] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
-                      apiProfile.following
-                        ? "border-[#BDEFD8] bg-white text-[#007E68] hover:border-[#00C9A7]"
-                        : "border-[#00C9A7] bg-[#00C9A7] text-white shadow-[0_8px_18px_rgba(0,201,167,0.22)] hover:-translate-y-0.5 hover:bg-[#00A88C]"
-                    }`}
-                  >
-                    {isFollowSaving ? "저장 중..." : apiProfile.following ? "팔로잉" : "팔로우"}
-                  </button>
-                )}
-                {apiProfile && !apiProfile.owner && (
-                  <button
-                    type="button"
-                    onClick={handleStartConversation}
-                    disabled={isStartingConversation}
-                    className="inline-flex items-center gap-2 rounded-lg border border-[#BDEFD8] bg-[#00C9A7] px-5 py-2.5 text-sm font-bold text-white shadow-[0_8px_18px_rgba(0,201,167,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#00A88C] hover:shadow-[0_10px_22px_rgba(0,201,167,0.28)] focus:outline-none focus:ring-2 focus:ring-[#BDEFD8] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <MessageCircle className="size-4" />
-                    <span>{isStartingConversation ? "연결 중..." : "메시지 보내기"}</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="flex gap-8 mb-4">
-              <div>
-                <div className="text-2xl font-bold">{displayProfile.followers}</div>
-                <div className="text-sm text-gray-600">팔로워</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold">{displayProfile.following}</div>
-                <div className="text-sm text-gray-600">팔로잉</div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2 mb-6">
-              {displayProfile.badges.map((badge, index) => (
-                <span
-                  key={index}
-                  className="bg-[#00C9A7] text-black px-3 py-1 rounded-full text-xs font-medium"
-                >
-                  {badge}
-                </span>
-              ))}
-            </div>
-
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center gap-2 text-gray-600">
-                <MapPin className="size-4" />
-                <span>{displayProfile.location}</span>
-              </div>
-              <div className="flex items-center gap-2 text-gray-600">
-                <Calendar className="size-4" />
-                <span>{displayProfile.recentProject}</span>
-              </div>
-              <div className="flex items-center gap-2 text-gray-600">
-                <span>{displayProfile.responseTime}</span>
-              </div>
-            </div>
-            {profileToolLinks.length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {profileToolLinks.map((link) => {
-                  const Icon = link.icon;
-
-                  return (
-                    <a
-                      key={link.label}
-                      href={normalizeExternalUrl(link.url)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-bold text-gray-700 transition-colors hover:border-[#00C9A7] hover:text-[#007E68]"
-                    >
-                      <Icon className="size-4" />
-                      {link.label}
-                    </a>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="border-b border-gray-200 mb-8">
-          <div className="flex gap-8">
-            <button
-              className={`px-4 py-3 border-b-2 ${
-                activeTab === "feed" ? "border-black font-medium" : "text-gray-600 hover:text-black"
-              }`}
-              onClick={() => handleProfileTabChange("feed")}
-            >
-              피드 (Feed)
-            </button>
-            <button
-              className={`px-4 py-3 ${
-                activeTab === "collection" ? "border-b-2 border-black font-medium" : "text-gray-600 hover:text-black"
-              }`}
-              onClick={() => handleProfileTabChange("collection")}
-            >
-              컬렉션 (Collection)
-            </button>
-            <button
-              className={`px-4 py-3 ${
-                activeTab === "reviews" ? "border-b-2 border-black font-medium" : "text-gray-600 hover:text-black"
-              }`}
-              onClick={() => handleProfileTabChange("reviews")}
-            >
-              프로젝트 후기
-            </button>
-          </div>
-        </div>
-
-        {/* Tab Content */}
-        {activeTab === "feed" && (
-          <div className="space-y-8 mb-12">
-            {canCreateFeed && (
-            <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-              <button
-                type="button"
-                onClick={() => setIsWorkComposerOpen(true)}
-                className="flex w-full items-center gap-3 text-left"
+        <motion.div
+          initial={{ opacity: 0, y: 28 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: "spring", stiffness: 320, damping: 32 }}
+          className={`mb-8 rounded-[2rem] border p-6 backdrop-blur-md sm:mb-10 sm:p-10 ${
+            isNight
+              ? "border-white/10 bg-[#141d30]/95 shadow-[0_28px_90px_rgba(0,0,0,0.45)]"
+              : "border-white/70 bg-white/95 shadow-[0_28px_90px_rgba(15,23,42,0.08)]"
+          }`}
+        >
+          <div className="flex flex-col gap-8 md:flex-row md:gap-10">
+            <div className="flex flex-shrink-0 flex-col items-center gap-3 md:items-start">
+              <div
+                className={`size-28 overflow-hidden rounded-full shadow-[0_12px_40px_rgba(0,0,0,0.12)] ring-4 sm:size-32 ${
+                  isNight ? "bg-[#1a2436] ring-[#1a2436]" : "bg-gray-100 ring-white"
+                }`}
               >
                 <ImageWithFallback
                   src={displayProfile.avatar}
                   alt={displayProfile.name}
-                  className="size-11 rounded-full object-cover ring-2 ring-white shadow-sm"
+                  className="h-full w-full rounded-full object-cover"
                 />
-                <div className="min-w-0 flex-1 rounded-lg border border-gray-200 bg-[#F7F7F5] px-4 py-3 text-sm text-gray-500 transition-colors hover:border-[#00C9A7] hover:bg-white">
-                  새 작업물을 공유해보세요.
-                </div>
-                <span className="inline-flex items-center gap-2 rounded-lg bg-[#FF5C3A] px-4 py-3 text-sm font-semibold text-white">
-                  <ImagePlus className="size-4" />
-                  만들기
-                </span>
-              </button>
+              </div>
             </div>
-            )}
 
-            {feedProjects.map((project) => (
-              <div key={project.id} className="bg-white rounded-2xl overflow-hidden border border-gray-200">
-                <div className="p-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <ImageWithFallback
-                      src={displayProfile.avatar}
-                      alt={displayProfile.name}
-                      className="size-10 rounded-full object-cover ring-2 ring-white shadow-sm"
-                    />
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold">{displayProfile.name}</span>
-                        <span
-                          className={`rounded-lg border px-2 py-0.5 text-[10px] font-semibold ${profileRoleBadgeClass}`}
-                        >
-                          {profileRoleLabel}
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {displayProfile.title}
-                        {project.createdAt && (
-                          <span>
-                            {" · "}
-                            {new Date(project.createdAt).toLocaleDateString("ko-KR", {
-                              month: "long",
-                              day: "numeric",
-                            })}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="ml-auto flex items-center gap-2">
-                      {canEditProfile && project.persisted && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => openFeedEditor(project)}
-                            className="rounded-lg border border-gray-200 p-2 text-gray-500 transition-colors hover:border-[#00C9A7] hover:text-[#007E68]"
-                            aria-label="피드 수정"
-                          >
-                            <Pencil className="size-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteFeed(project); }}
-                            className="rounded-lg border border-gray-200 p-2 text-gray-500 transition-colors hover:border-[#FFB9AA] hover:text-[#B13A21]"
-                            aria-label="피드 삭제"
-                          >
-                            <Trash2 className="size-4" />
-                          </button>
-                        </>
-                      )}
-                      <button>
-                        <MessageCircle className="size-5 text-gray-600" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {project.imageUrl && (
-                    <div className="mb-4 rounded-xl overflow-hidden">
-                      <ImageWithFallback
-                        src={project.imageUrl}
-                        alt={project.title}
-                        className="w-full aspect-video object-cover"
-                      />
-                    </div>
-                  )}
-
-                  {project.images && (
-                    <div className="grid grid-cols-2 gap-2 mb-4">
-                      {project.images.map((img, idx) => (
-                        <div key={idx} className="rounded-xl overflow-hidden aspect-square">
-                          <ImageWithFallback
-                            src={img}
-                            alt=""
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {project.integrations && project.integrations.length > 0 && (
-                    <div className="mb-4 flex flex-wrap gap-2">
-                      {project.integrations.map((integration) => (
-                        <a
-                          key={`${project.id}-${integration.provider}`}
-                          href={integration.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
-                            integration.provider === "figma"
-                              ? "border-[#BDEFD8] bg-[#F5FFFB] text-[#007E68] hover:bg-[#F5FFFB]"
-                              : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21] hover:bg-[#FFF7F4]"
+            <div className="min-w-0 flex-1">
+              <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="mb-2 flex flex-wrap items-center gap-2 sm:gap-3">
+                    <h1
+                      className={`text-2xl font-bold tracking-tight sm:text-3xl ${
+                        isNight ? "text-white" : "text-[#0F0F0F]"
+                      }`}
+                    >
+                      {displayProfile.name}
+                    </h1>
+                    <span className={`rounded-xl border px-3 py-1 text-xs font-semibold ${profileRoleBadgeClass}`}>
+                      {profileRoleLabel}
+                    </span>
+                    {canQuickEditWorkStatus ? (
+                      <div className="inline-flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={isSavingWorkStatus}
+                          onClick={() => handleQuickWorkStatusChange(nextQuickWorkStatus)}
+                          className={`inline-flex h-8 items-center rounded-xl border px-3 text-xs font-bold shadow-sm transition-colors hover:border-[#00C9A7] hover:text-[#007E68] disabled:cursor-not-allowed disabled:opacity-60 ${
+                            isNight
+                              ? "border-white/10 bg-white/5 text-white/80"
+                              : "border-gray-200/90 bg-white text-gray-700"
                           }`}
                         >
-                          {integration.provider === "figma" ? (
-                            <Figma className="size-4" />
-                          ) : (
-                            <Sparkles className="size-4" />
-                          )}
-                          {integration.label} 연동
-                          <ExternalLink className="size-3.5" />
-                        </a>
-                      ))}
-                    </div>
-                  )}
-
-                  {(project.categories?.length || project.category) && (
-                    <div className="mb-3 flex flex-wrap gap-2">
-                      {(project.categories && project.categories.length > 0 ? project.categories : [project.category]).map((category) =>
-                        category ? (
-                          <span
-                            key={category}
-                            className="inline-flex rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-1.5 text-xs font-bold text-[#B13A21]"
-                          >
-                            {category}
-                          </span>
-                        ) : null,
-                      )}
-                    </div>
-                  )}
-
-                  {project.tags && (
-                    <div className="flex gap-2 mb-3">
-                      {project.tags.map((tag, idx) => (
+                          {isSavingWorkStatus
+                            ? "저장 중..."
+                            : profileWorkStatus
+                              ? workStatusIndicatorLabel
+                              : "작업 가능 설정"}
+                        </button>
                         <span
-                          key={idx}
-                          className="bg-[#00C9A7] text-black px-3 py-1 rounded-full text-xs"
+                          aria-label={workStatusIndicatorLabel}
+                          title={workStatusIndicatorLabel}
+                          className={`size-3.5 rounded-full shadow-sm ring-2 ${isNight ? "ring-[#141d30]" : "ring-white"} ${workStatusIndicatorClass}`}
+                        />
+                      </div>
+                    ) : (
+                      showWorkStatusIndicator && (
+                        <div
+                          className={`inline-flex items-center gap-2 rounded-xl px-2.5 py-1 text-xs font-bold ring-1 ${
+                            isNight
+                              ? "bg-white/5 text-white/60 ring-white/10"
+                              : "bg-[#FAFAF8] text-gray-600 ring-black/[0.06]"
+                          }`}
                         >
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  <h3 className="text-xl font-bold mb-2">{project.title}</h3>
-                  <p className="text-gray-600 text-sm mb-4">{project.description}</p>
-
-                  <div className="flex items-center gap-6 text-sm text-gray-600">
-                    <button className="flex items-center gap-2 hover:text-red-500">
-                      <Heart className="size-4" />
-                      <span>{project.likes}</span>
-                    </button>
-                    <button className="flex items-center gap-2 hover:text-blue-500">
-                      <MessageCircle className="size-4" />
-                      <span>{project.comments}</span>
-                    </button>
-                    <button className="ml-auto hover:text-black">
-                      <Bookmark className="size-4" />
-                    </button>
+                          <span className={`size-3 rounded-full ${workStatusIndicatorClass}`} />
+                          <span>{workStatusIndicatorLabel}</span>
+                        </div>
+                      )
+                    )}
                   </div>
+                  {(displayProfile as any).realName &&
+                    (displayProfile as any).realName !== displayProfile.name && (
+                      <p
+                        className={`mb-2 text-sm font-medium ${isNight ? "text-white/45" : "text-gray-500"}`}
+                      >
+                        {(displayProfile as any).realName}
+                      </p>
+                    )}
+                  <div className="mb-2 flex items-center gap-2">
+                    <span className="text-amber-500">★ {displayProfile.rating}</span>
+                  </div>
+                  <p className={`mb-1 font-semibold ${isNight ? "text-white/90" : "text-gray-800"}`}>
+                    {displayProfile.title}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {canEditProfile && (
+                    <button
+                      type="button"
+                      onClick={handleOpenProfileEditor}
+                      className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#00C9A7] hover:text-[#007E68] focus:outline-none focus:ring-2 focus:ring-[#BDEFD8] focus:ring-offset-2 ${
+                        isNight
+                          ? "border-white/10 bg-white/5 text-white/90 focus:ring-offset-[#0a0f18]"
+                          : "border-gray-200/90 bg-white text-gray-800 focus:ring-offset-white"
+                      }`}
+                    >
+                      프로필 수정
+                    </button>
+                  )}
+                  {apiProfile && !apiProfile.owner && (
+                    <button
+                      type="button"
+                      onClick={handleToggleFollow}
+                      disabled={isFollowSaving}
+                      className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold transition-all focus:outline-none focus:ring-2 focus:ring-[#BDEFD8] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
+                        apiProfile.following
+                          ? isNight
+                            ? "border-[#00C9A7]/35 bg-[#00C9A7]/15 text-[#7EE8D4] hover:border-[#00C9A7]/50"
+                            : "border-[#BDEFD8] bg-white text-[#007E68] hover:border-[#00C9A7]"
+                          : "border-[#00C9A7] bg-[#00C9A7] text-[#0F0F0F] shadow-[0_8px_18px_rgba(0,201,167,0.22)] hover:-translate-y-0.5 hover:bg-[#00A88C]"
+                      }`}
+                    >
+                      {isFollowSaving ? "저장 중..." : apiProfile.following ? "팔로잉" : "팔로우"}
+                    </button>
+                  )}
+                  {apiProfile && !apiProfile.owner && (
+                    <button
+                      type="button"
+                      onClick={handleStartConversation}
+                      disabled={isStartingConversation}
+                      className="inline-flex items-center gap-2 rounded-xl border border-[#00C9A7]/40 bg-[#00C9A7] px-4 py-2.5 text-sm font-bold text-[#0F0F0F] shadow-[0_8px_18px_rgba(0,201,167,0.22)] transition-all hover:-translate-y-0.5 hover:bg-[#00A88C] focus:outline-none focus:ring-2 focus:ring-[#BDEFD8] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <MessageCircle className="size-4" />
+                      <span>{isStartingConversation ? "연결 중..." : "메시지 보내기"}</span>
+                    </button>
+                  )}
                 </div>
               </div>
-            ))}
+
+              <div className="mb-4 flex gap-8">
+                <div>
+                  <div
+                    className={`text-2xl font-bold tabular-nums ${isNight ? "text-white" : "text-[#0F0F0F]"}`}
+                  >
+                    {displayProfile.followers}
+                  </div>
+                  <div className={`text-sm ${isNight ? "text-white/45" : "text-gray-500"}`}>팔로워</div>
+                </div>
+                <div>
+                  <div
+                    className={`text-2xl font-bold tabular-nums ${isNight ? "text-white" : "text-[#0F0F0F]"}`}
+                  >
+                    {displayProfile.following}
+                  </div>
+                  <div className={`text-sm ${isNight ? "text-white/45" : "text-gray-500"}`}>팔로잉</div>
+                </div>
+              </div>
+
+              <div className="mb-5 flex flex-wrap gap-2">
+                {displayProfile.badges.map((badge, index) => (
+                  <span
+                    key={index}
+                    className="rounded-full bg-gradient-to-r from-[#00C9A7] to-[#3dd4b8] px-3 py-1 text-xs font-semibold text-[#0F0F0F] shadow-sm"
+                  >
+                    {badge}
+                  </span>
+                ))}
+              </div>
+
+              <div className={`space-y-2 text-sm ${isNight ? "text-white/55" : "text-gray-600"}`}>
+                <div className="flex items-center gap-2">
+                  <MapPin className="size-4 shrink-0 text-[#00A88C]" />
+                  <span>{displayProfile.location}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Calendar className="size-4 shrink-0 text-[#FF5C3A]/80" />
+                  <span>{displayProfile.recentProject}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span>{displayProfile.responseTime}</span>
+                </div>
+              </div>
+              {profileToolLinks.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {profileToolLinks.map((link) => {
+                    const Icon = link.icon;
+
+                    return (
+                      <a
+                        key={link.label}
+                        href={normalizeExternalUrl(link.url)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-bold shadow-sm transition-colors hover:border-[#00C9A7] hover:text-[#007E68] ${
+                          isNight
+                            ? "border-white/10 bg-white/5 text-white/75"
+                            : "border-gray-200/90 bg-white text-gray-700"
+                        }`}
+                      >
+                        <Icon className="size-4" />
+                        {link.label}
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: "spring", stiffness: 380, damping: 38, delay: 0.06 }}
+          className="mb-10 w-full"
+        >
+          <div
+            className={`inline-flex flex-wrap gap-1 rounded-2xl border p-1.5 shadow-sm backdrop-blur-sm ${
+              isNight
+                ? "border-white/10 bg-[#141d30]/80"
+                : "border-black/[0.06] bg-white/70"
+            }`}
+          >
+            {(
+              [
+                { id: "feed" as const, label: "피드", hint: "Feed" },
+                { id: "collection" as const, label: "컬렉션", hint: "Collection" },
+                { id: "reviews" as const, label: "후기", hint: "Reviews" },
+              ] as const
+            ).map((tab) => {
+              const active = activeTab === tab.id;
+
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => handleProfileTabChange(tab.id)}
+                  className={`relative rounded-xl px-4 py-2.5 text-sm font-bold transition-colors sm:px-5 ${
+                    active
+                      ? isNight
+                        ? "text-white"
+                        : "text-[#0F0F0F]"
+                      : isNight
+                        ? "text-white/45 hover:text-white/80"
+                        : "text-gray-500 hover:text-gray-800"
+                  }`}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="profileTabIndicator"
+                      className={`absolute inset-0 rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.06)] ring-1 ${
+                        isNight
+                          ? "bg-[#1a2436] ring-white/10"
+                          : "bg-white ring-black/[0.05]"
+                      }`}
+                      transition={tabSpring}
+                    />
+                  )}
+                  <span className="relative z-10 flex items-center gap-2">
+                    {tab.label}
+                    <span
+                      className={`hidden text-[11px] font-semibold uppercase tracking-wide sm:inline ${
+                        isNight ? "text-white/35" : "text-gray-400"
+                      }`}
+                    >
+                      {tab.hint}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </motion.div>
+
+        {/* Tab Content */}
+        <AnimatePresence mode="wait">
+        {activeTab === "feed" && (
+          <motion.div
+            key="profile-tab-feed"
+            role="tabpanel"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={tabSpring}
+            className="mb-12 w-full"
+          >
+            <div className="flex w-full flex-col gap-6">
+              {canCreateFeed && (
+                <button
+                  type="button"
+                  onClick={() => setIsWorkComposerOpen(true)}
+                  className={`group flex w-full items-center gap-4 rounded-2xl border px-4 py-4 text-left shadow-[0_10px_40px_rgba(0,126,104,0.07)] ring-1 transition-all hover:border-[#00C9A7]/45 hover:shadow-[0_14px_44px_rgba(0,126,104,0.12)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00C9A7] focus-visible:ring-offset-2 sm:gap-5 sm:px-5 sm:py-4 ${
+                    isNight
+                      ? "border-[#00C9A7]/25 bg-gradient-to-br from-[#0d2822] via-[#141d30] to-[#0f1828] ring-[#00C9A7]/20 focus-visible:ring-offset-[#0a0f18]"
+                      : "border-[#B6E6DA]/70 bg-gradient-to-br from-[#F8FFFC] via-white to-[#F4FBF8] ring-[#00C9A7]/10 focus-visible:ring-offset-[#F4F3EF]"
+                  }`}
+                >
+                  <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-[#00C9A7] text-[#0F0F0F] shadow-[0_6px_20px_rgba(0,201,167,0.35)] transition-transform duration-200 group-hover:scale-[1.03] sm:size-14">
+                    <ImagePlus className="size-6 sm:size-7" strokeWidth={2.25} aria-hidden />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className={`text-base font-bold tracking-tight sm:text-[1.05rem] ${
+                        isNight ? "text-white" : "text-[#0F0F0F]"
+                      }`}
+                    >
+                      새 작업 올리기
+                    </p>
+                    <p
+                      className={`mt-0.5 text-sm leading-snug ${isNight ? "text-white/50" : "text-[#5F5E5A]"}`}
+                    >
+                      이미지와 설명을 추가하면 아래 그리드에 바로 표시됩니다.
+                    </p>
+                  </div>
+                  <ChevronRight
+                    className={`size-5 shrink-0 opacity-70 transition-transform group-hover:translate-x-0.5 group-hover:opacity-100 sm:size-6 ${
+                      isNight ? "text-[#7EE8D4]" : "text-[#00A88C]"
+                    }`}
+                    aria-hidden
+                  />
+                </button>
+              )}
+
+              {!hasLoadedProfileFeeds && apiProfile && (
+                <p
+                  className={`py-10 text-center text-sm font-medium ${isNight ? "text-white/45" : "text-gray-500"}`}
+                >
+                  피드를 불러오는 중...
+                </p>
+              )}
+
+              {hasLoadedProfileFeeds && feedProjects.length === 0 && (
+                <div
+                  className={`rounded-2xl border border-dashed py-16 text-center ${
+                    isNight
+                      ? "border-white/10 bg-[#141d30]/60"
+                      : "border-gray-200/90 bg-white/60"
+                  }`}
+                >
+                  <Grid3X3
+                    className={`mx-auto mb-3 size-10 ${isNight ? "text-white/20" : "text-gray-300"}`}
+                    aria-hidden
+                  />
+                  <p className={`text-sm font-semibold ${isNight ? "text-white/70" : "text-gray-600"}`}>
+                    아직 올린 작업이 없습니다
+                  </p>
+                  {canCreateFeed && (
+                    <p className={`mt-1 text-xs ${isNight ? "text-white/40" : "text-gray-500"}`}>
+                      위의 새 작업 올리기를 눌러 첫 게시물을 추가해 보세요.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {hasLoadedProfileFeeds && feedProjects.length > 0 && (
+                <div className="grid grid-cols-2 gap-1 sm:grid-cols-3 sm:gap-1.5 lg:grid-cols-4">
+                  {feedProjects.map((project, index) => {
+                    const card = profileFeedCardItems[index];
+                    if (!card) return null;
+                    const cover =
+                      card.image || project.imageUrl || (project.images && project.images[0]) || "";
+                    const multiCount = card.images?.length ?? (project.images?.length || 0);
+
+                    return (
+                      <motion.div
+                        key={project.id}
+                        initial={{ opacity: 0, scale: 0.98 }}
+                        whileInView={{ opacity: 1, scale: 1 }}
+                        viewport={{ once: true, margin: "-24px" }}
+                        transition={{ ...tabSpring, delay: Math.min(index * 0.04, 0.28) }}
+                        className={`group relative aspect-square overflow-hidden rounded-md ring-1 ${
+                          isNight
+                            ? "bg-[#1a2436] ring-white/[0.06]"
+                            : "bg-[#EEECE8] ring-black/[0.04]"
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => openProfileFeedDetail(card)}
+                          className={`absolute inset-0 block h-full w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#00C9A7] focus-visible:ring-offset-2 ${
+                            isNight ? "focus-visible:ring-offset-[#0a0f18]" : ""
+                          }`}
+                          aria-label={`${project.title} 상세 보기`}
+                        >
+                          {cover ? (
+                            <ImageWithFallback
+                              src={cover}
+                              alt=""
+                              className="h-full w-full object-cover transition duration-300 ease-out group-hover:scale-[1.03]"
+                            />
+                          ) : (
+                            <div
+                              className={`flex h-full w-full items-center justify-center ${
+                                isNight ? "bg-[#0e1524] text-white/25" : "bg-[#F1EFE8] text-gray-400"
+                              }`}
+                            >
+                              <ImagePlus className="size-8 opacity-40" aria-hidden />
+                            </div>
+                          )}
+                          <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-5 bg-black/0 opacity-0 transition duration-200 group-hover:bg-black/50 group-hover:opacity-100">
+                            <span className="flex items-center gap-1.5 text-sm font-bold tabular-nums text-white drop-shadow">
+                              <Heart className="size-5 shrink-0 fill-white/90 text-white/90" aria-hidden />
+                              {card.likes}
+                            </span>
+                            <span className="flex items-center gap-1.5 text-sm font-bold tabular-nums text-white drop-shadow">
+                              <MessageCircle className="size-5 shrink-0 text-white" aria-hidden />
+                              {card.comments}
+                            </span>
+                          </div>
+                        </button>
+                        {multiCount > 1 && (
+                          <div
+                            className="pointer-events-none absolute right-1.5 top-1.5 flex size-6 items-center justify-center rounded bg-black/55 text-white shadow-sm"
+                            aria-hidden
+                          >
+                            <Grid3X3 className="size-3.5" />
+                          </div>
+                        )}
+                        {canEditProfile && project.persisted && (
+                          <div className="absolute left-1 top-1 z-10 flex gap-0.5 opacity-0 transition group-hover:opacity-100">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openFeedEditor(project);
+                              }}
+                              className="rounded-md border border-white/80 bg-white/95 p-1.5 text-gray-600 shadow-sm transition-colors hover:border-[#00C9A7] hover:text-[#007E68]"
+                              aria-label="피드 수정"
+                            >
+                              <Pencil className="size-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleDeleteFeed(project);
+                              }}
+                              className="rounded-md border border-white/80 bg-white/95 p-1.5 text-gray-600 shadow-sm transition-colors hover:border-[#FFB9AA] hover:text-[#B13A21]"
+                              aria-label="피드 삭제"
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </motion.div>
         )}
 
         {activeTab === "collection" && (
-          <div className="space-y-8 mb-12">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <motion.div
+            key="profile-tab-collection"
+            role="tabpanel"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={tabSpring}
+            className="mb-12 space-y-6"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h2 className="text-2xl font-bold">컬렉션</h2>
+                <h2 className={`text-2xl font-bold tracking-tight ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>
+                  컬렉션
+                </h2>
+                <p className={`mt-1 max-w-xl text-sm ${isNight ? "text-white/50" : "text-[#5F5E5A]"}`}>
+                  저장한 피드를 폴더별로 모아 볼 수 있어요. 새로 만들거나 이름 변경·삭제는 컬렉션 페이지에서 할 수 있습니다.
+                </p>
               </div>
-              {isCollectionUiReady && canEditProfile && (
-                <div className="flex min-w-[280px] max-w-md flex-1 gap-2">
-                  <input
-                    value={newCollectionName}
-                    onChange={(event) => setNewCollectionName(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        handleCreateCollection();
-                      }
-                    }}
-                    placeholder="새 컬렉션 이름"
-                    className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none transition-colors focus:border-[#00C9A7] focus:ring-2 focus:ring-[#BDEFD8]"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleCreateCollection}
-                    className="inline-flex items-center gap-2 rounded-lg bg-[#00C9A7] px-4 py-2 text-sm font-bold text-white hover:bg-[#00A88C]"
-                  >
-                    <FolderPlus className="size-4" />
-                    추가
-                  </button>
-                </div>
+              {canEditProfile && (
+                <Link
+                  to="/collections"
+                  className={`inline-flex shrink-0 items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-bold shadow-sm transition-colors ${
+                    isNight
+                      ? "border-[#00C9A7]/30 bg-[#00C9A7]/12 text-[#7EE8D4] hover:border-[#00C9A7]/50 hover:bg-[#00C9A7]/18"
+                      : "border-[#B6E6DA] bg-[#F3FCF8] text-[#007E68] hover:border-[#00C9A7] hover:bg-white"
+                  }`}
+                >
+                  컬렉션에서 만들기·편집
+                </Link>
               )}
             </div>
 
             {collectionError && (
-              <div className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-4 py-3 text-sm font-semibold text-[#B13A21]">
+              <div
+                className={`rounded-lg border px-4 py-3 text-sm font-semibold ${
+                  isNight
+                    ? "border-[#FF8A70]/35 bg-[#3d2520]/90 text-[#FFB9AA]"
+                    : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
+                }`}
+              >
                 {collectionError}
               </div>
             )}
 
             {isCollectionsLoading ? (
-              <div className="rounded-lg border border-[#BDEFD8] bg-[#F5FFFB] px-4 py-3 text-sm font-semibold text-[#007E68]">
+              <div
+                className={`rounded-lg border px-4 py-3 text-sm font-semibold ${
+                  isNight
+                    ? "border-[#00C9A7]/25 bg-[#00C9A7]/10 text-[#7EE8D4]"
+                    : "border-[#BDEFD8] bg-[#F5FFFB] text-[#007E68]"
+                }`}
+              >
                 컬렉션을 불러오는 중...
               </div>
             ) : collectionFolders.length === 0 ? (
-              <div className="rounded-lg border border-gray-200 bg-white py-16 text-center">
-                <FolderOpen className="mx-auto mb-4 size-12 text-gray-300" />
-                <h3 className="mb-2 text-2xl font-bold">아직 컬렉션이 없어요</h3>
-                <p className="text-gray-600">마음에 드는 피드를 저장해 나만의 컬렉션을 만들어보세요.</p>
-              </div>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {collectionFolders.map((folder) => (
-                  <div
-                    key={folder.folderId}
-                    className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+              <div
+                className={`rounded-2xl border py-16 text-center shadow-sm ${
+                  isNight
+                    ? "border-white/10 bg-[#141d30]/90"
+                    : "border-gray-200/90 bg-white"
+                }`}
+              >
+                <FolderOpen
+                  className={`mx-auto mb-4 size-12 ${isNight ? "text-white/20" : "text-gray-300"}`}
+                />
+                <h3 className={`mb-2 text-xl font-bold ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>
+                  아직 컬렉션이 없어요
+                </h3>
+                <p className={`text-sm ${isNight ? "text-white/50" : "text-[#5F5E5A]"}`}>
+                  마음에 드는 피드를 저장해 나만의 컬렉션을 만들어보세요.
+                </p>
+                {canEditProfile && (
+                  <Link
+                    to="/collections"
+                    className="mt-6 inline-flex items-center rounded-xl bg-[#00C9A7] px-5 py-2.5 text-sm font-bold text-[#0F0F0F] transition-colors hover:bg-[#00A88C]"
                   >
-                    <button
-                      type="button"
-                      onClick={() => handleOpenCollection(folder.folderId)}
-                      className="mb-4 grid h-36 w-full grid-cols-2 gap-1 overflow-hidden rounded-lg bg-[#F7F7F5] ring-1 ring-transparent transition hover:ring-[#00C9A7]"
-                    >
-                      {folder.previewImageUrls.length > 0 ? (
-                        folder.previewImageUrls.slice(0, 4).map((url, index) => (
-                          <ImageWithFallback
-                            key={`${folder.folderId}-${url}-${index}`}
-                            src={url}
-                            alt={folder.folderName}
-                            className="h-full w-full object-cover"
-                          />
-                        ))
-                      ) : (
-                        <div className="col-span-2 flex items-center justify-center text-gray-400">
-                          <FolderOpen className="size-10" />
-                        </div>
-                      )}
-                    </button>
-
-                    {editingCollectionId === folder.folderId ? (
-                      <div className="flex gap-2">
-                        <input
-                          value={editingCollectionName}
-                          onChange={(event) => setEditingCollectionName(event.target.value)}
-                          className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-[#00C9A7]"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleRenameCollection(folder.folderId)}
-                          className="rounded-lg bg-[#00C9A7] px-3 py-2 text-xs font-bold text-white"
-                        >
-                          저장
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="font-bold">{folder.folderName}</h3>
-                          <p className="mt-1 text-sm text-gray-500">{folder.itemCount}개 피드</p>
-                        </div>
-                        {isCollectionUiReady && canEditProfile && (
-                          <div className="flex gap-1">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingCollectionId(folder.folderId);
-                                setEditingCollectionName(folder.folderName);
-                              }}
-                              className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:border-[#00C9A7] hover:text-[#007E68]"
-                              aria-label="컬렉션 이름 수정"
-                            >
-                              <Pencil className="size-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteCollection(folder.folderId)}
-                              className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:border-[#FFB9AA] hover:text-[#B13A21]"
-                              aria-label="컬렉션 삭제"
-                            >
-                              <Trash2 className="size-4" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {selectedCollection && (
-              <div className="rounded-lg border border-gray-200 bg-white p-5">
-                <div className="mb-5 flex items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-xl font-bold">{selectedCollection.folderName}</h3>
-                    <p className="text-sm text-gray-500">{selectedCollection.feeds.length}개 피드</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCollection(null)}
-                    className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:text-black"
-                    aria-label="닫기"
-                  >
-                    <X className="size-4" />
-                  </button>
-                </div>
-
-                {selectedCollection.feeds.length === 0 ? (
-                  <div className="rounded-lg bg-[#F7F7F5] py-10 text-center text-sm text-gray-500">
-                    아직 저장된 피드가 없어요.
-                  </div>
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {selectedCollection.feeds.map((feed) => (
-                      <div key={feed.postId} className="rounded-lg border border-gray-200 p-4">
-                        {feed.thumbnailImageUrl && (
-                          <ImageWithFallback
-                            src={feed.thumbnailImageUrl}
-                            alt={feed.title}
-                            className="mb-3 aspect-video w-full rounded-lg object-cover"
-                          />
-                        )}
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <h4 className="font-bold">{feed.title}</h4>
-                            <p className="mt-1 line-clamp-2 text-sm text-gray-500">
-                              {feed.description}
-                            </p>
-                          </div>
-                          {isCollectionUiReady && canEditProfile && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveProjectFromCollection(selectedCollection.folderId, feed.postId)}
-                              className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:border-[#FFB9AA] hover:text-[#B13A21]"
-                              aria-label="저장 피드 제거"
-                            >
-                              <Trash2 className="size-4" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                    컬렉션 페이지로 이동
+                  </Link>
                 )}
               </div>
-            )}
-
-            {isCollectionUiReady && canEditProfile && collectionFolders.length > 0 && feedProjects.length > 0 && (
-              <div className="rounded-lg border border-[#BDEFD8] bg-[#F5FFFB] p-5">
-                <h3 className="mb-3 text-lg font-bold text-[#007E68]">내 피드 저장하기</h3>
-                <div className="space-y-3">
-                  {feedProjects
-                    .filter((project) => project.persisted)
-                    .map((project) => (
-                      <div
-                        key={`save-${project.id}`}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white p-3"
-                      >
-                        <div>
-                          <p className="font-semibold">{project.title}</p>
-                          <p className="text-xs text-gray-500">저장할 컬렉션을 선택하세요.</p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {collectionFolders.map((folder) => (
-                            <button
-                              key={`${project.id}-${folder.folderId}`}
-                              type="button"
-                              onClick={() => handleSaveProjectToCollection(project, folder.folderId)}
-                              disabled={savingProjectIdToCollection === project.id}
-                              className="rounded-lg border border-[#BDEFD8] px-3 py-1.5 text-xs font-bold text-[#007E68] hover:bg-[#F5FFFB] disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {savingProjectIdToCollection === project.id ? "저장 중" : folder.folderName}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {collectionFolders.map((folder, folderIndex) => {
+                  return (
+                    <motion.div
+                      key={folder.folderId}
+                      initial={{ opacity: 0, y: 18 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true, margin: "-40px" }}
+                      transition={{ ...tabSpring, delay: Math.min(folderIndex * 0.05, 0.25) }}
+                      whileHover={{ y: -4, transition: { duration: 0.25 } }}
+                      onClick={() => handleOpenCollection(folder.folderId)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          void handleOpenCollection(folder.folderId);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      className={`group cursor-pointer overflow-visible rounded-2xl border shadow-sm transition-shadow hover:shadow-lg ${
+                        isNight
+                          ? "border-white/10 bg-[#141d30] shadow-black/30"
+                          : "border-gray-200/80 bg-white"
+                      }`}
+                    >
+                      <AnimatedFolder
+                        isNight={isNight}
+                        title={folder.folderName}
+                        projects={collectionToFolderProjects(folder)}
+                        itemCount={folder.itemCount}
+                        metaLine={folder.itemCount > 0 ? getRelativeCollectionLabel(folder.createdAt) : undefined}
+                        gradient={getFolderGradientByFolderId(folder.folderId)}
+                        className="w-full !border-0 !bg-transparent !shadow-none hover:!border-transparent hover:!shadow-none"
+                        onViewProject={() => handleOpenCollection(folder.folderId)}
+                        showHoverHint={folder.itemCount > 0}
+                        emptyHint="아직 저장된 피드가 없습니다. Feed에서 마음에 드는 작업을 저장해보세요."
+                        viewProjectLabel="컬렉션 열기"
+                        countLabel="피드"
+                      />
+                    </motion.div>
+                  );
+                })}
               </div>
             )}
-          </div>
+          </motion.div>
         )}
 
         {activeTab === "reviews" && (
-          <div>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold">프로젝트 후기</h2>
-              <div className="text-sm text-gray-600">총 {profileReviews.length}개의 후기</div>
+          <motion.div
+            key="profile-tab-reviews"
+            role="tabpanel"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={tabSpring}
+            className="mb-12"
+          >
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className={`text-2xl font-bold tracking-tight ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>
+                프로젝트 후기
+              </h2>
+              <div className={`text-sm ${isNight ? "text-white/45" : "text-gray-500"}`}>
+                총 {profileReviews.length}개의 후기
+              </div>
             </div>
             {isReviewsLoading ? (
-              <div className="rounded-lg border border-gray-200 bg-white py-12 text-center text-sm font-semibold text-gray-500">
+              <div
+                className={`rounded-lg border py-12 text-center text-sm font-semibold ${
+                  isNight
+                    ? "border-white/10 bg-[#141d30] text-white/50"
+                    : "border-gray-200 bg-white text-gray-500"
+                }`}
+              >
                 프로젝트 후기를 불러오는 중입니다.
               </div>
             ) : reviewsError ? (
-              <div className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-4 py-3 text-sm font-semibold text-[#B13A21]">
+              <div
+                className={`rounded-lg border px-4 py-3 text-sm font-semibold ${
+                  isNight
+                    ? "border-[#FF8A70]/35 bg-[#3d2520]/90 text-[#FFB9AA]"
+                    : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
+                }`}
+              >
                 {reviewsError}
               </div>
             ) : profileReviews.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-gray-300 bg-white px-6 py-12 text-center">
-                <Star className="mx-auto mb-3 size-10 text-gray-300" />
-                <h3 className="text-lg font-bold text-[#12382D]">아직 프로젝트 후기가 없어요</h3>
-                <p className="mt-2 text-sm text-gray-500">
+              <div
+                className={`rounded-lg border border-dashed px-6 py-12 text-center ${
+                  isNight
+                    ? "border-white/10 bg-[#141d30]/80"
+                    : "border-gray-300 bg-white"
+                }`}
+              >
+                <Star className={`mx-auto mb-3 size-10 ${isNight ? "text-white/20" : "text-gray-300"}`} />
+                <h3 className={`text-lg font-bold ${isNight ? "text-[#7EE8D4]" : "text-[#12382D]"}`}>
+                  아직 프로젝트 후기가 없어요
+                </h3>
+                <p className={`mt-2 text-sm ${isNight ? "text-white/45" : "text-gray-500"}`}>
                   프로젝트를 완료하면 클라이언트가 남긴 후기가 이곳에 표시됩니다.
                 </p>
               </div>
             ) : (
             <div className="space-y-4">
-              {profileReviews.map((review) => (
-                <div key={review.reviewId ?? `${review.projectId}-${review.reviewerId}-${review.createdAt}`} className="bg-white border border-gray-200 rounded-2xl p-6 hover:shadow-lg transition-shadow">
+              {profileReviews.map((review, reviewIndex) => (
+                <motion.div
+                  key={review.reviewId ?? `${review.projectId}-${review.reviewerId}-${review.createdAt}`}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-40px" }}
+                  transition={{ ...tabSpring, delay: Math.min(reviewIndex * 0.06, 0.3) }}
+                  className={`rounded-[1.25rem] border p-6 shadow-[0_12px_40px_rgba(15,23,42,0.06)] transition-shadow ${
+                    isNight
+                      ? "border-white/10 bg-[#141d30]/95 hover:shadow-[0_18px_56px_rgba(0,0,0,0.35)]"
+                      : "border-black/[0.06] bg-white/95 hover:shadow-[0_18px_56px_rgba(15,23,42,0.1)]"
+                  }`}
+                >
                   <div className="flex items-start gap-4 mb-4">
                     <ImageWithFallback
                       src={getUserAvatar(review.reviewerProfileImage)}
                       alt={review.reviewerNickname || review.reviewerName || "reviewer"}
-                      className="size-14 flex-shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm"
+                      className={`size-14 flex-shrink-0 rounded-full object-cover ring-2 shadow-sm ${
+                        isNight ? "ring-[#1a2436]" : "ring-white"
+                      }`}
                     />
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-2">
                         <div>
-                          <div className="font-bold text-lg">
+                          <div className={`font-bold text-lg ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>
                             {review.projectTitle}
                           </div>
-                          <div className="text-sm text-gray-600">
+                          <div className={`text-sm ${isNight ? "text-white/50" : "text-gray-600"}`}>
                             {review.reviewerNickname || review.reviewerName || "익명 클라이언트"}
                           </div>
                         </div>
@@ -2194,7 +2390,9 @@ export default function Profile() {
                               className={`size-5 ${
                                 i < review.rating
                                   ? "fill-[#FF5C3A] text-[#FF5C3A]"
-                                  : "text-gray-300"
+                                  : isNight
+                                    ? "text-white/15"
+                                    : "text-gray-300"
                               }`}
                             />
                           ))}
@@ -2203,19 +2401,18 @@ export default function Profile() {
 
                       {review.workCategories?.length > 0 && (
                         <div className="mb-3 flex flex-wrap gap-2">
-                          <div className="hidden">
-                            작업 분야
-                          </div>
-                          <div className="contents">
-                            {review.workCategories.map((category) => (
-                              <span
-                                key={category}
-                                className="inline-flex items-center rounded-lg border border-[#00C9A7]/30 bg-[#F2FFFC] px-3 py-1.5 text-xs font-bold text-[#007E68] shadow-sm"
-                              >
-                                {category}
-                              </span>
-                            ))}
-                          </div>
+                          {review.workCategories.map((category) => (
+                            <span
+                              key={category}
+                              className={`inline-flex items-center rounded-lg border px-3 py-1.5 text-xs font-bold shadow-sm ${
+                                isNight
+                                  ? "border-[#00C9A7]/35 bg-[#00C9A7]/12 text-[#7EE8D4]"
+                                  : "border-[#00C9A7]/30 bg-[#F2FFFC] text-[#007E68]"
+                              }`}
+                            >
+                              {category}
+                            </span>
+                          ))}
                         </div>
                       )}
 
@@ -2224,7 +2421,11 @@ export default function Profile() {
                           {review.complimentTags.map((tag) => (
                             <span
                               key={tag}
-                              className="inline-flex items-center rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-3 py-1.5 text-xs font-bold text-[#B13A21] shadow-sm"
+                              className={`inline-flex items-center rounded-lg border px-3 py-1.5 text-xs font-bold shadow-sm ${
+                                isNight
+                                  ? "border-[#FF8A70]/35 bg-[#3d2520]/80 text-[#FFB9AA]"
+                                  : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
+                              }`}
                             >
                               {tag}
                             </span>
@@ -2233,11 +2434,11 @@ export default function Profile() {
                       )}
                     </div>
                   </div>
-                  <p className="text-gray-700 leading-relaxed mb-3">
+                  <p className={`mb-3 leading-relaxed ${isNight ? "text-white/75" : "text-gray-700"}`}>
                     {review.content}
                   </p>
                   {review.createdAt && (
-                    <div className="text-xs text-gray-500 mt-3">
+                    <div className={`mt-3 text-xs ${isNight ? "text-white/35" : "text-gray-500"}`}>
                       {new Date(review.createdAt).toLocaleDateString("ko-KR", {
                         year: "numeric",
                         month: "long",
@@ -2245,21 +2446,34 @@ export default function Profile() {
                       })}
                     </div>
                   )}
-                </div>
+                </motion.div>
               ))}
             </div>
             )}
-          </div>
+          </motion.div>
         )}
+        </AnimatePresence>
       </main>
 
+      <AnimatePresence>
       {isWorkComposerOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+        <motion.div
+          key="work-composer-overlay"
+          role="presentation"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px]"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
           onClick={closeWorkComposer}
         >
-          <div
-            className="grid max-h-[90vh] w-full max-w-7xl overflow-y-auto rounded-lg bg-white shadow-2xl lg:grid-cols-[0.9fr_0.95fr_0.8fr] lg:overflow-hidden"
+          <motion.div
+            className={`grid max-h-[90vh] w-full max-w-7xl overflow-y-auto rounded-2xl shadow-2xl ring-1 lg:grid-cols-[0.9fr_0.95fr_0.8fr] lg:overflow-hidden ${
+              isNight ? "bg-[#141d30] ring-white/10" : "bg-white ring-black/[0.06]"
+            }`}
+            initial={{ opacity: 0, scale: 0.96, y: 22 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={modalSpring}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex min-h-[420px] flex-col bg-[#0F0F0F]">
@@ -2357,8 +2571,12 @@ export default function Profile() {
               </div>
             </div>
 
-            <div className="flex max-h-[90vh] flex-col">
-              <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+            <div className={`flex max-h-[90vh] flex-col ${isNight ? "bg-[#141d30]" : "bg-white"}`}>
+              <div
+                className={`flex items-center justify-between border-b px-5 py-4 ${
+                  isNight ? "border-white/10" : "border-gray-200"
+                }`}
+              >
                 <div className="flex items-center gap-3">
                   <ImageWithFallback
                     src={displayProfile.avatar}
@@ -2367,18 +2585,24 @@ export default function Profile() {
                   />
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold">{displayProfile.name}</span>
+                      <span className={`font-semibold ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>
+                        {displayProfile.name}
+                      </span>
                       <span className={`rounded-lg border px-2 py-0.5 text-[10px] font-semibold ${profileRoleBadgeClass}`}>
                         {profileRoleLabel}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500">작업 피드에 공유</p>
+                    <p className={`text-xs ${isNight ? "text-white/45" : "text-gray-500"}`}>작업 피드에 공유</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={closeWorkComposer}
-                  className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
+                  className={`rounded-lg p-2 transition-colors ${
+                    isNight
+                      ? "text-white/45 hover:bg-white/10 hover:text-white/80"
+                      : "text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+                  }`}
                   aria-label="게시물 작성 닫기"
                 >
                   <X className="size-5" />
@@ -2387,13 +2611,21 @@ export default function Profile() {
 
               <div className="flex-1 space-y-4 overflow-y-auto p-5">
                 {workComposerError && (
-                  <div className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-4 py-3 text-sm font-semibold text-[#B13A21]">
+                  <div
+                    className={`rounded-lg border px-4 py-3 text-sm font-semibold ${
+                      isNight
+                        ? "border-[#FF8A70]/35 bg-[#3d2520]/90 text-[#FFB9AA]"
+                        : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
+                    }`}
+                  >
                     {workComposerError}
                   </div>
                 )}
 
                 <label className="block">
-                  <span className="mb-2 block text-sm font-semibold text-gray-700">
+                  <span
+                    className={`mb-2 block text-sm font-semibold ${isNight ? "text-white/80" : "text-gray-700"}`}
+                  >
                     작업물 제목
                   </span>
                   <input
@@ -2401,12 +2633,18 @@ export default function Profile() {
                     value={workTitle}
                     onChange={(event) => setWorkTitle(event.target.value)}
                     placeholder="예: 브랜드 리뉴얼 시안"
-                    className="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none transition-colors focus:border-[#00C9A7]"
+                    className={`w-full rounded-lg border px-4 py-3 text-sm outline-none transition-colors focus:border-[#00C9A7] ${
+                      isNight
+                        ? "border-white/10 bg-[#0e1524] text-white placeholder:text-white/35"
+                        : "border-gray-200 bg-white text-[#0F0F0F]"
+                    }`}
                   />
                 </label>
 
                 <label className="block">
-                  <span className="mb-2 block text-sm font-semibold text-gray-700">
+                  <span
+                    className={`mb-2 block text-sm font-semibold ${isNight ? "text-white/80" : "text-gray-700"}`}
+                  >
                     캡션
                   </span>
                   <textarea
@@ -2414,22 +2652,36 @@ export default function Profile() {
                     onChange={(event) => setWorkDescription(event.target.value)}
                     placeholder="작업 의도, 사용 툴, 협업 포인트를 적어주세요."
                     rows={7}
-                    className="w-full resize-none rounded-lg border border-gray-200 px-4 py-3 text-sm outline-none transition-colors focus:border-[#00C9A7]"
+                    className={`w-full resize-none rounded-lg border px-4 py-3 text-sm outline-none transition-colors focus:border-[#00C9A7] ${
+                      isNight
+                        ? "border-white/10 bg-[#0e1524] text-white placeholder:text-white/35"
+                        : "border-gray-200 bg-white text-[#0F0F0F]"
+                    }`}
                   />
                 </label>
 
                 <label className="block">
-                  <span className="mb-2 block text-sm font-semibold text-gray-700">
+                  <span
+                    className={`mb-2 block text-sm font-semibold ${isNight ? "text-white/80" : "text-gray-700"}`}
+                  >
                     태그
                   </span>
-                  <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 transition-colors focus-within:border-[#00C9A7]">
+                  <div
+                    className={`rounded-lg border px-3 py-2 transition-colors focus-within:border-[#00C9A7] ${
+                      isNight ? "border-white/10 bg-[#0e1524]" : "border-gray-200 bg-white"
+                    }`}
+                  >
                     <div className="flex min-h-8 flex-wrap items-center gap-2">
                       {workTagList.map((tag) => (
                         <button
                           key={tag}
                           type="button"
                           onClick={() => removeWorkTag(tag)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-[#F5FFFB] px-3 py-1.5 text-xs font-bold text-[#007E68] transition-colors hover:bg-[#DDF8EC]"
+                          className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors hover:bg-[#DDF8EC] ${
+                            isNight
+                              ? "bg-[#00C9A7]/15 text-[#7EE8D4] hover:bg-[#00C9A7]/25"
+                              : "bg-[#F5FFFB] text-[#007E68]"
+                          }`}
                           aria-label={`${tag} 태그 제거`}
                         >
                           {tag}
@@ -2443,20 +2695,24 @@ export default function Profile() {
                         onKeyDown={handleWorkTagInputKeyDown}
                         onBlur={commitWorkTagInput}
                         placeholder={workTagList.length > 0 ? "태그 추가" : "branding 입력 후 Enter"}
-                        className="min-w-32 flex-1 border-0 bg-transparent px-1 py-1 text-sm outline-none"
+                        className={`min-w-32 flex-1 border-0 bg-transparent px-1 py-1 text-sm outline-none ${
+                          isNight ? "text-white placeholder:text-white/35" : "text-[#0F0F0F]"
+                        }`}
                       />
                     </div>
                   </div>
-                  <span className="mt-1 block text-xs text-gray-500">
+                  <span className={`mt-1 block text-xs ${isNight ? "text-white/40" : "text-gray-500"}`}>
                     띄어쓰기, Enter, 쉼표를 누르면 태그가 바로 생성됩니다. Backspace로 마지막 태그를 지울 수 있어요.
                   </span>
                 </label>
 
                 <div className="block">
-                  <span className="mb-2 block text-sm font-semibold text-gray-700">
+                  <span
+                    className={`mb-2 block text-sm font-semibold ${isNight ? "text-white/80" : "text-gray-700"}`}
+                  >
                     탐색 카테고리
                   </span>
-                  <p className="mb-3 text-xs text-gray-500">
+                  <p className={`mb-3 text-xs ${isNight ? "text-white/45" : "text-gray-500"}`}>
                     탐색 페이지에서 분류될 작업 분야를 골라주세요.
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -2470,8 +2726,12 @@ export default function Profile() {
                           onClick={() => handleToggleWorkCategory(category)}
                           className={`rounded-lg border px-3 py-2 text-xs font-bold transition-all ${
                             isSelected
-                              ? "border-[#FF5C3A] bg-[#FFF7F4] text-[#B13A21] shadow-sm"
-                              : "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:border-[#FF5C3A] hover:bg-white"
+                              ? isNight
+                                ? "border-[#FF8A70]/50 bg-[#3d2520]/90 text-[#FFB9AA] shadow-sm"
+                                : "border-[#FF5C3A] bg-[#FFF7F4] text-[#B13A21] shadow-sm"
+                              : isNight
+                                ? "border-white/10 bg-[#0e1524] text-white/60 hover:border-[#FF5C3A]/50 hover:bg-[#1a2436]"
+                                : "border-gray-200 bg-[#F7F7F5] text-gray-600 hover:border-[#FF5C3A] hover:bg-white"
                           }`}
                           aria-pressed={isSelected}
                         >
@@ -2480,8 +2740,14 @@ export default function Profile() {
                       );
                     })}
                   </div>
-                  <div className="mt-4 rounded-lg border border-[#BDEFD8] bg-[#F5FFFB] p-3">
-                    <p className="mb-2 text-xs font-bold text-[#007E68]">
+                  <div
+                    className={`mt-4 rounded-lg border p-3 ${
+                      isNight
+                        ? "border-[#00C9A7]/25 bg-[#00C9A7]/10"
+                        : "border-[#BDEFD8] bg-[#F5FFFB]"
+                    }`}
+                  >
+                    <p className={`mb-2 text-xs font-bold ${isNight ? "text-[#7EE8D4]" : "text-[#007E68]"}`}>
                       {workCategory ? `${workCategory} 추천 태그` : "카테고리를 선택하면 추천 태그가 나와요"}
                     </p>
                     {suggestedWorkTags.length > 0 ? (
@@ -2497,8 +2763,12 @@ export default function Profile() {
                               disabled={isAdded}
                               className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-all ${
                                 isAdded
-                                  ? "cursor-default border-[#00C9A7]/30 bg-[#F5FFFB] text-[#007E68]"
-                                  : "border-white bg-white text-gray-700 shadow-sm hover:-translate-y-0.5 hover:border-[#00C9A7] hover:text-[#007E68]"
+                                  ? isNight
+                                    ? "cursor-default border-[#00C9A7]/30 bg-[#00C9A7]/15 text-[#7EE8D4]"
+                                    : "cursor-default border-[#00C9A7]/30 bg-[#F5FFFB] text-[#007E68]"
+                                  : isNight
+                                    ? "border-white/10 bg-[#141d30] text-white/70 shadow-sm hover:-translate-y-0.5 hover:border-[#00C9A7]/40 hover:text-[#7EE8D4]"
+                                    : "border-white bg-white text-gray-700 shadow-sm hover:-translate-y-0.5 hover:border-[#00C9A7] hover:text-[#007E68]"
                               }`}
                             >
                               {isAdded ? `${tag} 추가됨` : tag}
@@ -2507,48 +2777,72 @@ export default function Profile() {
                         })}
                       </div>
                     ) : (
-                      <p className="text-xs font-medium text-gray-500">
+                      <p className={`text-xs font-medium ${isNight ? "text-white/45" : "text-gray-500"}`}>
                         분야를 먼저 고르면 바로 넣을 수 있는 태그를 추천해드릴게요.
                       </p>
                     )}
                   </div>
                 </div>
 
-                <div className="rounded-lg border border-gray-200 bg-[#FAFBF8] p-4">
+                <div
+                  className={`rounded-lg border p-4 ${
+                    isNight ? "border-white/10 bg-[#0e1524]" : "border-gray-200 bg-[#FAFBF8]"
+                  }`}
+                >
                   <div className="mb-3">
-                    <h3 className="text-sm font-bold text-[#12382D]">작업 파일 연동</h3>
-                    <p className="mt-1 text-xs text-gray-500">
+                    <h3 className={`text-sm font-bold ${isNight ? "text-[#7EE8D4]" : "text-[#12382D]"}`}>
+                      작업 파일 연동
+                    </h3>
+                    <p className={`mt-1 text-xs ${isNight ? "text-white/45" : "text-gray-500"}`}>
                       Figma 또는 Adobe 작업 링크를 함께 공유할 수 있습니다.
                     </p>
                   </div>
                   <div className="space-y-3">
-                    <label className="flex items-center gap-3 rounded-lg bg-white px-3 py-2">
+                    <label
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2 ${
+                        isNight ? "bg-[#141d30]" : "bg-white"
+                      }`}
+                    >
                       <Figma className="size-5 shrink-0 text-[#00A88C]" />
                       <input
                         type="url"
                         value={figmaUrl}
                         onChange={(event) => setFigmaUrl(event.target.value)}
                         placeholder="Figma 링크"
-                        className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                        className={`min-w-0 flex-1 bg-transparent text-sm outline-none ${
+                          isNight ? "text-white placeholder:text-white/35" : "text-[#0F0F0F]"
+                        }`}
                       />
                     </label>
-                    <label className="flex items-center gap-3 rounded-lg bg-white px-3 py-2">
+                    <label
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2 ${
+                        isNight ? "bg-[#141d30]" : "bg-white"
+                      }`}
+                    >
                       <Sparkles className="size-5 shrink-0 text-[#FF5C3A]" />
                       <input
                         type="url"
                         value={adobeUrl}
                         onChange={(event) => setAdobeUrl(event.target.value)}
                         placeholder="Adobe 링크"
-                        className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                        className={`min-w-0 flex-1 bg-transparent text-sm outline-none ${
+                          isNight ? "text-white placeholder:text-white/35" : "text-[#0F0F0F]"
+                        }`}
                       />
                     </label>
                   </div>
                 </div>
               </div>
 
-              <div className="border-t border-gray-200 p-5">
-                <div className="mb-4 rounded-lg border border-gray-200 bg-[#FAFBF8] p-3">
-                  <p className="mb-2 text-xs font-bold text-[#12382D]">
+              <div
+                className={`border-t p-5 ${isNight ? "border-white/10" : "border-gray-200"}`}
+              >
+                <div
+                  className={`mb-4 rounded-lg border p-3 ${
+                    isNight ? "border-white/10 bg-[#0e1524]" : "border-gray-200 bg-[#FAFBF8]"
+                  }`}
+                >
+                  <p className={`mb-2 text-xs font-bold ${isNight ? "text-[#7EE8D4]" : "text-[#12382D]"}`}>
                     업로드 전 체크리스트
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -2557,13 +2851,17 @@ export default function Profile() {
                         key={item.label}
                         className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold ${
                           item.done
-                            ? "border-[#00C9A7]/30 bg-[#F2FFFC] text-[#007E68]"
-                            : "border-gray-200 bg-white text-gray-500"
+                            ? isNight
+                              ? "border-[#00C9A7]/35 bg-[#00C9A7]/12 text-[#7EE8D4]"
+                              : "border-[#00C9A7]/30 bg-[#F2FFFC] text-[#007E68]"
+                            : isNight
+                              ? "border-white/10 bg-[#141d30] text-white/45"
+                              : "border-gray-200 bg-white text-gray-500"
                         }`}
                       >
                         <CheckCircle
                           className={`size-3.5 ${
-                            item.done ? "text-[#00C9A7]" : "text-gray-300"
+                            item.done ? "text-[#00C9A7]" : isNight ? "text-white/25" : "text-gray-300"
                           }`}
                         />
                         {item.label}
@@ -2583,16 +2881,32 @@ export default function Profile() {
               </div>
             </div>
 
-            <aside className="flex max-h-[90vh] flex-col border-l border-gray-200 bg-[#F7F7F5]">
-              <div className="border-b border-gray-200 px-5 py-4">
-                <p className="text-sm font-bold text-[#12382D]">게시물 미리보기</p>
-                <p className="mt-1 text-xs text-gray-500">
+            <aside
+              className={`flex max-h-[90vh] flex-col border-l ${
+                isNight ? "border-white/10 bg-[#0e1524]" : "border-gray-200 bg-[#F7F7F5]"
+              }`}
+            >
+              <div
+                className={`border-b px-5 py-4 ${isNight ? "border-white/10" : "border-gray-200"}`}
+              >
+                <p className={`text-sm font-bold ${isNight ? "text-[#7EE8D4]" : "text-[#12382D]"}`}>
+                  게시물 미리보기
+                </p>
+                <p className={`mt-1 text-xs ${isNight ? "text-white/45" : "text-gray-500"}`}>
                   실제 피드에 올라갈 모습을 확인해보세요.
                 </p>
               </div>
               <div className="flex-1 overflow-y-auto p-5">
-                <article className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-                  <div className="flex items-center gap-3 border-b border-gray-100 p-4">
+                <article
+                  className={`overflow-hidden rounded-lg border shadow-sm ${
+                    isNight ? "border-white/10 bg-[#141d30]" : "border-gray-200 bg-white"
+                  }`}
+                >
+                  <div
+                    className={`flex items-center gap-3 border-b p-4 ${
+                      isNight ? "border-white/10" : "border-gray-100"
+                    }`}
+                  >
                     <ImageWithFallback
                       src={displayProfile.avatar}
                       alt={displayProfile.name}
@@ -2600,14 +2914,18 @@ export default function Profile() {
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <p className="truncate text-sm font-bold text-[#12382D]">
+                        <p
+                          className={`truncate text-sm font-bold ${isNight ? "text-white" : "text-[#12382D]"}`}
+                        >
                           {displayProfile.name}
                         </p>
                         <span className={`rounded-lg border px-2 py-0.5 text-[10px] font-semibold ${profileRoleBadgeClass}`}>
                           {profileRoleLabel}
                         </span>
                       </div>
-                      <p className="truncate text-xs text-gray-500">{displayProfile.title}</p>
+                      <p className={`truncate text-xs ${isNight ? "text-white/45" : "text-gray-500"}`}>
+                        {displayProfile.title}
+                      </p>
                     </div>
                   </div>
 
@@ -2625,14 +2943,18 @@ export default function Profile() {
                       )}
                     </div>
                   ) : (
-                    <div className="flex aspect-square flex-col items-center justify-center bg-[#F1F1EE] text-gray-500">
+                    <div
+                      className={`flex aspect-square flex-col items-center justify-center ${
+                        isNight ? "bg-[#1a2436] text-white/45" : "bg-[#F1F1EE] text-gray-500"
+                      }`}
+                    >
                       <ImagePlus className="mb-3 size-10" />
                       <p className="text-sm font-semibold">이미지를 추가하면 미리보기가 보여요</p>
                     </div>
                   )}
 
                   <div className="space-y-3 p-4">
-                    <div className="flex items-center gap-4 text-gray-700">
+                    <div className={`flex items-center gap-4 ${isNight ? "text-white/70" : "text-gray-700"}`}>
                       <Heart className="size-5" />
                       <MessageCircle className="size-5" />
                       <Bookmark className="ml-auto size-5" />
@@ -2643,7 +2965,11 @@ export default function Profile() {
                         {workCategories.map((category) => (
                           <span
                             key={category}
-                            className="inline-flex rounded-lg bg-[#FFF7F4] px-2.5 py-1 text-xs font-bold text-[#B13A21]"
+                            className={`inline-flex rounded-lg px-2.5 py-1 text-xs font-bold ${
+                              isNight
+                                ? "bg-[#3d2520]/80 text-[#FFB9AA]"
+                                : "bg-[#FFF7F4] text-[#B13A21]"
+                            }`}
                           >
                             {category}
                           </span>
@@ -2652,10 +2978,16 @@ export default function Profile() {
                     )}
 
                     <div>
-                      <h3 className="line-clamp-2 text-sm font-bold text-[#12382D]">
+                      <h3
+                        className={`line-clamp-2 text-sm font-bold ${isNight ? "text-white" : "text-[#12382D]"}`}
+                      >
                         {workTitle.trim() || "게시물 제목이 여기에 보여요"}
                       </h3>
-                      <p className="mt-1 line-clamp-4 text-sm leading-relaxed text-gray-600">
+                      <p
+                        className={`mt-1 line-clamp-4 text-sm leading-relaxed ${
+                          isNight ? "text-white/55" : "text-gray-600"
+                        }`}
+                      >
                         {workDescription.trim() || "캡션을 작성하면 피드 카드에서 보이는 문장 흐름을 바로 확인할 수 있어요."}
                       </p>
                     </div>
@@ -2665,7 +2997,11 @@ export default function Profile() {
                         {workTagList.map((tag) => (
                           <span
                             key={tag}
-                            className="rounded-lg bg-[#F2FFFC] px-2.5 py-1 text-xs font-bold text-[#007E68]"
+                            className={`rounded-lg px-2.5 py-1 text-xs font-bold ${
+                              isNight
+                                ? "bg-[#00C9A7]/15 text-[#7EE8D4]"
+                                : "bg-[#F2FFFC] text-[#007E68]"
+                            }`}
                           >
                             {tag}
                           </span>
@@ -2674,15 +3010,31 @@ export default function Profile() {
                     )}
 
                     {(figmaUrl.trim() || adobeUrl.trim()) && (
-                      <div className="flex flex-wrap gap-2 border-t border-gray-100 pt-3">
+                      <div
+                        className={`flex flex-wrap gap-2 border-t pt-3 ${
+                          isNight ? "border-white/10" : "border-gray-100"
+                        }`}
+                      >
                         {figmaUrl.trim() && (
-                          <span className="inline-flex items-center gap-1 rounded-lg bg-[#F5FFFB] px-2.5 py-1 text-xs font-bold text-[#007E68]">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold ${
+                              isNight
+                                ? "bg-[#00C9A7]/12 text-[#7EE8D4]"
+                                : "bg-[#F5FFFB] text-[#007E68]"
+                            }`}
+                          >
                             <Figma className="size-3.5" />
                             Figma
                           </span>
                         )}
                         {adobeUrl.trim() && (
-                          <span className="inline-flex items-center gap-1 rounded-lg bg-[#FFF7F4] px-2.5 py-1 text-xs font-bold text-[#B13A21]">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold ${
+                              isNight
+                                ? "bg-[#3d2520]/80 text-[#FFB9AA]"
+                                : "bg-[#FFF7F4] text-[#B13A21]"
+                            }`}
+                          >
                             <Sparkles className="size-3.5" />
                             Adobe
                           </span>
@@ -2693,34 +3045,57 @@ export default function Profile() {
                 </article>
               </div>
             </aside>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
+      <AnimatePresence>
       {isProfileOnboardingOpen && apiProfile?.owner && !isProfileEditorOpen && !isWorkComposerOpen && (
-        <div
+        <motion.div
+          key="profile-onboarding-overlay"
+          role="presentation"
           className="fixed inset-0 z-[115] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
           onClick={dismissProfileOnboarding}
         >
-          <div
-            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-6 shadow-2xl"
+          <motion.div
+            className={`max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl p-6 shadow-2xl ring-1 ${
+              isNight ? "bg-[#141d30] ring-white/10" : "bg-white ring-black/[0.06]"
+            }`}
+            initial={{ opacity: 0, scale: 0.96, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={modalSpring}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-6 flex items-start justify-between gap-4">
               <div>
-                <p className="mb-2 inline-flex items-center gap-2 rounded-lg bg-[#DDF8EC] px-3 py-1 text-xs font-bold text-[#007E68]">
+                <p
+                  className={`mb-2 inline-flex items-center gap-2 rounded-lg px-3 py-1 text-xs font-bold ${
+                    isNight ? "bg-[#00C9A7]/15 text-[#7EE8D4]" : "bg-[#DDF8EC] text-[#007E68]"
+                  }`}
+                >
                   <Sparkles className="size-4" />
                   프로필 시작하기
                 </p>
-                <h2 className="text-2xl font-bold text-[#0F0F0F]">프로필을 채워볼까요?</h2>
-                <p className="mt-2 text-sm leading-relaxed text-gray-600">
+                <h2 className={`text-2xl font-bold ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>
+                  프로필을 채워볼까요?
+                </h2>
+                <p className={`mt-2 text-sm leading-relaxed ${isNight ? "text-white/55" : "text-gray-600"}`}>
                   처음 방문한 사람도 바로 이해할 수 있게 필요한 정보만 먼저 고르면 됩니다.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={dismissProfileOnboarding}
-                className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-black"
+                className={`rounded-lg p-2 transition-colors ${
+                  isNight
+                    ? "text-white/45 hover:bg-white/10 hover:text-white/80"
+                    : "text-gray-500 hover:bg-gray-100 hover:text-black"
+                }`}
                 aria-label="프로필 시작 안내 닫기"
               >
                 <X className="size-5" />
@@ -2731,14 +3106,24 @@ export default function Profile() {
               {profileSetupChecklist.map((item) => (
                 <div
                   key={item.label}
-                  className="flex items-center justify-between rounded-lg border border-gray-200 bg-[#F7F7F5] px-4 py-3"
+                  className={`flex items-center justify-between rounded-lg border px-4 py-3 ${
+                    isNight
+                      ? "border-white/10 bg-[#0e1524]"
+                      : "border-gray-200 bg-[#F7F7F5]"
+                  }`}
                 >
-                  <span className="text-sm font-semibold text-gray-700">{item.label}</span>
+                  <span className={`text-sm font-semibold ${isNight ? "text-white/85" : "text-gray-700"}`}>
+                    {item.label}
+                  </span>
                   <span
                     className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold ${
                       item.done
-                        ? "bg-[#DDF8EC] text-[#007E68]"
-                        : "bg-white text-gray-500"
+                        ? isNight
+                          ? "bg-[#00C9A7]/15 text-[#7EE8D4]"
+                          : "bg-[#DDF8EC] text-[#007E68]"
+                        : isNight
+                          ? "bg-[#1a2436] text-white/45"
+                          : "bg-white text-gray-500"
                     }`}
                   >
                     <CheckCircle className="size-3.5" />
@@ -2752,13 +3137,19 @@ export default function Profile() {
               <button
                 type="button"
                 onClick={handleStartProfileSetup}
-                className="rounded-lg border border-[#BDEFD8] bg-[#F5FFFB] p-4 text-left transition-all hover:border-[#00C9A7] hover:shadow-md"
+                className={`rounded-lg border p-4 text-left transition-all hover:shadow-md ${
+                  isNight
+                    ? "border-[#00C9A7]/30 bg-[#00C9A7]/10 hover:border-[#00C9A7]/50"
+                    : "border-[#BDEFD8] bg-[#F5FFFB] hover:border-[#00C9A7]"
+                }`}
               >
                 <div className="mb-3 inline-flex rounded-lg bg-[#00C9A7] p-2 text-[#0F0F0F]">
                   <Pencil className="size-5" />
                 </div>
-                <div className="font-semibold">프로필 정보 채우기</div>
-                <p className="mt-1 text-sm text-gray-600">
+                <div className={`font-semibold ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>
+                  프로필 정보 채우기
+                </div>
+                <p className={`mt-1 text-sm ${isNight ? "text-white/50" : "text-gray-600"}`}>
                   이름, 닉네임, URL과 디자이너 정보를 정리합니다.
                 </p>
               </button>
@@ -2767,13 +3158,19 @@ export default function Profile() {
                 <button
                   type="button"
                   onClick={handleStartFirstWorkUpload}
-                  className="rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] p-4 text-left transition-all hover:border-[#FF5C3A] hover:shadow-md"
+                  className={`rounded-lg border p-4 text-left transition-all hover:shadow-md ${
+                    isNight
+                      ? "border-[#FF8A70]/35 bg-[#3d2520]/80 hover:border-[#FF5C3A]/50"
+                      : "border-[#FFB9AA] bg-[#FFF7F4] hover:border-[#FF5C3A]"
+                  }`}
                 >
                   <div className="mb-3 inline-flex rounded-lg bg-[#FF5C3A] p-2 text-white">
                     <Upload className="size-5" />
                   </div>
-                  <div className="font-semibold">첫 작업물 올리기</div>
-                  <p className="mt-1 text-sm text-gray-600">
+                  <div className={`font-semibold ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>
+                    첫 작업물 올리기
+                  </div>
+                  <p className={`mt-1 text-sm ${isNight ? "text-white/50" : "text-gray-600"}`}>
                     대표 작업물을 하나 올려 프로필을 바로 보여줍니다.
                   </p>
                 </button>
@@ -2783,48 +3180,87 @@ export default function Profile() {
             <button
               type="button"
               onClick={dismissProfileOnboarding}
-              className="mt-4 h-10 w-full rounded-lg border border-gray-200 text-sm font-bold text-gray-600 transition-colors hover:bg-gray-50"
+              className={`mt-4 h-10 w-full rounded-lg border text-sm font-bold transition-colors ${
+                isNight
+                  ? "border-white/10 text-white/60 hover:bg-white/5"
+                  : "border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
             >
               나중에 할게요
             </button>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
+      <AnimatePresence>
       {isProfileEditorOpen && (
-        <div
+        <motion.div
+          key="profile-editor-overlay"
+          role="presentation"
           className="fixed inset-0 z-[120] flex items-center justify-center bg-[#0F0F0F]/65 px-4 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
           onClick={() => setIsProfileEditorOpen(false)}
         >
-          <div
-            className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-lg bg-white shadow-2xl ring-1 ring-black/5"
+          <motion.div
+            className={`max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl shadow-2xl ring-1 ${
+              isNight ? "bg-[#141d30] ring-white/10" : "bg-white ring-black/[0.06]"
+            }`}
+            initial={{ opacity: 0, scale: 0.96, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={modalSpring}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="h-1.5 bg-[linear-gradient(90deg,#00C9A7,#FF5C3A)]" />
 
-            <div className="mb-0 flex items-start justify-between gap-4 border-b border-gray-100 bg-[#F7F7F5] px-6 py-5">
+            <div
+              className={`mb-0 flex items-start justify-between gap-4 border-b px-6 py-5 ${
+                isNight ? "border-white/10 bg-[#1a2436]" : "border-gray-100 bg-[#F7F7F5]"
+              }`}
+            >
               <div>
                 <p className="text-sm font-bold text-[#00A88C]">내 프로필 설정</p>
-                <h2 className="mt-1 text-2xl font-bold text-[#0F0F0F]">프로필 수정</h2>
-                <p className="mt-2 text-sm text-gray-600">방문자가 바로 이해할 수 있게 핵심 정보만 정리합니다.</p>
+                <h2 className={`mt-1 text-2xl font-bold ${isNight ? "text-white" : "text-[#0F0F0F]"}`}>
+                  프로필 수정
+                </h2>
+                <p className={`mt-2 text-sm ${isNight ? "text-white/55" : "text-gray-600"}`}>
+                  방문자가 바로 이해할 수 있게 핵심 정보만 정리합니다.
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsProfileEditorOpen(false)}
-                className="rounded-lg bg-white p-2 text-gray-500 shadow-sm transition-colors hover:bg-gray-100 hover:text-black"
+                className={`rounded-lg p-2 shadow-sm transition-colors ${
+                  isNight
+                    ? "bg-white/5 text-white/45 hover:bg-white/10 hover:text-white/80"
+                    : "bg-white text-gray-500 hover:bg-gray-100 hover:text-black"
+                }`}
               >
                 <X className="size-5" />
               </button>
             </div>
 
             {profileEditError && (
-              <div className="mx-6 mt-5 rounded-lg border border-[#FFB9AA] bg-[#FFF7F4] px-4 py-3 text-sm font-semibold text-[#B13A21]">
+              <div
+                className={`mx-6 mt-5 rounded-lg border px-4 py-3 text-sm font-semibold ${
+                  isNight
+                    ? "border-[#FF8A70]/35 bg-[#3d2520]/90 text-[#FFB9AA]"
+                    : "border-[#FFB9AA] bg-[#FFF7F4] text-[#B13A21]"
+                }`}
+              >
                 {profileEditError}
               </div>
             )}
 
-            <div className="grid gap-5 p-6">
-              <div className="flex flex-col gap-4 rounded-lg border border-gray-200 bg-[#F7F7F5] p-4 sm:flex-row sm:items-center">
+            <div className={`grid gap-5 p-6 ${isNight ? "bg-[#0f1828]" : "bg-white"}`}>
+              <div
+                className={`flex flex-col gap-4 rounded-lg border p-4 sm:flex-row sm:items-center ${
+                  isNight ? "border-white/10 bg-[#1a2436]" : "border-gray-200 bg-[#F7F7F5]"
+                }`}
+              >
                 <ImageWithFallback
                   src={profileImagePreview || apiProfile?.profileImage || displayProfile.avatar}
                   alt="프로필 이미지 미리보기"
@@ -3086,17 +3522,28 @@ export default function Profile() {
                 {isSavingProfile ? "저장 중..." : "저장하기"}
               </button>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
+      <AnimatePresence>
       {editingFeed && (
-        <div
+        <motion.div
+          key="feed-editor-overlay"
+          role="presentation"
           className="fixed inset-0 z-[125] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
           onClick={closeFeedEditor}
         >
-          <div
-            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-6 shadow-2xl"
+          <motion.div
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl ring-1 ring-black/[0.06]"
+            initial={{ opacity: 0, scale: 0.96, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={modalSpring}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-6 flex items-start justify-between gap-4">
@@ -3266,17 +3713,28 @@ export default function Profile() {
                 {isSavingFeedEdit ? "저장 중..." : "저장하기"}
               </button>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
+      <AnimatePresence>
       {isFeedSuccessOpen && (
-        <div
+        <motion.div
+          key="feed-success-overlay"
+          role="presentation"
           className="fixed inset-0 z-[130] flex items-center justify-center bg-[#0F0F0F]/65 px-4 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
           onClick={() => setIsFeedSuccessOpen(false)}
         >
-          <div
-            className="w-full max-w-md overflow-hidden rounded-lg bg-white shadow-2xl ring-1 ring-black/5"
+          <motion.div
+            className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/[0.06]"
+            initial={{ opacity: 0, scale: 0.94, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={modalSpring}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="h-1.5 bg-[linear-gradient(90deg,#00C9A7,#FF5C3A)]" />
@@ -3312,56 +3770,28 @@ export default function Profile() {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
-      {isCollectionDeleteModalOpen && (
-        <div
-          className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
-          onClick={() => setIsCollectionDeleteModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-6 text-center">
-              <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-[#FFF1ED] text-[#FF5C3A]">
-                <AlertTriangle className="size-8" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-900">컬렉션을 삭제할까요?</h3>
-              <p className="mt-2 text-sm text-gray-500">
-                폴더 안의 저장 목록이 모두 사라집니다.<br />
-                삭제 후에는 복구할 수 없습니다.
-              </p>
-              <div className="mt-8 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsCollectionDeleteModalOpen(false)}
-                  className="flex-1 rounded-xl border border-gray-200 bg-white py-3 text-sm font-bold text-gray-600 transition-all hover:bg-gray-50"
-                >
-                  취소
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmDeleteCollection}
-                  className="flex-1 rounded-xl bg-[#FF5C3A] py-3 text-sm font-bold text-white transition-all hover:bg-[#E54D2E] shadow-[0_8px_20px_rgba(255,92,58,0.25)]"
-                >
-                  삭제하기
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
+      <AnimatePresence>
       {isDeleteModalOpen && (
-        <div
+        <motion.div
+          key="feed-delete-overlay"
+          role="presentation"
           className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
           onClick={() => setIsDeleteModalOpen(false)}
         >
-          <div
-            className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
+          <motion.div
+            className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/[0.06]"
+            initial={{ opacity: 0, scale: 0.94, y: 14 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={modalSpring}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-6 text-center">
@@ -3390,9 +3820,227 @@ export default function Profile() {
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
+
+      {selectedProfileFeed && (
+        <FeedDetailModal
+          isNight={isNight}
+          selectedFeed={selectedProfileFeed}
+          activeModalImage={
+            (selectedProfileFeed.images ?? [selectedProfileFeed.image])[profileFeedModalImageIndex] ??
+            selectedProfileFeed.image
+          }
+          selectedFeedImages={selectedProfileFeed.images ?? [selectedProfileFeed.image]}
+          modalImageIndex={profileFeedModalImageIndex}
+          savedItemIds={savedProfileFeedIds}
+          selectedFeedComments={selectedFeedComments}
+          isFeedDetailLoading={isProfileFeedDetailLoading}
+          feedDetailError={profileFeedDetailError}
+          commentSubmitError={commentSubmitError}
+          commentLoadError={commentLoadError}
+          isCommentsLoading={isCommentsLoading}
+          editingCommentId={editingCommentId}
+          editingCommentText={editingCommentText}
+          isUpdatingComment={isUpdatingComment}
+          isDeletingCommentId={isDeletingCommentId}
+          commentText={commentText}
+          isSubmittingComment={isSubmittingComment}
+          currentUserAvatar={profileFeedUserAvatar}
+          currentUserName={profileFeedUserName}
+          commentInputRef={profileFeedCommentInputRef}
+          formatFeedDateTime={formatProfileFeedDateTime}
+          isFeedLiked={(item) => Boolean(item.likedByMe)}
+          getLikeCount={(item) => item.likes}
+          getCommentCount={(item) => item.comments}
+          onClose={() => {
+            setSelectedProfileFeed(null);
+            setProfileFeedModalImageIndex(0);
+          }}
+          onMoveModalCarousel={moveProfileFeedModalCarousel}
+          onSetModalImageIndex={(index, e) => {
+            e.stopPropagation();
+            setProfileFeedModalImageIndex(index);
+          }}
+          onToggleLike={toggleProfileFeedLike}
+          onOpenCollectionModal={(_, e) => openCollectionModal(selectedProfileFeed, e)}
+          onShare={(_, e) => handleProfileFeedShare(selectedProfileFeed, e)}
+          onProposalClick={(_, e) => handleProfileFeedProposal(selectedProfileFeed, e)}
+          onStartEditingComment={startEditingComment}
+          onEditingCommentTextChange={setEditingCommentText}
+          onUpdateComment={handleUpdateComment}
+          onCancelEditingComment={cancelEditingComment}
+          onDeleteComment={handleDeleteComment}
+          onCommentTextChange={setProfileFeedCommentText}
+          onCommentKeyDown={handleCommentKeyDown}
+          onSubmitComment={handleSubmitComment}
+        />
+      )}
+
+      {collectionModalFeed && (
+        <CollectionSaveModal
+          feed={collectionModalFeed}
+          collections={collections}
+          collectionPostIdsByFolder={collectionPostIdsByFolder}
+          isCollectionSaving={isCollectionSaving}
+          newCollectionName={newCollectionName}
+          collectionSavedNotice={collectionSavedNotice}
+          onClose={closeCollectionModal}
+          onNewCollectionNameChange={setNewCollectionName}
+          onSaveToCollection={saveToCollection}
+          onCreateCollectionAndSave={createCollectionAndSave}
+        />
+      )}
+
+      <AnimatePresence>
+        {selectedCollection && (
+          <motion.div
+            key="profile-collection-detail"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="profile-collection-detail-title"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+            onClick={() => setSelectedCollection(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              className={`flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl shadow-2xl ${
+                isNight ? "bg-[#0f1828]" : "bg-white"
+              }`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                className={`flex shrink-0 flex-wrap items-start justify-between gap-3 border-b px-5 py-4 sm:px-6 sm:py-5 ${
+                  isNight ? "border-white/10" : "border-gray-100"
+                }`}
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-[#00A88C]">컬렉션 상세</p>
+                  <h2
+                    id="profile-collection-detail-title"
+                    className={`mt-1 truncate text-xl font-bold sm:text-2xl ${
+                      isNight ? "text-white" : "text-[#0F0F0F]"
+                    }`}
+                  >
+                    {selectedCollection.folderName}
+                  </h2>
+                  <p className={`mt-2 text-sm ${isNight ? "text-white/45" : "text-gray-500"}`}>
+                    저장된 피드 {selectedCollection.feeds.length}개
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {canEditProfile && (
+                    <Link
+                      to="/collections"
+                      className={`inline-flex items-center rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${
+                        isNight
+                          ? "border-white/10 text-[#00C9A7] hover:bg-white/5"
+                          : "border-gray-200 text-[#007E68] hover:border-[#00C9A7] hover:bg-[#F3FCF8]"
+                      }`}
+                      onClick={() => setSelectedCollection(null)}
+                    >
+                      컬렉션에서 편집
+                    </Link>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCollection(null)}
+                    className={`rounded-full border p-2 transition-colors ${
+                      isNight
+                        ? "border-white/10 text-white/40 hover:bg-white/10 hover:text-white/70"
+                        : "border-gray-200 text-gray-400 hover:bg-gray-50 hover:text-gray-700"
+                    }`}
+                    aria-label="닫기"
+                  >
+                    <X className="size-5" />
+                  </button>
+                </div>
+              </div>
+
+              <div
+                className={`min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6 ${
+                  isNight ? "bg-[#0C1222]" : "bg-[#FAFAF8]/50"
+                }`}
+              >
+                {selectedCollection.feeds.length === 0 ? (
+                  <div
+                    className={`rounded-2xl border-2 border-dashed px-6 py-16 text-center ${
+                      isNight ? "border-white/10 bg-[#0C1222]" : "border-[#D8D6CF] bg-[#F7F7F5]"
+                    }`}
+                  >
+                    <Grid3X3
+                      className={`mx-auto mb-3 size-10 ${isNight ? "text-white/15" : "text-[#8B8A84]"}`}
+                      aria-hidden
+                    />
+                    <p className={`text-sm font-medium ${isNight ? "text-white/55" : "text-[#5F5E5A]"}`}>
+                      아직 저장된 피드가 없어요.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {selectedCollection.feeds.map((feed) => (
+                      <article
+                        key={feed.postId}
+                        className={`overflow-hidden rounded-2xl border ${
+                          isNight ? "border-white/10 bg-[#141d30]" : "border-gray-200/90 bg-white"
+                        }`}
+                      >
+                        {feed.thumbnailImageUrl ? (
+                          <ImageWithFallback
+                            src={feed.thumbnailImageUrl}
+                            alt={feed.title}
+                            className="h-48 w-full object-cover sm:h-56"
+                          />
+                        ) : (
+                          <div
+                            className={`flex h-48 items-center justify-center sm:h-56 ${
+                              isNight ? "bg-white/5" : "bg-[#EEECE8]"
+                            }`}
+                          >
+                            <ImagePlus className={`size-10 ${isNight ? "text-white/20" : "text-gray-300"}`} aria-hidden />
+                          </div>
+                        )}
+                        <div className="p-4">
+                          <p className="text-xs font-semibold text-[#00A88C]">{feed.category || "미분류"}</p>
+                          <h3
+                            className={`mt-2 line-clamp-2 text-base font-bold leading-snug ${
+                              isNight ? "text-white" : "text-[#0F0F0F]"
+                            }`}
+                          >
+                            {feed.title}
+                          </h3>
+                          {feed.description ? (
+                            <p
+                              className={`mt-2 line-clamp-2 text-sm leading-relaxed ${
+                                isNight ? "text-white/50" : "text-[#5F5E5A]"
+                              }`}
+                            >
+                              {feed.description}
+                            </p>
+                          ) : null}
+                          <div className={`mt-3 flex items-center gap-3 ${isNight ? "text-white/35" : "text-gray-500"}`}>
+                            <span className="text-xs">좋아요 {feed.pickCount ?? 0}</span>
+                            <span className="text-xs">댓글 {feed.commentCount}</span>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <Footer />
     </div>
