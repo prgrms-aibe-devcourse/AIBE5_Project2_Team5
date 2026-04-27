@@ -36,8 +36,6 @@ import {
   getExploreFeedsApi,
   getExploreDesignersApi,
   type ExploreDesignerResponseDto,
-  runAiSearchApi,
-  type AiSearchMessage,
 } from "../api/exploreApi";
 import { useFeedDetail } from "../hooks/useFeedDetail";
 import { toggleFeedPickApi } from "../api/feedApi";
@@ -220,14 +218,7 @@ export default function Explore() {
   const [modalImageIndex, setModalImageIndex] = useState(0);
   const [startingProposalPostId, setStartingProposalPostId] = useState<number | null>(null);
 
-  // AI 어시스턴트 상태
-  const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
-  const [aiMessages, setAiMessages] = useState<(AiSearchMessage & { category?: string; keywords?: string[] })[]>([
-    { role: "ai", content: "안녕하세요! 픽셀 AI 어시스턴트입니다. 찾으시는 디자이너나 스타일이 있으신가요?" }
-  ]);
-  const [aiInput, setAiInput] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const aiChatEndRef = useRef<HTMLDivElement>(null);
+
 
   const {
     collections,
@@ -597,45 +588,7 @@ export default function Explore() {
   const filteredDesigners = useMemo(() => designers, [designers]);
 
   // AI 채팅 하단 스크롤
-  useEffect(() => {
-    if (isAiAssistantOpen) {
-      setTimeout(() => {
-        aiChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, 100);
-    }
-  }, [aiMessages, aiLoading, isAiAssistantOpen]);
 
-  const handleAiSearch = async (e?: React.FormEvent, directText?: string) => {
-    if (e) e.preventDefault();
-    const text = directText || aiInput;
-    if (!text.trim() || aiLoading) return;
-
-    const newMessages = [...aiMessages, { role: "user" as const, content: text }];
-    setAiMessages(newMessages);
-    setAiInput("");
-    setAiLoading(true);
-
-    try {
-      const response = await runAiSearchApi(newMessages as AiSearchMessage[]);
-      setAiMessages([
-        ...newMessages,
-        { 
-          role: "ai" as const, 
-          content: response.message, 
-          category: response.category || undefined, 
-          keywords: response.keywords || [] 
-        }
-      ]);
-    } catch (error) {
-      console.error("AI 검색 중 오류 발생:", error);
-      setAiMessages([
-        ...newMessages,
-        { role: "ai" as const, content: "죄송합니다. AI 엔진과 연결하는 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요." }
-      ]);
-    } finally {
-      setAiLoading(false);
-    }
-  };
 
   // 댓글 모달 입력의 onCommentKeyDown으로 전달되는 녹아웃 핸들러 (현재는 no-op)
   const handleSearchKeyDown = (_e: React.KeyboardEvent) => {};
@@ -1174,225 +1127,7 @@ export default function Explore() {
         />
       )}
 
-      {/* AI Assistant FAB (보조 진입점, 호버 라벨 포함) */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.85 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 0.3, type: "spring", damping: 18 }}
-        className="fixed bottom-28 right-8 z-40 group"
-      >
-        <motion.button
-          whileHover={{ scale: 1.06 }}
-          whileTap={{ scale: 0.94 }}
-          onClick={() => setIsAiAssistantOpen(true)}
-          className="relative size-14 rounded-full shadow-[0_10px_30px_rgba(0,201,167,0.35)] overflow-hidden"
-          aria-label="AI 어시스턴트 열기"
-        >
-          {/* 회전 그라디언트 */}
-          <span
-            className="absolute inset-0 rounded-full"
-            style={{
-              background: "conic-gradient(from 0deg, #00C9A7, #A8F0E4, #FF5C3A, #00C9A7)",
-              animation: "spin 6s linear infinite",
-            }}
-          />
-          {/* 내부 흰 원 */}
-          <span className="absolute inset-[3px] rounded-full bg-white flex items-center justify-center transition-colors group-hover:bg-[#0F0F0F]">
-            <Sparkles className="size-6 text-[#00A88C] group-hover:text-[#A8F0E4] transition-colors" />
-          </span>
-          {/* 알림 펄스 */}
-          <span className="absolute -top-1 -right-1 size-3.5 rounded-full bg-[#FF5C3A] border-2 border-white">
-            <span className="absolute inset-0 rounded-full bg-[#FF5C3A] animate-ping opacity-60" />
-          </span>
-        </motion.button>
-        {/* 호버 라벨 */}
-        <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 opacity-0 translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200 pointer-events-none">
-          <div className="bg-[#0F0F0F] text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-lg whitespace-nowrap">
-            AI 어시스턴트
-            <span className="absolute right-[-4px] top-1/2 -translate-y-1/2 size-2 rotate-45 bg-[#0F0F0F]" />
-          </div>
-        </div>
-      </motion.div>
 
-      {/* AI Assistant Sidebar */}
-      <AnimatePresence>
-        {isAiAssistantOpen && (
-          <>
-            {/* 백드롭 (모바일 + 데스크톱 모두 표시) */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsAiAssistantOpen(false)}
-              className="fixed inset-0 z-[100] bg-black/30 backdrop-blur-[3px]"
-            />
-            <motion.div
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 28, stiffness: 220 }}
-              className="fixed inset-y-0 right-0 z-[101] w-full max-w-[440px] bg-white shadow-[-30px_0_60px_rgba(0,0,0,0.18)] flex flex-col overflow-hidden"
-            >
-              {/* 헤더 (그라디언트 백드롭) */}
-              <div className="relative px-6 pt-6 pb-5 border-b border-gray-100 overflow-hidden">
-                {/* 데코 그라디언트 블롭 */}
-                <div className="absolute -top-16 -right-16 size-48 rounded-full bg-gradient-to-br from-[#00C9A7]/30 to-[#A8F0E4]/0 blur-2xl pointer-events-none" />
-                <div className="absolute -bottom-20 -left-10 size-44 rounded-full bg-gradient-to-tr from-[#FF5C3A]/15 to-transparent blur-2xl pointer-events-none" />
-                <div className="relative flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="relative size-11 rounded-2xl bg-gradient-to-br from-[#00C9A7] to-[#00A88C] flex items-center justify-center shadow-lg shadow-[#00C9A7]/30 shrink-0">
-                      <Sparkles className="size-5 text-white" />
-                      <span className="absolute -top-1 -right-1 size-3 rounded-full bg-[#FF5C3A] border-2 border-white" />
-                    </div>
-                    <div className="min-w-0">
-                      <h2 className="font-bold text-[15px] text-[#0F0F0F] tracking-tight">Pickxel AI</h2>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="size-1.5 rounded-full bg-[#00C9A7] animate-pulse" />
-                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-[0.12em]">탐색 어시스턴트 · BETA</span>
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setIsAiAssistantOpen(false)}
-                    className="p-2 hover:bg-gray-100 rounded-full transition-colors shrink-0"
-                    aria-label="닫기"
-                  >
-                    <X className="size-4 text-gray-500" />
-                  </button>
-                </div>
-              </div>
-
-              {/* 채팅 콘텐츠 */}
-              <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5 [scrollbar-width:thin]">
-                {aiMessages.map((msg, idx) => (
-                  <motion.div
-                    key={idx}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25 }}
-                    className={`flex items-end gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                  >
-                    {msg.role === "ai" && (
-                      <div className="size-7 rounded-full bg-gradient-to-br from-[#00C9A7] to-[#00A88C] flex items-center justify-center shrink-0 shadow-sm">
-                        <Sparkles className="size-3.5 text-white" />
-                      </div>
-                    )}
-                    <div
-                      className={`max-w-[80%] px-4 py-3 ${
-                        msg.role === "user"
-                          ? "bg-gradient-to-br from-[#0F0F0F] to-[#1F1F1F] text-white rounded-2xl rounded-br-md shadow-md"
-                          : "bg-white text-gray-800 rounded-2xl rounded-bl-md border border-gray-100 shadow-sm"
-                      }`}
-                    >
-                      <p className="text-[13.5px] leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                      {msg.role === "ai" && (msg.category || (msg.keywords && msg.keywords.length > 0)) && (
-                        <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.12em]">추천 적용 조건</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {msg.category && (
-                              <button
-                                onClick={() => { setSelectedCategory(msg.category!); setIsAiAssistantOpen(false); }}
-                                className="px-2.5 py-1 rounded-full bg-gradient-to-r from-[#00C9A7] to-[#00A88C] text-white text-[11px] font-bold shadow-sm hover:shadow-md transition-shadow"
-                              >
-                                #{msg.category}
-                              </button>
-                            )}
-                            {msg.keywords?.map(k => (
-                              <button
-                                key={k}
-                                onClick={() => { setSearchQuery(k); setIsAiAssistantOpen(false); }}
-                                className="px-2.5 py-1 rounded-full bg-[#F0FDF9] border border-[#BDEFD8] text-[#00A88C] text-[11px] font-bold hover:bg-[#A8F0E4]/30 transition-colors"
-                              >
-                                {k}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </motion.div>
-                ))}
-                {aiLoading && (
-                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-end gap-2 justify-start">
-                    <div className="size-7 rounded-full bg-gradient-to-br from-[#00C9A7] to-[#00A88C] flex items-center justify-center shrink-0 shadow-sm">
-                      <Sparkles className="size-3.5 text-white" />
-                    </div>
-                    <div className="bg-white px-4 py-3.5 rounded-2xl rounded-bl-md border border-gray-100 flex gap-1.5 shadow-sm">
-                      <span className="size-1.5 rounded-full bg-[#00C9A7]/60 animate-bounce" style={{ animationDelay: "0ms" }} />
-                      <span className="size-1.5 rounded-full bg-[#00C9A7]/60 animate-bounce" style={{ animationDelay: "150ms" }} />
-                      <span className="size-1.5 rounded-full bg-[#00C9A7]/60 animate-bounce" style={{ animationDelay: "300ms" }} />
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* 추천 프롬프트 (첫 메시지만 있을 때) */}
-                {aiMessages.length === 1 && !aiLoading && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="pt-2"
-                  >
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.14em] mb-3 px-1">이렇게 물어보세요</p>
-                    <div className="grid grid-cols-1 gap-2">
-                      {[
-                        { icon: Palette, text: "브랜딩 작업 잘 하는 디자이너 추천해줘" },
-                        { icon: Monitor, text: "모바일 UI/UX 포트폴리오 보여줘" },
-                        { icon: Camera, text: "감성적인 룩북 사진작가 찾아줘" },
-                        { icon: Box, text: "3D 비주얼이 강한 작품들" },
-                      ].map(({ icon: Icon, text }) => (
-                        <button
-                          key={text}
-                          onClick={() => handleAiSearch(undefined, text)}
-                          className="group/sg flex items-center gap-3 p-3 rounded-xl bg-white border border-gray-100 hover:border-[#00C9A7]/40 hover:bg-[#F0FDF9]/50 hover:shadow-md transition-all text-left"
-                        >
-                          <div className="size-8 rounded-lg bg-gradient-to-br from-[#A8F0E4]/30 to-[#00C9A7]/15 flex items-center justify-center text-[#00A88C] shrink-0">
-                            <Icon className="size-4" />
-                          </div>
-                          <span className="text-[12.5px] text-gray-700 group-hover/sg:text-[#0F0F0F] flex-1">{text}</span>
-                          <ArrowRight className="size-3.5 text-gray-300 group-hover/sg:text-[#00A88C] group-hover/sg:translate-x-0.5 transition-all" />
-                        </button>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-                <div ref={aiChatEndRef} />
-              </div>
-
-              {/* 입력창 */}
-              <div className="px-5 pt-4 pb-5 border-t border-gray-100 bg-gradient-to-b from-white to-[#FAFAF8]">
-                <form
-                  onSubmit={(e) => handleAiSearch(e)}
-                  className="relative flex items-end gap-2 bg-white border border-gray-200 rounded-2xl shadow-sm focus-within:border-[#00C9A7]/40 focus-within:shadow-[0_0_0_3px_rgba(0,201,167,0.12)] transition-all"
-                >
-                  <input
-                    value={aiInput}
-                    onChange={(e) => setAiInput(e.target.value)}
-                    placeholder="원하는 디자이너나 스타일을 자연스럽게 말해보세요..."
-                    className="flex-1 pl-4 pr-2 py-3.5 bg-transparent text-[13.5px] text-[#0F0F0F] placeholder:text-gray-400 focus:outline-none rounded-2xl"
-                    disabled={aiLoading}
-                  />
-                  <motion.button
-                    whileTap={{ scale: 0.92 }}
-                    type="submit"
-                    disabled={!aiInput.trim() || aiLoading}
-                    className="m-1.5 size-10 flex items-center justify-center bg-gradient-to-br from-[#00C9A7] to-[#00A88C] text-white rounded-xl shadow-md shadow-[#00C9A7]/25 hover:shadow-lg disabled:opacity-30 disabled:shadow-none transition-all shrink-0"
-                    aria-label="전송"
-                  >
-                    <Send className="size-4" />
-                  </motion.button>
-                </form>
-                <div className="mt-3 flex items-center justify-center gap-1.5">
-                  <Sparkles className="size-3 text-gray-300" />
-                  <p className="text-[10px] text-gray-400 font-medium">
-                    AI는 학습 중이며 답변이 부정확할 수 있어요
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
 
       {/* 컬렉션 저장 모달 */}
       <AnimatePresence>
