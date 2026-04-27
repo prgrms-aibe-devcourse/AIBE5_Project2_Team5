@@ -219,7 +219,7 @@ public class ProfileServiceImpl implements ProfileService {
                 .portfolioUrl(feed == null ? null : feed.getPortfolioUrl())
                 .imageUrls(imageUrls)
                 .thumbnailImageUrl(imageUrls.isEmpty() ? null : imageUrls.get(0))
-                .tags(categoryLabel == null ? List.of() : List.of("#" + categoryLabel))
+                .tags(resolveTagsOrCategory(feed != null ? feed.getTags() : null, categoryLabel))
                 .createdAt(post.getCreatedAt())
                 .build();
     }
@@ -285,6 +285,17 @@ public class ProfileServiceImpl implements ProfileService {
         } catch (JsonProcessingException exception) {
             return List.of();
         }
+    }
+
+    private List<String> resolveTagsOrCategory(String storedTags, String categoryLabel) {
+        if (storedTags != null && !storedTags.isBlank()) {
+            List<String> parsed = java.util.Arrays.stream(storedTags.split(","))
+                    .map(String::trim)
+                    .filter(t -> !t.isEmpty())
+                    .toList();
+            if (!parsed.isEmpty()) return parsed;
+        }
+        return categoryLabel == null ? List.of() : List.of("#" + categoryLabel);
     }
 
     private List<String> normalizeStringList(List<String> values) {

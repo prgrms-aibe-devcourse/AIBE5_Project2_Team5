@@ -205,7 +205,7 @@ export default function Explore() {
   const [designerPage, setDesignerPage] = useState(0);
   const [hasMoreDesigners, setHasMoreDesigners] = useState(true);
   const [isFetchingMoreDesigners, setIsFetchingMoreDesigners] = useState(false);
-  
+
   const observerRef = useRef<HTMLDivElement>(null);
 
   // 상호작용 상태
@@ -301,7 +301,7 @@ export default function Explore() {
     try {
       // 서버에 좋아요 요청 전송
       const response = await toggleFeedPickApi(id);
-      
+
       // 1. 하트 활성화 상태 업데이트 (Set)
       setLikedItems(prev => {
         const newSet = new Set(prev);
@@ -311,17 +311,17 @@ export default function Explore() {
       });
 
       // 2. 피드 목록(feeds) 데이터의 좋아요 수 동기화
-      setFeeds(prevFeeds => 
-        prevFeeds.map(feed => 
-          feed.id === id 
-            ? { ...feed, likes: response.pickCount, likedByMe: response.picked } 
+      setFeeds(prevFeeds =>
+        prevFeeds.map(feed =>
+          feed.id === id
+            ? { ...feed, likes: response.pickCount, likedByMe: response.picked }
             : feed
         )
       );
 
       // 3. 만약 상세 모달이 열려있다면 상세 데이터도 동기화
       if (selectedExploreFeed && selectedExploreFeed.id === id) {
-        setSelectedExploreFeed(prev => 
+        setSelectedExploreFeed(prev =>
           prev ? { ...prev, likes: response.pickCount, likedByMe: response.picked } : null
         );
       }
@@ -1185,7 +1185,7 @@ export default function Explore() {
                       key={col.folderId}
                       onClick={() => saveToCollection(col.folderId)}
                       className={`w-full p-3 rounded-lg border flex items-center justify-between gap-3 text-left transition-all ${
-                        isSaved ? "bg-[#E7FAF6] border-[#00C9A7] text-[#007D69]" : "bg-white border-gray-200 hover:border-[#00C9A7] hover:bg-[#F2FFFC]"
+                        isSaved ? "bg-[#F5FFFB] border-[#00C9A7] text-[#007E68]" : "bg-white border-gray-200 hover:border-[#00C9A7] hover:bg-[#F5FFFB]"
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">

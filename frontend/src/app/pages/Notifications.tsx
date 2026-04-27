@@ -112,9 +112,9 @@ const getTypeConfig = (notification: NotificationItem) => {
       return {
         icon: <Sparkles className="size-4" />,
         iconBg: "bg-[#EEF9F6] text-[#00A88C]",
-        dotColor: "bg-[#4DD4AC]",
+        dotColor: "bg-[#00C9A7]",
         badge: "bg-[#EEF9F6] text-[#00A88C] border-[#CDEFE6]",
-        btnClass: "bg-[#4DD4AC] hover:bg-[#3BC99A] text-black",
+        btnClass: "bg-[#00C9A7] hover:bg-[#00A88C] text-black",
         label: "프로젝트",
       };
     case "complete":
@@ -219,7 +219,7 @@ export default function Notifications() {
         setIsModalDetailLoading(true);
         const detail = await getExploreFeedDetailApi(selectedFeedForModal!);
         setSelectedProjectDetail(detail);
-        
+
         // FeedCardItem으로 매핑
         const imageUrls = detail.imageUrls?.filter(Boolean) || [];
         const mapped: FeedCardItem = {
@@ -301,7 +301,7 @@ export default function Notifications() {
       await loadNotifications();
       return;
     }
-    
+
     // 피드 관련 알림인 경우 모달 오픈
     if (notification.actionType === "feed" && notification.referenceId) {
       setSelectedFeedForModal(Number(notification.referenceId));
@@ -424,13 +424,13 @@ export default function Notifications() {
                         transition={{ duration: 0.28, delay: index * 0.04 }}
                         className={`relative bg-white rounded-2xl border overflow-hidden transition-shadow duration-200 group hover:shadow-md ${
                           !notification.isRead
-                            ? "border-[#A8F0E4]"
+                            ? "border-[#BDEFD8]"
                             : "border-[#EAEAE8]"
                         }`}
                       >
                         {/* 미읽음 좌측 강조선 */}
                         {!notification.isRead && (
-                          <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-[#4DD4AC]" />
+                          <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-[#00C9A7]" />
                         )}
 
                         <div className="flex items-start gap-4 px-6 py-5">
@@ -572,7 +572,7 @@ export default function Notifications() {
                         </div>
                         <button
                           onClick={() => navigate("/messages")}
-                          className="inline-flex items-center gap-1.5 rounded-xl bg-[#4DD4AC] px-4 py-2 text-sm font-semibold text-black hover:bg-[#3BC99A] transition-colors"
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-[#00C9A7] px-4 py-2 text-sm font-semibold text-black hover:bg-[#00A88C] transition-colors"
                         >
                           <MessageCircle className="size-3.5" />
                           메시지 보기
@@ -623,7 +623,7 @@ export default function Notifications() {
             activeModalImage={(selectedExploreFeed.images || [])[modalImageIndex] || selectedExploreFeed.image}
             selectedFeedImages={selectedExploreFeed.images || []}
             modalImageIndex={modalImageIndex}
-            savedItemIds={new Set()} // 알림 페이지에서는 저장 상태 연동은 추후 필요시 추가
+            savedItemIds={new Set()}
             selectedFeedComments={selectedFeedComments}
             isFeedDetailLoading={isModalDetailLoading}
             feedDetailError={null}

@@ -2,6 +2,7 @@ package com.example.pixel_project2.feed.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.util.List;
 
 public record CreateFeedRequest(
         @NotBlank(message = "Title is required.")
@@ -15,6 +16,8 @@ public record CreateFeedRequest(
         String category,
 
         @Size(max = 200, message = "Portfolio URL must be 200 characters or less.")
-        String portfolioUrl
+        String portfolioUrl,
+
+        List<String> tags
 ) {
 }
