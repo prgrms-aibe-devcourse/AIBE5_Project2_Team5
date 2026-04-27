@@ -1,9 +1,10 @@
 import { Link, useLocation, useNavigate } from "react-router";
 import { Bell, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
-import { motion, LayoutGroup } from "motion/react";
+import { toast } from "sonner";
+import { motion, LayoutGroup, AnimatePresence } from "motion/react";
 import { createNotificationSocket } from "../api/notificationSocket";
-import { applyLiveNotificationCreated, fetchUnreadCount, subscribeNotificationState } from "../utils/notificationState";
+import { applyLiveNotificationCreated, fetchUnreadCount, subscribeNotificationState, buildNotificationTitle } from "../utils/notificationState";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { clearAuthenticated, getCurrentUser, subscribeCurrentUser } from "../utils/auth";
 import { DEFAULT_AVATAR } from "../utils/avatar";
@@ -25,6 +26,8 @@ export default function Navigation({ isNight: isNightProp, onToggle: onTogglePro
   const [currentUser, setCurrentUserState] = useState(() => getCurrentUser());
   const [hasUnread, setHasUnread] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [showMiniNotification, setShowMiniNotification] = useState(false);
+  const [lastNotificationTitle, setLastNotificationTitle] = useState("");
   const profilePath = "/profile/me";
 
   const navItems = [
@@ -75,13 +78,22 @@ export default function Navigation({ isNight: isNightProp, onToggle: onTogglePro
       onEvent: (event) => {
         if (event.type === "notification.created") {
           applyLiveNotificationCreated(event.notification, event.unreadCount);
+          setHasUnread(event.unreadCount > 0);
+
+          // 종 아이콘 옆 미니 팝업 띄우기
+          const title = buildNotificationTitle(event.notification);
+          setLastNotificationTitle(title);
+          setShowMiniNotification(true);
+
+          // 5초 후 자동으로 닫기
+          setTimeout(() => setShowMiniNotification(false), 5000);
         }
       },
     });
 
     notificationSocket.connect();
     return () => notificationSocket.close();
-  }, [currentUser?.userId]);
+  }, [currentUser?.userId, navigate]);
 
   useEffect(() => {
     const refreshCurrentUser = () => setCurrentUserState(getCurrentUser());
@@ -186,23 +198,58 @@ export default function Navigation({ isNight: isNightProp, onToggle: onTogglePro
               로그아웃
             </button>
 
-            <Link
-              to="/notifications"
-              className={`relative flex size-10 items-center justify-center rounded-full transition-colors ${
-                isNight
-                  ? "text-white/50 hover:bg-white/10 hover:text-white"
-                  : "text-gray-500 hover:bg-gray-100 hover:text-[#0F0F0F]"
-              }`}
-            >
-              <Bell className="size-5" />
-              {hasUnread && (
-                <span
-                  className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#FF5C3A] ring-2 ${
-                    isNight ? "ring-[#0C1222]" : "ring-white"
-                  }`}
-                />
-              )}
-            </Link>
+            <div className="relative">
+              <Link
+                to="/notifications"
+                className={`relative flex size-10 items-center justify-center rounded-full transition-colors ${
+                  isNight
+                    ? "text-white/50 hover:bg-white/10 hover:text-white"
+                    : "text-gray-500 hover:bg-gray-100 hover:text-[#0F0F0F]"
+                }`}
+              >
+                <Bell className="size-5" />
+                {hasUnread && (
+                  <span
+                    className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#FF5C3A] ring-2 ${
+                      isNight ? "ring-[#0C1222]" : "ring-white"
+                    }`}
+                  />
+                )}
+              </Link>
+
+              {/* 미니 알림 말풍선 */}
+              <AnimatePresence>
+                {showMiniNotification && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.95, x: "-50%" }}
+                    animate={{ opacity: 1, y: 0, scale: 1, x: "-50%" }}
+                    exit={{ opacity: 0, scale: 0.95, x: "-50%" }}
+                    className="absolute left-1/2 top-full mt-3 w-52 -translate-x-1/2 pointer-events-none"
+                  >
+                    <div className={`relative rounded-xl border p-3.5 shadow-2xl ${
+                      isNight ? "bg-[#1A1F2E] border-white/10 text-white" : "bg-white border-gray-100 text-gray-800"
+                    }`}>
+                      {/* 말풍선 꼬리 */}
+                      <div className={`absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-l border-t ${
+                        isNight ? "bg-[#1A1F2E] border-white/10" : "bg-white border-gray-100"
+                      }`} />
+                      
+                      <div className="relative z-10 flex flex-col gap-2 pointer-events-auto">
+                        <p className="text-[11px] font-semibold leading-tight">
+                          {lastNotificationTitle}
+                        </p>
+                        <button 
+                          onClick={() => navigate("/notifications")}
+                          className="text-[10px] font-bold text-[#00C9A7] hover:underline text-left"
+                        >
+                          자세히 보기 →
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
             <Link
               to={profilePath}

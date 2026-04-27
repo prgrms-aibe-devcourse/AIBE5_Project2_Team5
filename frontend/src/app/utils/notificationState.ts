@@ -53,7 +53,7 @@ const timeAgo = (dateString: string) => {
 };
 
 // type + senderNickname 기반으로 사람이 읽을 수 있는 알림 제목 생성
-const buildNotificationTitle = (item: NotificationResponse): string => {
+export const buildNotificationTitle = (item: NotificationResponse): string => {
   const name = item.senderNickname || "누군가";
   switch (item.type) {
     case "LIKE":

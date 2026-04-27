@@ -21,6 +21,7 @@ import { normalizeCategoryLabel, normalizePostTypeLabel } from "../utils/matchin
 import { useNightMode } from "../contexts/NightModeContext";
 import type {
   BaseFeedItem,
+  FeedApiItem,
   FeedCardItem,
   FeedComment,
   FeedListApiData,
@@ -124,7 +125,7 @@ export default function Feed() {
   const {
     isLoading: isFeedDetailLoading,
     error: feedDetailError,
-  } = useFeedDetail<FeedCardItem>({
+  } = useFeedDetail<FeedCardItem, BaseFeedItem>({
     selectedFeed,
     setApiFeedItems,
     setSelectedFeed,

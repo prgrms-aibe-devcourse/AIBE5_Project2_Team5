@@ -3,38 +3,7 @@ import { apiRequest } from "../api/apiClient";
 import { getUserAvatar } from "../utils/avatar";
 import { getFeedIntegrationLabel, parseFeedIntegrations } from "../utils/feedIntegrations";
 import { normalizeCategoryLabel, normalizePostTypeLabel } from "../utils/matchingCategories";
-
-type FeedAuthor = {
-  userId?: number;
-  name: string;
-  role: string;
-  avatar: string;
-  profileKey?: string;
-};
-
-type BaseFeedItem = {
-  id: number;
-  author: FeedAuthor;
-  title: string;
-  description: string;
-  image: string;
-  images?: string[];
-  likes: number;
-  comments: number;
-  tags: string[];
-  category?: string;
-  integrations?: Array<{
-    provider: "figma" | "adobe";
-    label: string;
-    url: string;
-  }>;
-  createdAt?: string;
-  userId?: number;
-  portfolioUrl?: string | null;
-  likedByMe?: boolean;
-  isMine?: boolean;
-  isApiFeed?: boolean;
-};
+import type { BaseFeedItem } from "../types/feed";
 
 type FeedDetailApiData = {
   postId: number;
@@ -58,9 +27,9 @@ type FeedDetailApiData = {
   tags: string[];
 };
 
-type Params<TFeed extends BaseFeedItem> = {
+type Params<TFeed extends BaseFeedItem, TArrayItem extends BaseFeedItem = TFeed> = {
   selectedFeed: TFeed | null;
-  setApiFeedItems: React.Dispatch<React.SetStateAction<TFeed[]>>;
+  setApiFeedItems: React.Dispatch<React.SetStateAction<TArrayItem[]>>;
   setSelectedFeed: React.Dispatch<React.SetStateAction<TFeed | null>>;
 };
 
@@ -70,11 +39,11 @@ function resolveFeedAuthorRole(role: string, postType?: string) {
   return role || postType || "";
 }
 
-export function useFeedDetail<TFeed extends BaseFeedItem>({
+export function useFeedDetail<TFeed extends BaseFeedItem, TArrayItem extends BaseFeedItem = TFeed>({
   selectedFeed,
   setApiFeedItems,
   setSelectedFeed,
-}: Params<TFeed>) {
+}: Params<TFeed, TArrayItem>) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadedFeedDetailIds, setLoadedFeedDetailIds] = useState<Record<number, true>>({});
@@ -104,13 +73,13 @@ export function useFeedDetail<TFeed extends BaseFeedItem>({
               ? Array.from(new Set([fallbackImage, ...fallbackImages]))
               : [];
 
-        const updatedFeed = {
+        const updatedFeed: any = {
           id: detail.postId,
           author: {
             userId: detail.userId,
             name: detail.nickname,
             role: detail.job || resolveFeedAuthorRole(detail.role, detail.postType),
-            profileKey: detail.profileKey,
+            profileKey: detail.profileKey || String(detail.userId),
             avatar: getUserAvatar(detail.profileImageUrl, detail.userId, detail.nickname),
           },
           title: detail.title,
@@ -133,11 +102,11 @@ export function useFeedDetail<TFeed extends BaseFeedItem>({
           likedByMe: detail.picked,
           isMine: detail.mine,
           isApiFeed: true,
-        } satisfies Partial<TFeed>;
+        };
 
         setApiFeedItems((prev) =>
           prev.map((item) =>
-            item.id === feedId ? ({ ...item, ...updatedFeed } as TFeed) : item,
+            item.id === feedId ? ({ ...item, ...updatedFeed } as TArrayItem) : item,
           ),
         );
         setSelectedFeed((prev) =>
