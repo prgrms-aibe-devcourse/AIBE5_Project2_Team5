@@ -1,5 +1,5 @@
 ﻿import Navigation from "../components/Navigation";
-import { Edit, Search, Info, Send, Image, Smile, AtSign, Sparkles, Calendar, FileText, CheckCircle, Circle, ChevronDown, ChevronUp, ThumbsUp, XCircle, Paperclip, Figma, ExternalLink, Plus, Clock, Check, CheckCheck, Trash2, GripVertical, Eye, ArrowLeft, Bookmark } from "lucide-react";
+import { Edit, Search, Info, Send, Image, Smile, AtSign, Sparkles, Calendar, FileText, CheckCircle, Circle, ChevronDown, ChevronUp, ThumbsUp, XCircle, Paperclip, Figma, ExternalLink, Plus, Clock, Check, CheckCheck, Trash2, GripVertical, Eye, ArrowLeft, Bookmark, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { ImageWithFallback } from "../components/figma/ImageWithFallback";
@@ -1103,8 +1103,10 @@ export default function Messages() {
   const [assistantError, setAssistantError] = useState<string | null>(null);
   const [isAssistantLoading, setIsAssistantLoading] = useState(false);
   const [isAssistantExpanded, setIsAssistantExpanded] = useState(false);
+  const [hasAssistantRequested, setHasAssistantRequested] = useState(false);
   const assistantRequestIdRef = useRef(0);
-  const assistantRefreshTimeoutRef = useRef<number | null>(null);
+  const assistantLastLoadedContextRef = useRef<string | null>(null);
+  const assistantInitialConversationLoadRef = useRef<number | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
@@ -1130,6 +1132,8 @@ export default function Messages() {
   const activeMessages = activeConversation
     ? chatMessages.filter((message) => message.conversationId === activeConversation.id)
     : [];
+  const latestActiveMessage =
+    activeMessages.length > 0 ? activeMessages[activeMessages.length - 1] : null;
   const assistantMessageSignature = activeMessages
     .slice(-6)
     .map((message) => {
@@ -1154,7 +1158,6 @@ export default function Messages() {
       ].join(":"),
     )
     .join("|");
-
   useEffect(() => {
     setAssistantGoal("reply");
     setAssistantSuggestions([]);
@@ -1162,15 +1165,9 @@ export default function Messages() {
     setAssistantError(null);
     setIsAssistantLoading(false);
     setIsAssistantExpanded(false);
+    setHasAssistantRequested(false);
+    assistantLastLoadedContextRef.current = null;
   }, [activeConversationId]);
-
-  useEffect(() => {
-    return () => {
-      if (assistantRefreshTimeoutRef.current !== null) {
-        window.clearTimeout(assistantRefreshTimeoutRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (recoveryPollingTimeoutRef.current !== null) {
@@ -2761,9 +2758,24 @@ export default function Messages() {
     goal: MessageAssistantGoal,
     options?: {
       silent?: boolean;
+      force?: boolean;
     },
   ) => {
     if (!activeConversation) return;
+
+    const contextKey = [
+      activeConversation.id,
+      goal,
+      messageText,
+      assistantMessageSignature,
+      assistantProcessSignature,
+    ].join("::");
+
+    if (options?.silent && !options.force && assistantLastLoadedContextRef.current === contextKey) {
+      return;
+    }
+
+    assistantLastLoadedContextRef.current = contextKey;
 
     const requestId = assistantRequestIdRef.current + 1;
     assistantRequestIdRef.current = requestId;
@@ -2782,8 +2794,15 @@ export default function Messages() {
       if (assistantRequestIdRef.current !== requestId) {
         return;
       }
+      if (!response.usedAi) {
+        setAssistantSuggestions([]);
+        setAssistantUsedAi(false);
+        setAssistantError("AI 응답을 받지 못했어요. Gemini API 상태를 확인한 뒤 다시 시도해주세요.");
+        return;
+      }
+
       setAssistantSuggestions(response.suggestions);
-      setAssistantUsedAi(response.usedAi);
+      setAssistantUsedAi(true);
       setAssistantError(null);
     } catch (error) {
       if (assistantRequestIdRef.current !== requestId) {
@@ -2808,7 +2827,29 @@ export default function Messages() {
     setAssistantGoal(goal);
     setAssistantError(null);
     setIsAssistantLoading(true);
+    setHasAssistantRequested(true);
     await loadAssistantSuggestions(goal);
+  };
+
+  const handleSelectAssistantGoal = (goal: MessageAssistantGoal) => {
+    if (assistantGoal === goal) {
+      return;
+    }
+
+    setAssistantGoal(goal);
+    setAssistantSuggestions([]);
+    setAssistantUsedAi(false);
+    setAssistantError(null);
+  };
+
+  const handleRefreshAssistantSuggestions = async () => {
+    if (!activeConversation || isAssistantLoading) {
+      return;
+    }
+
+    setIsAssistantExpanded(true);
+    setHasAssistantRequested(true);
+    await loadAssistantSuggestions(assistantGoal);
   };
 
   const handleApplyAssistantSuggestion = (suggestion: string) => {
@@ -2879,30 +2920,26 @@ export default function Messages() {
   };
 
   useEffect(() => {
-    if (!activeConversation) {
+    if (!activeConversation || !latestActiveMessage) {
       return;
     }
 
-    if (assistantRefreshTimeoutRef.current !== null) {
-      window.clearTimeout(assistantRefreshTimeoutRef.current);
+    if (assistantInitialConversationLoadRef.current === activeConversation.id) {
+      return;
     }
 
-    assistantRefreshTimeoutRef.current = window.setTimeout(() => {
-      void loadAssistantSuggestions(assistantGoal, { silent: true });
-    }, 350);
+    assistantInitialConversationLoadRef.current = activeConversation.id;
 
-    return () => {
-      if (assistantRefreshTimeoutRef.current !== null) {
-        window.clearTimeout(assistantRefreshTimeoutRef.current);
-        assistantRefreshTimeoutRef.current = null;
-      }
-    };
-  }, [
-    activeConversationId,
-    assistantGoal,
-    assistantMessageSignature,
-    assistantProcessSignature,
-  ]);
+    if (latestActiveMessage.isSelf) {
+      return;
+    }
+
+    setAssistantGoal("reply");
+    setAssistantError(null);
+    setIsAssistantExpanded(true);
+    setHasAssistantRequested(true);
+    void loadAssistantSuggestions("reply", { force: true });
+  }, [activeConversation, latestActiveMessage]);
 
   const getCurrentTime = () => {
     return new Intl.DateTimeFormat("ko-KR", {
@@ -4208,8 +4245,8 @@ export default function Messages() {
                   </div>
                   <p className="mt-1 text-xs text-[#6E3A49]">
                     {isAssistantExpanded
-                      ? "대화 흐름에 맞는 문구를 바로 골라서 입력창에 넣어보세요."
-                      : "추천 문구를 빠르게 펼쳐볼 수 있어요."}
+                      ? "모드를 고른 뒤 생성 버튼을 누르면 대화 흐름에 맞는 문구를 준비해드려요."
+                      : "처음 연결할 때 한 번 답장 추천을 띄우고, 이후엔 원하는 모드로 다시 생성할 수 있어요."}
                   </p>
                 </div>
                 <button
@@ -4229,26 +4266,52 @@ export default function Messages() {
 
               {isAssistantExpanded && (
                 <div className="mt-3 space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    {assistantActionItems.map((action) => {
-                      const isSelected = assistantGoal === action.goal;
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      {assistantActionItems.map((action) => {
+                        const isSelected = assistantGoal === action.goal;
 
-                      return (
+                        return (
+                          <button
+                            key={action.goal}
+                            type="button"
+                            onClick={() => handleSelectAssistantGoal(action.goal)}
+                            disabled={isAssistantLoading}
+                            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
+                              isSelected
+                                ? "bg-[#E8456D] text-white hover:bg-[#D7375F] hover:shadow-md"
+                                : "bg-white border border-[#FFB8C5] text-[#A30F3D] hover:bg-[#FFF7F9]"
+                            }`}
+                          >
+                            {action.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleLoadAssistantSuggestions(assistantGoal)}
+                        disabled={isAssistantLoading}
+                        className="inline-flex items-center gap-1 rounded-lg bg-[#E8456D] px-3 py-1.5 text-xs font-semibold text-white transition-all hover:bg-[#D7375F] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label="AI 추천 생성"
+                      >
+                        <Sparkles className="size-3.5" />
+                        생성
+                      </button>
+                      {(assistantError || assistantSuggestions.length > 0 || hasAssistantRequested) && (
                         <button
-                          key={action.goal}
                           type="button"
-                          onClick={() => handleLoadAssistantSuggestions(action.goal)}
+                          onClick={handleRefreshAssistantSuggestions}
                           disabled={isAssistantLoading}
-                          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
-                            isSelected
-                              ? "bg-[#E8456D] text-white hover:bg-[#D7375F] hover:shadow-md"
-                              : "bg-white border border-[#FFB8C5] text-[#A30F3D] hover:bg-[#FFF7F9]"
-                          }`}
+                          className="inline-flex items-center gap-1 rounded-lg border border-[#FFD6DE] bg-white/85 px-2.5 py-1.5 text-xs font-semibold text-[#A30F3D] transition-all hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label="AI 추천 다시 불러오기"
                         >
-                          {action.label}
+                          <RefreshCw className={`size-3.5 ${isAssistantLoading ? "animate-spin" : ""}`} />
+                          {assistantError ? "다시 시도" : "새로고침"}
                         </button>
-                      );
-                    })}
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-2">
                     {isAssistantLoading ? (
@@ -4332,7 +4395,12 @@ export default function Messages() {
                       </div>
                     )}
                     {assistantError && (
-                      <p className="text-xs font-semibold text-[#C43E60]">{assistantError}</p>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-[#C43E60]">{assistantError}</p>
+                        <p className="text-[11px] text-[#8C4458]">
+                          오류 상태에서는 자동 재요청을 멈추고, 위 버튼으로만 다시 시도해요.
+                        </p>
+                      </div>
                     )}
                   </div>
                 </div>

@@ -623,6 +623,182 @@ class MessageFlowIntegrationTest {
     }
 
     @Test
+    void assistantSuggestionsUsePreviousThreadWhenLatestPartnerMessageIsReferential() throws Exception {
+        JsonNode firstUser = signUp("assistant-thread-a@test.io", "Assistant Thread A", "threadA", "DESIGNER");
+        JsonNode secondUser = signUp("assistant-thread-b@test.io", "Assistant Thread B", "threadB", "CLIENT");
+
+        String firstToken = login("assistant-thread-a@test.io", "testPass1!");
+        String secondToken = login("assistant-thread-b@test.io", "testPass1!");
+
+        long secondUserId = secondUser.path("userId").asLong();
+
+        MvcResult createConversationResult = mockMvc.perform(post("/api/messages/conversations")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("partnerUserId", secondUserId))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andReturn();
+
+        long conversationId = readData(createConversationResult).path("id").asLong();
+
+        mockMvc.perform(post("/api/messages/conversations/{conversationId}/messages", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "clientId", "assistant-thread-message-0",
+                                "message", "내일 오후 3시에 review deck 보면서 같이 확인해보겠습니다.",
+                                "attachments", List.of()
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        mockMvc.perform(post("/api/messages/conversations/{conversationId}/messages", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + secondToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "clientId", "assistant-thread-message-1",
+                                "message", "좋아요. 그때 줌 링크도 같이 보내주세요.",
+                                "attachments", List.of()
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        mockMvc.perform(put("/api/messages/conversations/{conversationId}/processes", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "processes", List.of(
+                                        Map.of(
+                                                "title", "Review sync",
+                                                "confirmations", Map.of(
+                                                        "designer", false,
+                                                        "client", false
+                                                ),
+                                                "tasks", List.of(
+                                                        Map.of(
+                                                                "text", "send zoom link",
+                                                                "completed", false
+                                                        ),
+                                                        Map.of(
+                                                                "text", "review deck",
+                                                                "completed", false
+                                                        )
+                                                )
+                                        )
+                                )
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        mockMvc.perform(post("/api/messages/conversations/{conversationId}/assistant/suggestions", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "goal", "reply",
+                                "draft", ""
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.goal").value("reply"))
+                .andExpect(jsonPath("$.data.usedAi").value(false))
+                .andExpect(jsonPath("$.data.suggestions.length()").value(3))
+                .andExpect(jsonPath("$.data.suggestions[0]").isString())
+                .andExpect(jsonPath("$.data.suggestions[0]").value(org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.containsString("줌 링크"),
+                        org.hamcrest.Matchers.containsString("3시")
+                )));
+    }
+
+    @Test
+    void assistantSuggestionsStayGroundedWhenLatestPartnerMessageIsLowSignal() throws Exception {
+        JsonNode firstUser = signUp("assistant-noise-a@test.io", "Assistant Noise A", "noiseA", "DESIGNER");
+        JsonNode secondUser = signUp("assistant-noise-b@test.io", "Assistant Noise B", "noiseB", "CLIENT");
+
+        String firstToken = login("assistant-noise-a@test.io", "testPass1!");
+        String secondToken = login("assistant-noise-b@test.io", "testPass1!");
+
+        long secondUserId = secondUser.path("userId").asLong();
+
+        MvcResult createConversationResult = mockMvc.perform(post("/api/messages/conversations")
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("partnerUserId", secondUserId))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andReturn();
+
+        long conversationId = readData(createConversationResult).path("id").asLong();
+
+        mockMvc.perform(post("/api/messages/conversations/{conversationId}/messages", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "clientId", "assistant-noise-message-0",
+                                "message", "Let's keep the review deck on track for tomorrow at 3 PM.",
+                                "attachments", List.of()
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        mockMvc.perform(post("/api/messages/conversations/{conversationId}/messages", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + secondToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "clientId", "assistant-noise-message-1",
+                                "message", "후룰룰루",
+                                "attachments", List.of()
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        mockMvc.perform(put("/api/messages/conversations/{conversationId}/processes", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "processes", List.of(
+                                        Map.of(
+                                                "title", "Review follow-up",
+                                                "confirmations", Map.of(
+                                                        "designer", false,
+                                                        "client", false
+                                                ),
+                                                "tasks", List.of(
+                                                        Map.of(
+                                                                "text", "review deck",
+                                                                "completed", false
+                                                        ),
+                                                        Map.of(
+                                                                "text", "share revision notes",
+                                                                "completed", false
+                                                        )
+                                                )
+                                        )
+                                )
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        mockMvc.perform(post("/api/messages/conversations/{conversationId}/assistant/suggestions", conversationId)
+                        .header(HttpHeaders.AUTHORIZATION, BEARER + firstToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "goal", "reply",
+                                "draft", ""
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.goal").value("reply"))
+                .andExpect(jsonPath("$.data.usedAi").value(false))
+                .andExpect(jsonPath("$.data.suggestions.length()").value(3))
+                .andExpect(jsonPath("$.data.suggestions[0]").isString())
+                .andExpect(jsonPath("$.data.suggestions[0]").value(org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.containsString("review deck"),
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("후룰룰루"))
+                )));
+    }
+
+    @Test
     void usersCanSendFallbackAssistantSuggestionWithoutTriggeringPreviewStorageError() throws Exception {
         String uniqueSuffix = String.valueOf(System.nanoTime());
         String shortSuffix = uniqueSuffix.substring(Math.max(0, uniqueSuffix.length() - 6));
