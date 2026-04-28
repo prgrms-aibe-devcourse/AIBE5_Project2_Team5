@@ -2839,16 +2839,22 @@ export default function Messages() {
       if (assistantRequestIdRef.current !== requestId) {
         return;
       }
-      if (!response.usedAi) {
-        setAssistantSuggestions([]);
-        setAssistantUsedAi(false);
-        setAssistantError("AI 응답을 받지 못했어요. Gemini API 상태를 확인한 뒤 다시 시도해주세요.");
+
+      const suggestions = response.suggestions ?? [];
+      if (suggestions.length > 0) {
+        setAssistantSuggestions(suggestions);
+        setAssistantUsedAi(Boolean(response.usedAi));
+        setAssistantError(null);
         return;
       }
 
-      setAssistantSuggestions(response.suggestions);
-      setAssistantUsedAi(true);
-      setAssistantError(null);
+      setAssistantSuggestions([]);
+      setAssistantUsedAi(false);
+      setAssistantError(
+        response.usedAi
+          ? "추천 문구를 만들지 못했어요. 잠시 후 다시 시도해 주세요."
+          : "AI 추천(Gemini)을 불러오지 못했습니다. 서버 환경 변수 GEMINI_API_KEY가 설정되어 있는지 확인해 주세요.",
+      );
     } catch (error) {
       if (assistantRequestIdRef.current !== requestId) {
         return;

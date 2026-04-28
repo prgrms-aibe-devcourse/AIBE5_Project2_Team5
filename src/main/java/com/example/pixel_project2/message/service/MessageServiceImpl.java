@@ -50,6 +50,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.annotation.PostConstruct;
+
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -95,8 +97,16 @@ public class MessageServiceImpl implements MessageService {
     @Value("${app.gemini.api-key:}")
     private String geminiApiKey;
 
-    @Value("${app.gemini.model:gemini-2.5-flash}")
+    @Value("${app.gemini.model:gemini-2.0-flash}")
     private String geminiModel;
+
+    @PostConstruct
+    void logMessageAssistantGeminiConfig() {
+        String keyPreview = (geminiApiKey != null && geminiApiKey.length() > 8)
+                ? geminiApiKey.substring(0, 6) + "..."
+                : "(미설정)";
+        log.info("[메시지 어시스턴트] Gemini 키={}, 모델={} (키 미설정 시 규칙 기반 폴백만 동작)", keyPreview, geminiModel);
+    }
 
     @Override
     public MessagePolicyResponse getMessagePolicy() {
