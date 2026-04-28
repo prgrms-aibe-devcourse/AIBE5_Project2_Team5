@@ -383,9 +383,7 @@ export default function Feed() {
     setIsStartingProposal(true);
     try {
       const conversation = await createMessageConversationApi(item.author.userId);
-      setSelectedFeed(null);
-      navigate(`/messages?conversationId=${conversation.id}`);
-      void sendConversationMessageApi(conversation.id, {
+      await sendConversationMessageApi(conversation.id, {
         clientId: `feed-proposal-${item.id}-${now}`,
         message: proposalMessage,
         attachments: (getFeedImages(item)[0] ?? item.image)
@@ -399,9 +397,9 @@ export default function Feed() {
               },
             ]
           : [],
-      }).catch((error) => {
-        console.error("제안 메시지 자동 전송 실패:", error);
       });
+      setSelectedFeed(null);
+      navigate(`/messages?conversationId=${conversation.id}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "대화를 시작하지 못했습니다.");
     } finally {

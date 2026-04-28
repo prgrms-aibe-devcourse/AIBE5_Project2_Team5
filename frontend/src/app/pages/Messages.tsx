@@ -1157,8 +1157,13 @@ export default function Messages() {
   const lastTypingSyncAtRef = useRef<Record<number, number>>({});
   const partnerTypingTimeoutRef = useRef<number | null>(null);
   const isProcessModalOpenRef = useRef(false);
+  /*
+   * URL·딥링크로 들어온 conversationId 가 '나간 대화(left)' 때문에 목록(allConversations)에서만
+   * 제외된 경우가 있다. 피드 제안 직후 /messages?conversationId= 같은 흐름에서 메시지가
+   * 안 보이는 원인이 됨 → 서버 목록 원본(raw)에서 먼저 조회한다. 사이드바는 계속 숨김 유지 가능.
+   */
   const activeConversation =
-    allConversations.find((conversation) => conversation.id === activeConversationId) ??
+    rawConversations.find((conversation) => conversation.id === activeConversationId) ??
     allConversations[0] ??
     null;
   const activeMessages = activeConversation
