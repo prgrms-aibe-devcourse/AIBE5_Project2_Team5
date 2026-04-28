@@ -1098,6 +1098,8 @@ export default function Explore() {
       </div>
 
 
+      </div>
+
       {selectedExploreFeed && (
         <FeedDetailModal
           isNight={isNight}
@@ -1163,8 +1165,6 @@ export default function Explore() {
           onSubmitComment={handleSubmitComment}
         />
       )}
-
-
 
       {/* 컬렉션 저장 모달 */}
       <AnimatePresence>
@@ -1262,7 +1262,7 @@ export default function Explore() {
           </motion.div>
         )}
       </AnimatePresence>
-      </div>
+
       <Footer />
     </div>
   );
