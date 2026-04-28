@@ -46,7 +46,8 @@ html {
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    /* translateY(0)은 transform이 남아 fixed 자손의 기준을 이 박스로 잡음 → none으로 끝내 뷰포트 고정 유지 */
+    transform: none;
   }
 }
 
@@ -66,7 +67,7 @@ html {
   }
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0);
+    transform: none;
   }
 }
 
@@ -77,6 +78,6 @@ html {
   }
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0);
+    transform: none;
   }
 }
